@@ -71,3 +71,7 @@ decoder, and every decoder has run on a file written by the reference writer.
   spec closes with that identifier in the "not seen" list and its reason, the decoder stays
   (tested with hand-built bytes taken from upstream's unit tests), and the README matrix
   marks it "read, not checked against a reference file".
+
+## Resolved open questions
+
+- **An identifier no tool can put in a file:** list it under "not seen" with its reason, keep the decoder (tested with hand-built bytes from upstream's unit tests), and mark it "read, not checked against a reference file" in the README matrix. (autopilot: recommended answer)

@@ -83,3 +83,7 @@ Upstream paths are in `~/code/other/vortex`. The prose spec is `docs/specs/file-
 - **The shape of `Type` and `Schema`.** `docs/interface.md` names them without fields.
   Recommended answer: the methods of step 5. A struct with unexported fields and accessor
   methods can grow without breaking callers, and the writer spec adds the constructors.
+
+## Resolved open questions
+
+- **The shape of `Type` and `Schema`:** use the methods of step 5, on structs with unexported fields and accessor methods; the writer spec adds the constructors. (autopilot: recommended answer)

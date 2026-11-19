@@ -63,3 +63,7 @@ one).
   format nobody writes anymore.** Recommended answer: read it anyway. Goal 3 says every
   release, and upstream promises that a frozen edition stays readable forever. If one
   release needs more than the rest together, stop and report it instead of dropping it.
+
+## Resolved open questions
+
+- **A release that needs a large decoder for a dead format:** read it anyway. If one release needs more than the rest together, stop and report it instead of dropping it. (autopilot: recommended answer)

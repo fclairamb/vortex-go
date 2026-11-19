@@ -76,3 +76,7 @@ Without them a caller pays for the whole file, and the zoned layout statistics a
 - **The shape of `Range`.** `docs/interface.md` names the type but not its fields.
   Recommended answer: `struct{ Start, End int64 }`, half-open, `End == 0` meaning the end of
   the file, as in the proposal. It keeps the zero value useful and needs no constructor.
+
+## Resolved open questions
+
+- **The shape of `Range`:** `struct{ Start, End int64 }`, half-open, `End == 0` meaning the end of the file. (autopilot: recommended answer)
