@@ -39,6 +39,8 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.txt
+          # Without this the uploader also sends scripts/coverage.awk.
+          disable_search: true
           fail_ci_if_error: false
 
   build-status:
