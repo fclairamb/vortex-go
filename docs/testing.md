@@ -235,6 +235,8 @@ encoding choice to the writer, and upstream's own compatibility check
   statement block was never executed. It prints the blocks.
 - **No exclusion list.**
 - **Offline.** The gate only uses committed files.
+- **Codecov shows it on the PR.** CI uploads `coverage.txt` after the gate. The upload
+  never fails the build: `make cover` stays the blocking gate.
 - **How error paths get covered.** By the corrupt files and the I/O faults of section 3
   and the write faults of section 4. An error branch that no file and no I/O fault can
   trigger is dead code: delete it.
