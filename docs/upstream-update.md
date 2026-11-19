@@ -4,9 +4,8 @@
 the fixtures, the oracle and the edition table (see [testing.md](testing.md)).
 
 Renovate watches the `vortex-data` package on PyPI. On each release it opens a PR that
-only changes `.vortex-version`, with the `autopilot` label and upstream's release
-notes. It is never merged automatically. CI is red on that PR until the refresh is in
-and the Go code follows.
+only changes `.vortex-version`, with upstream's release notes. It is never merged
+automatically. CI is red on that PR until the refresh is in and the Go code follows.
 
 Upstream is `https://github.com/vortex-data/vortex`. Tags have no prefix (`0.93.0`).
 
@@ -20,9 +19,7 @@ Upstream is `https://github.com/vortex-data/vortex`. Tags have no prefix (`0.93.
 2. **CI decides.**
    - Green: the release changed nothing we read or write. Florent merges.
    - Red: a decoder is missing or a value differs. That is "The work" below.
-3. **A red PR goes to the agent**, through the `autopilot` label that Renovate sets.
-   Today autopilot only counts a label Florent set himself, so a label set by Renovate
-   does not start it yet: Florent removes it and adds it back.
+3. **A red PR goes to the agent.** Renovate labels the PR for it.
 
 Two things to know:
 

@@ -77,7 +77,7 @@
       "groupName": "github-actions (major)"
     },
     {
-      "description": "A new Vortex release is work to do, not a version to merge. It is never grouped and never automerged. The autopilot label hands it to the agent.",
+      "description": "A new Vortex release is work to do, not a version to merge. It is never grouped and never automerged. Its label hands it to the agent.",
       "matchDatasources": [
         "pypi"
       ],
