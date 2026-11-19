@@ -31,7 +31,53 @@
       ]
     },
     {
-      "description": "A new Vortex release is work to do, not a version to merge. The autoimplement label marks it. Nothing acts on that label alone: Florent adds the autopilot label to hand the PR to the agent.",
+      "description": "Go modules, everything but majors, in one PR.",
+      "matchDatasources": [
+        "go"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "go dependencies (non-major)"
+    },
+    {
+      "description": "Go modules, majors, in one PR.",
+      "matchDatasources": [
+        "go"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "go dependencies (major)"
+    },
+    {
+      "description": "GitHub Actions and runners, everything but majors, in one PR.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "github-actions (non-major)"
+    },
+    {
+      "description": "GitHub Actions and runners, majors, in one PR.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "groupName": "github-actions (major)"
+    },
+    {
+      "description": "A new Vortex release is work to do, not a version to merge. It is never grouped and never automerged. Its label hands it to the agent.",
       "matchDatasources": [
         "pypi"
       ],
@@ -41,7 +87,7 @@
       "sourceUrl": "https://github.com/vortex-data/vortex",
       "automerge": false,
       "labels": [
-        "autoimplement"
+        "autopilot"
       ],
       "commitMessageTopic": "the Vortex format",
       "prBodyNotes": [
