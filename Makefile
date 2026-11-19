@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint
+.PHONY: check test race cover nocgo deps lint fixtures edition upstream
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -31,3 +31,14 @@ deps:
 
 lint:
 	golangci-lint run ./...
+
+# Fixtures of a release (default: .vortex-version). VERSION=x fetches another one into .cache/.
+fixtures:
+	scripts/fixtures.sh $(VERSION)
+
+# The edition table of a release, generated into internal/edition/table.go.
+edition:
+	scripts/edition.sh $(VERSION)
+
+# Everything a .vortex-version bump needs (the oracle joins in a later spec).
+upstream: fixtures edition

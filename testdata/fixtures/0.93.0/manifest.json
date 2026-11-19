@@ -1,0 +1,221 @@
+{
+  "version": "0.93.0",
+  "generated_at": "2026-11-06T14:51:15.971856+00:00",
+  "fixtures": [
+    {
+      "name": "primitives.vortex",
+      "description": "All primitive types (u8-u64, i32, i64, f32, f64) including a nullable i32 column",
+      "sha256": "c7afab5b5425dc4fdbc94114ad858400345cc1c40ebeac7d4aaf143e49b10246"
+    },
+    {
+      "name": "varbin.vortex",
+      "description": "VarBin-encoded strings including empty, unicode, emoji, and a nullable column",
+      "sha256": "59f1b3bdaed277ad9a8f668744df3160b09e285dd56736fe2dd13d23a72ac55d"
+    },
+    {
+      "name": "varbinview.vortex",
+      "description": "VarBinView-encoded strings including empty, unicode, emoji, long (>12 byte) strings, and a nullable column",
+      "sha256": "4974636dbc16059d739aeeb2ae071ce0e0368b62897e553ab77708061475b7f0"
+    },
+    {
+      "name": "booleans.vortex",
+      "description": "Boolean arrays with mixed true/false values including a nullable column",
+      "sha256": "6d168f24e13c565eaa8de4bfbc911ba3847511fd6db57123e81bde2b46b4ee9d"
+    },
+    {
+      "name": "struct_nested.vortex",
+      "description": "Nested struct: outer struct containing an inner struct with primitive and string fields",
+      "sha256": "bf5851aeaf429454fe29508610185fec63e7870dd44b3eee9558656f2fd597b7"
+    },
+    {
+      "name": "chunked.vortex",
+      "description": "ChunkedArray with variable-size chunks containing nullable data",
+      "sha256": "97463672ae7c96fa1ec1cdf1a78ea4db8b19d73aabb69d17a154ad73ef7f4672"
+    },
+    {
+      "name": "list.vortex",
+      "description": "Variable-length list arrays with integer and string elements",
+      "sha256": "ada99dccc48754478bf2870c75826556b4886a51b13d2ca5e7e9022d85bd20e0"
+    },
+    {
+      "name": "fixed_size_list.vortex",
+      "description": "Fixed-size list arrays (e.g. 3-element vectors)",
+      "sha256": "38ad06c9cc918246d5fa492c88360e99ea629609ac0222548a2d4023bb664b02"
+    },
+    {
+      "name": "null.vortex",
+      "description": "All-null column using NullArray alongside an integer column",
+      "sha256": "5da6e49bebd7c0635ee646b35c3094c83ac2c38d81b1dd5a4e682560aa8bc777"
+    },
+    {
+      "name": "datetime.vortex",
+      "description": "Temporal arrays covering timestamps, dates, and times with various units",
+      "sha256": "3e6df727f2c511030122b356bf7a16d7c3387f80f1ea559574bcacb7fa4a2fa0"
+    },
+    {
+      "name": "decimal.vortex",
+      "description": "Decimal arrays with varying precisions and scales, including nullable variants",
+      "sha256": "13b5f0af2ac6351390f9647efee0d28d7f100766a2ba52277c99801f9c7b24b1"
+    },
+    {
+      "name": "decimal_canonical_widths.vortex",
+      "description": "Decimal arrays at the canonical width of each precision, with the bounds of each precision",
+      "sha256": "0b35de6bb3689eddd9e83cb49a38d3fcaf3fbdb977f7087b85ff59f7a4314657"
+    },
+    {
+      "name": "listview.vortex",
+      "description": "ListView arrays with integer and string elements",
+      "sha256": "39191e2410a86c61164a52431b8c458a83ff39fa9d07e44c64e60e8c62f0c667"
+    },
+    {
+      "name": "map.vortex",
+      "description": "Map arrays with unsorted and sorted keys, nullable values, and null maps",
+      "sha256": "34ccb92d7fae69de17fdd0f514456db3cab3edc544bc5bb9acca98d8ee744259"
+    },
+    {
+      "name": "decimal_narrow_storage.vortex",
+      "description": "Decimal arrays stored narrower than the canonical width of their precision",
+      "sha256": "c762f1a3b32db8ecc76c1ac49c064f13601c836c993ec7169e167495885ffbb1"
+    },
+    {
+      "name": "decimal_gap_values.vortex",
+      "description": "Decimal arrays stored narrower than canonical, with values that need the precision of the next width",
+      "sha256": "95ac9e6b26cce2781fb8be56b52ec83d28691dde09710b8c5ef454acc1c0ab57"
+    },
+    {
+      "name": "decimal_high_scale.vortex",
+      "description": "Decimal arrays stored narrower than canonical, with a scale near the precision",
+      "sha256": "8be7b5b60e8c26b0e0c449ad0eb1115378b76f442b2ac648ae179626ecf010bd"
+    },
+    {
+      "name": "decimal_wide_storage.vortex",
+      "description": "Decimal arrays stored wider than the canonical width of their precision",
+      "sha256": "a9b6818ff695b551091fb575b086a0a6ca899ec50942647a32e57eef1c2b8dff"
+    },
+    {
+      "name": "decimal_null_slots.vortex",
+      "description": "Nullable decimal arrays with nonzero values in null slots",
+      "sha256": "342e6ce49b2de204c8604f6fdde588c2f3c9442ad66f037a35d1206a8ae9426b"
+    },
+    {
+      "name": "alp.vortex",
+      "description": "Near-integer floats and decimal-like prices for ALP encoding (f32 + f64)",
+      "sha256": "f73b5a94007a7428b4c2bcfa9cfc82499f710b0f74d7345584ac286b6a5836fc"
+    },
+    {
+      "name": "alprd.vortex",
+      "description": "Real-valued doubles with small deltas for ALPRD encoding",
+      "sha256": "c0e61979775454154bac0bb7161e2e2e2976b4e3fb9c7174a80d4f83a413f8e7"
+    },
+    {
+      "name": "bitpacked.vortex",
+      "description": "Small unsigned integers that fit in fewer bits than their type width",
+      "sha256": "0c72e016b0ea10a35bae0cc3776e6dd067df3defc524f4ad526d43284029c220"
+    },
+    {
+      "name": "bytebool.vortex",
+      "description": "Boolean arrays for ByteBool encoding",
+      "sha256": "3200b5c672674f65dcf3f13a64864b5b3605871a9c3e81d2efa4151f312b4fba"
+    },
+    {
+      "name": "datetimeparts.vortex",
+      "description": "Timestamp arrays for DateTimeParts encoding",
+      "sha256": "e25c5b7dd597f72d60355ee91134349acd0c65d2459bd030894a14b7f5bde1fc"
+    },
+    {
+      "name": "decimal_byte_parts.vortex",
+      "description": "Fixed-precision decimal arrays for DecimalByteParts encoding",
+      "sha256": "51dfab171fe1b1a5c532e52c40ededcb22c11c4c6e2bea17c4ec590a2a1ec740"
+    },
+    {
+      "name": "decimal_byte_parts_narrow_msp.vortex",
+      "description": "DecimalByteParts arrays with an MSP narrower or wider than the canonical decimal width",
+      "sha256": "0b6b7a114a2c9d72cff2944458a04d3fa08efb42ff4ca30c0be6a4ef0b67239d"
+    },
+    {
+      "name": "dict.vortex",
+      "description": "Low-cardinality repeated values (strings and integers) for Dict encoding",
+      "sha256": "01c34b2c6cec59de13b0c8f831076b28c8665f67fd87c7d4453f53174c7504e4"
+    },
+    {
+      "name": "fsst.vortex",
+      "description": "Strings with common substrings/prefixes for FSST encoding",
+      "sha256": "44b92cbcb584599dd0cc575ec47c160e0959e4f885d98989593bb3d3f2ac1d69"
+    },
+    {
+      "name": "for.vortex",
+      "description": "Integers clustered around a base value for Frame-of-Reference encoding",
+      "sha256": "777fbbabe1ebcd0bd51d113821a0634d33660ef3921c686b350f1414424de7b2"
+    },
+    {
+      "name": "pco.vortex",
+      "description": "Various numeric patterns for Pco (patas compression) encoding",
+      "sha256": "231a789b8f217990a883eecded0396906829b22106b9beca148d9f59045bdc20"
+    },
+    {
+      "name": "rle.vortex",
+      "description": "Primitive data with long runs of repeated values for RLE encoding",
+      "sha256": "d5bf0c42a57ba44de684c139d349e25f5fe735a8cca9390e4c08020362c0a062"
+    },
+    {
+      "name": "runend.vortex",
+      "description": "Data with variable-length runs for RunEnd encoding",
+      "sha256": "cb5d9824f3d9a58b004025f8bee53d892f947d8a79979b8ed429f161a73705fe"
+    },
+    {
+      "name": "sequence.vortex",
+      "description": "Arithmetic sequences (0,1,2,... and stepped) for Sequence encoding, including nullable",
+      "sha256": "e856c78b7fc8c3e055e16655f9bfa547fb9ad20ec40d262ad17cb977fdc09084"
+    },
+    {
+      "name": "sparse.vortex",
+      "description": "Mostly-null or mostly-default arrays with sparse non-default values",
+      "sha256": "b1a45fd42380e1a202f23370c35d2d36759ca1ef051ed3a7cf6477cbf14760cd"
+    },
+    {
+      "name": "zstd.vortex",
+      "description": "Primitive and string arrays compressed with Zstd encoding",
+      "sha256": "e439a4cc8cd93bd463ec91c2b876657b61f441cc9c10a1f8a83876afec894983"
+    },
+    {
+      "name": "zigzag.vortex",
+      "description": "Signed integers with small absolute values for ZigZag encoding",
+      "sha256": "eba39bdd48e1f06917885f5f663aa51dbb533b547ee85156a89622b4d605285c"
+    },
+    {
+      "name": "constant.vortex",
+      "description": "Constant-value columns (int, float, string, bool, null) for Constant encoding",
+      "sha256": "1587a7830e4848dc11768580595576589f34e4a863f92e590fd5650fc6197127"
+    },
+    {
+      "name": "tpch_lineitem.regular.vortex",
+      "description": "TPC-H lineitem table at scale factor 0.01 with decimals, dates, and strings",
+      "sha256": "58ea7c5d6faa695156a37146b1610ef92cb1bcce5a5d9f9654350bf730164a74"
+    },
+    {
+      "name": "tpch_lineitem.compact.vortex",
+      "description": "TPC-H lineitem table at scale factor 0.01 with decimals, dates, and strings",
+      "sha256": "21a347973bfc2b032c70bf8971dcc37b39fc686e23db8902a547213ec31b5ddb"
+    },
+    {
+      "name": "tpch_orders.regular.vortex",
+      "description": "TPC-H orders table at scale factor 0.01 with decimals, dates, and strings",
+      "sha256": "04006ac427b8727c6d7838e818a14fa84e3f5b228796c42b9089c0dd2ce0210c"
+    },
+    {
+      "name": "tpch_orders.compact.vortex",
+      "description": "TPC-H orders table at scale factor 0.01 with decimals, dates, and strings",
+      "sha256": "49ce3907b0f75143f44149b88d9b58dbe21df9815476bba60be091f7d40c66c7"
+    },
+    {
+      "name": "clickbench_hits_5k.regular.vortex",
+      "description": "5000 rows (5x1000 from random offsets) of ClickBench hits dataset with wide schema of primitives and strings",
+      "sha256": "f1bd5f62ad363c8a818599f9e862a5569f8357bd927a96aac1408b0932aa41ae"
+    },
+    {
+      "name": "clickbench_hits_5k.compact.vortex",
+      "description": "5000 rows (5x1000 from random offsets) of ClickBench hits dataset with wide schema of primitives and strings",
+      "sha256": "cabfb57b53ba4797216a17f8a9fd27289981257b691a07ca709ad6064b4647cc"
+    }
+  ]
+}

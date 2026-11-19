@@ -191,7 +191,7 @@ encoding choice to the writer, and upstream's own compatibility check
 | 100% coverage | `make cover` | yes | in place |
 | Race detector | `make race` | yes | in place |
 | Lint | `make lint` | yes | in place |
-| Fixtures and edition table of the pinned release | `go test ./...` | yes | planned, first |
+| Fixtures and edition table of the pinned release | `go test ./...` | yes | in place |
 | Corpus against the oracle | `go test ./...` | yes | planned |
 | Edition table complete and seen | `go test ./...` | yes | planned |
 | Allocation | `go test ./...` | yes | planned |
