@@ -23,6 +23,16 @@ Read these before working here:
 - **No assembly**, and `unsafe` only in the one internal package meant for it.
 - **Every API change updates `api.txt`** and, when it changes the design, `docs/interface.md`.
 
+## Specs
+
+- To do: `specs/todos/`. Done: `specs/done/YYYY/MM/`. File name: `YYYY-MM-DD-NN-title.md`.
+- They are implemented one at a time, in file name order. Each one builds on the ones
+  before it. Never skip one.
+- **One spec, one push.** When a spec is done and archived, push, then read the CI run of
+  that commit. Start the next spec only when it is green. A red CI is fixed first.
+- A spec's `## To verify` items are checked first, against upstream at the pinned tag. When
+  upstream says otherwise, upstream wins: fix the spec in the same commit.
+
 ## Before every push
 
 ```bash
