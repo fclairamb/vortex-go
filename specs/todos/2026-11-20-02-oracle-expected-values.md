@@ -70,4 +70,6 @@ Upstream also has no fixture for some identifiers of the target edition: at leas
   in `testdata/fixtures/<version>/extra/MISSING.md` with what was tried. The completeness
   spec decides what to do with that list.
 - The 37 synthetic fixtures are written by `vortex-test/compat-gen` upstream. Read it to
-  learn what each file is meant to hold.
+  learn what each file is meant to hold. Done: see "What the synthetic fixtures hold" in
+  `docs/testing.md`. The source defines 40 files, the published manifest lists 37 (no
+  `delta`, `patched`, `decimal_byte_parts_v2`), and each file is a multi-column struct.

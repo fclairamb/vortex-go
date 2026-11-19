@@ -23,7 +23,7 @@ Upstream publishes test files for every release in a public bucket,
 
 - `versions.json` lists 28 releases, from 0.64.0 to 0.93.0.
 - `v0.93.0/arrays/manifest.json` lists 43 files with their SHA-256.
-- 37 are synthetic, one per type or encoding (`primitives`, `list`, `map`, `alp`, `fsst`,
+- 37 are synthetic, each a struct of columns aimed at one type or encoding (`primitives`, `list`, `map`, `alp`, `fsst`,
   `pco`, `zstd`, `sparse`...). They weigh 1 MB in total.
 - 6 are datasets: TPC-H `lineitem` and `orders`, ClickBench `hits`, each written in
   "regular" and "compact" mode. They weigh 4.9 MB in total.
@@ -79,6 +79,55 @@ the reference reader met). There is no `layouts`: the reference Python API does 
 them. Keys are sorted and nothing is time-dependent, so a second run is byte-identical.
 Never edit these files by hand. What the reference writer cannot produce is listed in
 `testdata/fixtures/<version>/extra/MISSING.md`.
+
+**What the synthetic fixtures hold.** Read from `vortex-test/compat-gen/src/fixtures/arrays/synthetic/`
+at tag 0.93.0. A fixture is not "one encoding, one column": each file is a struct of several
+columns, built as one flat-layout array (no compressor), and upstream's `expected_encodings`
+check asserts the encoding it targets is in the tree. The second group below is named after
+an encoding, the first after a canonical type.
+
+| File | Content (upstream description) |
+|---|---|
+| `booleans` | Mixed true/false, including a nullable column |
+| `chunked` | Chunks of variable size with nullable data |
+| `datetime` | Timestamps, dates and times in several units |
+| `decimal` | Several precisions and scales, nullable variants included |
+| `decimal_canonical_widths` | The canonical width of each precision, with the bounds of each |
+| `decimal_narrow_storage` | Stored narrower than the canonical width of the precision |
+| `decimal_wide_storage` | Stored wider than the canonical width of the precision |
+| `decimal_gap_values` | Narrow storage, with values that need the canonical width |
+| `decimal_high_scale` | Narrow storage, with a scale near the precision |
+| `decimal_null_slots` | Nullable, with nonzero values in the null slots |
+| `fixed_size_list` | Fixed-size lists (3-element vectors) |
+| `list`, `listview` | Variable-length lists of integers and strings, in both layouts |
+| `map` | Sorted and unsorted keys, nullable values, null maps |
+| `null` | An all-null `NullArray` next to an integer column |
+| `primitives` | u8 to u64, i32, i64, f32, f64, plus a nullable i32 |
+| `struct_nested` | A struct holding a struct with primitive and string fields |
+| `varbin`, `varbinview` | Strings: empty, unicode, emoji, a nullable column; `varbinview` adds strings over 12 bytes |
+| `alp`, `alprd` | Near-integer floats and decimal-like prices (f32, f64); real-valued doubles with small deltas |
+| `bitpacked` | Unsigned integers that fit in fewer bits than their type |
+| `bytebool` | Booleans for the ByteBool encoding |
+| `constant` | Constant int, float, string, bool and null columns |
+| `datetimeparts` | Timestamps for the DateTimeParts encoding |
+| `decimal_byte_parts` | Fixed-precision decimals for DecimalByteParts |
+| `decimal_byte_parts_narrow_msp` | DecimalByteParts whose MSP is narrower or wider than the canonical width |
+| `dict` | Low-cardinality strings and integers |
+| `for` | Integers clustered around a base (Frame of Reference) |
+| `fsst` | Strings with common substrings and prefixes |
+| `pco` | Various numeric patterns |
+| `rle` | Primitives with long runs |
+| `runend` | Variable-length runs |
+| `sequence` | Arithmetic sequences (0,1,2... and stepped), nullable included |
+| `sparse` | Mostly-null or mostly-default arrays with a few other values |
+| `zigzag` | Signed integers of small absolute value |
+| `zstd` | Primitive and string arrays compressed with Zstd |
+
+Upstream's source at 0.93.0 defines three more files that the published `v0.93.0` manifest
+does not list, so they are not in our corpus: `delta` (monotonically increasing unsigned
+integers), `patched` (patches applied on top of an inner array) and `decimal_byte_parts_v2`
+(wide decimals split into a most significant part plus 64-bit lower parts). Upstream's
+`check` compares decoded arrays, never bytes.
 
 ## 2. Completeness
 
