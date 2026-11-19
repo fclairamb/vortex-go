@@ -1,0 +1,103 @@
+version: "2"
+
+run:
+  concurrency: 4
+  timeout: 5m
+  tests: false
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/fclairamb/vortex-go
+
+linters:
+  enable:
+    - dogsled
+    - dupl
+    - errcheck
+    - funlen
+    - gochecknoinits
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - revive
+    - govet
+    - lll
+    - misspell
+    - nakedret
+    - prealloc
+    - staticcheck
+    - unconvert
+    - unparam
+    - unused
+    - whitespace
+  settings:
+    staticcheck:
+      checks:
+        - all
+
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+
+    funlen:
+      lines: 80
+      statements: 40
+
+    govet:
+      enable:
+        - atomicalign
+        - fieldalignment
+
+    gocyclo:
+      min-complexity: 15
+
+    gocognit:
+      min-complexity: 30
+
+    dupl:
+      threshold: 100
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    misspell:
+      locale: US
+
+    lll:
+      line-length: 120
+      tab-width: 1
+
+    nakedret:
+      max-func-lines: 30
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+    gocritic:
+      enabled-tags:
+        - performance
+
+    dogsled:
+      max-blank-identifiers: 2
+
+    whitespace:
+      multi-if: false
+      multi-func: false
+
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      - path: _test\.go
+        linters:
+          - funlen
+          - dupl

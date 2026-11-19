@@ -1,0 +1,197 @@
+# Interface
+
+This is the planned public API. Nothing is implemented yet.
+
+Once the code exists, the source of truth becomes `api.txt` (the output of `go doc -all`,
+checked by CI) and this file only keeps the reasons.
+
+## Example
+
+```go
+f, err := vortex.OpenFile("trades.vortex")
+if err != nil {
+    return err
+}
+defer f.Close()
+
+type Trade struct {
+    ID    int64            `vortex:"id"`
+    Price float64          `vortex:"price"`
+    City  sql.Null[string] `vortex:"city"`
+}
+
+q := vortex.Query{Filter: vortex.Col("price").Gt(100)}
+for t, err := range vortex.Rows[Trade](ctx, f, q) {
+    if err != nil {
+        return err
+    }
+    use(t)
+}
+```
+
+The same scan, by columns:
+
+```go
+for b, err := range f.Scan(ctx, q, "id", "price", "name") {
+    if err != nil {
+        return err
+    }
+    ids, err := vortex.Values[int64](b.Col(0))
+    if err != nil {
+        return err
+    }
+    prices, err := vortex.Values[float64](b.Col(1))
+    if err != nil {
+        return err
+    }
+    name := b.Col(2)
+    for i := range b.Len() {
+        use(ids[i], prices[i], name.Bytes(i))
+    }
+}
+```
+
+## The full surface
+
+```go
+// Open
+func Open(r io.ReaderAt, size int64) (*File, error)
+func OpenFile(path string) (*File, error)
+func (f *File) Schema() *Schema
+func (f *File) NumRows() int64
+func (f *File) Close() error
+
+// Select rows
+type Query struct {
+    Filter Expr  // exact, zero value keeps every row
+    Rows   Range // zero value is the whole file
+}
+func Col(path ...string) Ref // .Eq .Ne .Lt .Le .Gt .Ge .In .IsNull
+func And(e ...Expr) Expr     // also Or, Not
+
+// Read rows: the projection comes from T
+func Rows[T any](ctx context.Context, f *File, q Query) iter.Seq2[T, error]
+
+// Read columns: no column means all of them
+func (f *File) Scan(ctx context.Context, q Query, columns ...string) iter.Seq2[*Batch, error]
+func (b *Batch) Len() int
+func (b *Batch) Col(i int) *Column
+func (c *Column) Type() Type
+func (c *Column) Null(i int) bool
+func (c *Column) Bool(i int) bool
+func (c *Column) Bytes(i int) []byte          // utf8, binary, uuid
+func (c *Column) Decimal(i int) Decimal       // any precision
+func (c *Column) Field(i int) *Column         // struct child
+func (c *Column) Elems() *Column              // list, fixed-size list and map values
+func (c *Column) List(i int) (start, end int) // range in Elems
+func Values[T Number](c *Column) ([]T, error) // error when the column is not a T
+
+// Write: both only need an io.Writer
+func NewRowWriter[T any](w io.Writer, o WriteOptions) *RowWriter[T]
+func (w *RowWriter[T]) Write(rows []T) (int, error)
+func (w *RowWriter[T]) Close() error
+
+func NewWriter(w io.Writer, s *Schema, o WriteOptions) *Writer
+func (w *Writer) Write(cols ...Data) error
+func (w *Writer) Close() error
+func Of[T Number](v []T) Data         // also OfBools, OfStrings, OfBytes, OfDecimals
+func OfStruct(fields ...Data) Data
+func OfList(offsets []int, elems Data) Data
+func (d Data) Nulls(null []bool) Data // marks the null rows, for any Data
+
+type WriteOptions struct{ Compression Compression } // Default, Compact, None
+
+// A decimal of any precision: the unscaled value, on 256 bits
+type Decimal struct{ /* 32 bytes */ }
+func DecimalFromInt64(v int64) Decimal
+func DecimalFromBig(v *big.Int) (Decimal, error) // error above 256 bits
+func (d Decimal) Int64() (v int64, ok bool)
+func (d Decimal) Big() *big.Int
+func (d Decimal) Text(scale int) string
+```
+
+## Types
+
+The target edition has 12 logical types. `Union` exists upstream but is in no edition, so
+it is out of scope.
+
+| Vortex type | Field of a row struct | Column |
+|---|---|---|
+| Null | none, leave it out | `Null(i)` is always true |
+| Bool | `bool` | `Bool(i)` |
+| `u8` to `u64`, `i8` to `i64`, `f32`, `f64` | the same Go type | `Values[T]` |
+| `f16` | `float32` | `Values[float32]` |
+| Decimal, precision up to 18 | `int64`, the unscaled value, or `vortex.Decimal` | `Values[int64]`, or `Decimal(i)` |
+| Decimal, precision 19 to 76 | `vortex.Decimal` | `Decimal(i)` |
+| Utf8 | `string` (copies) or `[]byte` (view) | `Bytes(i)` |
+| Binary | `[]byte` | `Bytes(i)` |
+| List | `[]T` | `Elems()` and `List(i)` |
+| FixedSizeList | `[N]T`, or `[]T` | `Elems()` and `List(i)` |
+| Map | `map[K]V` | `Elems()` is a struct of key and value, and `List(i)` |
+| Struct | a struct | `Field(i)` |
+| Date | `time.Time` | the storage, `Values[int32]` or `Values[int64]` |
+| Time | `time.Duration` since midnight | the storage, `Values[int32]` or `Values[int64]` |
+| Timestamp | `time.Time` | the storage, `Values[int64]` |
+| UUID | `[16]byte` | `Bytes(i)`, 16 bytes |
+| Variant | open, see below | open |
+
+- **Exact match.** An `int32` column does not go into an `int64` field. The error names
+  both types. `int` and `uint` count as 64 bits. Widening can come later, it is additive.
+- **Date, time and timestamp give their storage at the column level.** `Type()` says which
+  one it is, with its unit and time zone. The row level converts to the Go type, and also
+  accepts the storage type (an `int64` field for a timestamp). A UUID is stored as a list
+  of 16 `u8`, and is read and written as 16 bytes.
+- **Decimals keep their scale in the schema**, not in each value. A `vortex.Decimal` is the
+  unscaled value on 256 bits: 32 bytes, no allocation. `Text(scale)` prints it, `Big()`
+  allocates.
+- **The writer mirrors the table.** `Data` has the physical shape and the `*Schema` gives
+  the logical type: `Of[int64]` for a timestamp, `OfBytes` for a UUID,
+  `OfList(offsets, OfStruct(keys, values))` for a map.
+
+Open, Florent's call:
+
+- **Variant.** Proposal: `any` in a row struct, and nothing at the column level in the
+  first version.
+
+## Rules that go with it
+
+- **Memory.** A batch and its views are valid for one loop iteration. Use `slices.Clone`
+  to keep values. A view never points into the file, so a stale view gives wrong data,
+  never a crash.
+- **Row structs.**
+  - `string` copies and is always safe.
+  - `[]byte` is a view, valid in the loop body.
+  - `sql.Null[T]` or a pointer for nullable columns. The pointer allocates.
+  - Nested structs, slices and maps are supported. Slices and maps allocate per row.
+- **Missing column.** An error, unless the tag says `vortex:"city,optional"`, which gives
+  the zero value.
+- **Errors.** A bad column name, a filter that does not fit the column type, or a struct
+  field that does not fit its column, comes back as the error of the first iteration,
+  before any data is read. A `T` that cannot be written comes back from the first `Write`.
+- **Wrong accessor.** `Values[T]` returns an error, because the width of a number comes
+  from the file. The per-row accessors (`Bool`, `Bytes`, `Decimal`, `Field`, `Elems`, `List`) panic on
+  a column of another type, like an index out of range. `Type()` tells before calling.
+- **Nested fields.** `Col("address", "city")` filters on a field of a struct. `Scan` only
+  takes top-level columns, the children come with `Field(i)`.
+- **Filters are exact.** The caller never has to filter again.
+- **Parallelism.** Decoding runs ahead on internal goroutines. Breaking out of the loop
+  stops them.
+- **I/O.** Reads are merged and issued in parallel. The gap is chosen from the reader:
+  small for `*os.File` and memory, large for anything else.
+
+## Why this shape
+
+- **Iterators, not `Next`/`Err`/`Close`.** `range` handles the cleanup. Rows are yielded by
+  value, so a reused pointer cannot bite.
+- **Columns are arguments of `Scan`.** `b.Col(0)` is the first name passed. `Query` only
+  selects rows, so it means the same thing for `Rows` and `Scan`.
+- **No `Limit`.** `break` does it, and stops the decoding.
+- **No `ctx` to open a file.** An `io.ReaderAt` cannot be cancelled and the footer is two
+  or three reads. The scans take one.
+- **`Column` to read, `Data` to write.** A `Column` is a view owned by the scan. A `Data`
+  wraps slices owned by the caller. One type for both would need two sets of rules.
+- **Options by value.** `Query{}` and `WriteOptions{}` are the defaults, with no `nil`.
+- **No reference counting.** The scan owns the memory and reuses it.
+- **No session, no registry to set up.** Defaults live in the package.
+- **From parquet-go:** struct tags and `Write([]T) (int, error)`. Not `Row`, `Value`,
+  `RowGroup` or `Page`: Vortex has no row groups and no pages.

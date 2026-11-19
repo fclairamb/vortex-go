@@ -1,0 +1,38 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    strategy:
+      matrix:
+        go: ['1.26', '1.27']
+        include:
+          - go: '1.27'
+            lint: true
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup go
+        uses: actions/setup-go@v6
+        with:
+          go-version: ${{ matrix.go }}
+
+      - name: Run golangci-lint
+        if: matrix.lint
+        uses: golangci/golangci-lint-action@v9
+
+      # No cgo, standard library only, 100% coverage, race detector.
+      - name: Gates
+        run: make check
+
+  build-status:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo 'All good'

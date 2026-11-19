@@ -1,0 +1,33 @@
+.PHONY: check test race cover nocgo deps lint
+
+# Every blocking gate. CI runs this, run it before every push.
+check: nocgo deps cover race
+
+test:
+	CGO_ENABLED=0 go test ./...
+
+# -race needs the cgo toolchain on Linux. The code itself has no cgo (see nocgo).
+race:
+	go test -race ./...
+
+# 100% statement coverage, no exclusion. Lists every block that is not covered.
+cover:
+	CGO_ENABLED=0 go test -coverpkg=./... -coverprofile=coverage.txt ./...
+	@awk -f scripts/coverage.awk coverage.txt
+
+# No cgo in this module or in anything it imports. CGO_ENABLED=1 is needed for
+# go list to report cgo files instead of ignoring them.
+nocgo:
+	@out="$$(CGO_ENABLED=1 go list -deps -f '{{if and (not .Standard) .CgoFiles}}{{.ImportPath}}{{end}}' ./...)"; \
+	if [ -n "$$out" ]; then echo "cgo found in:"; echo "$$out"; exit 1; fi; \
+	echo "nocgo: ok"
+
+# The only module allowed is klauspost/compress (zstd). Adding another one is
+# Florent's decision, then this line changes.
+deps:
+	@out="$$(go list -m all | awk 'NR > 1 { print $$1 }' | grep -v -x -F github.com/klauspost/compress || true)"; \
+	if [ -n "$$out" ]; then echo "modules not allowed:"; echo "$$out"; exit 1; fi; \
+	echo "deps: ok"
+
+lint:
+	golangci-lint run ./...

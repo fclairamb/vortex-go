@@ -1,0 +1,44 @@
+# vortex-go
+
+Pure Go reader and writer for the Vortex columnar file format. Module
+`github.com/fclairamb/vortex-go`, package `vortex`.
+
+Read these before working here:
+
+- [docs/goals.md](docs/goals.md): the ranked goals, the non-goals, the open decisions.
+- [docs/interface.md](docs/interface.md): the public API we are building.
+- [docs/testing.md](docs/testing.md): how each goal is checked, and the list of gates.
+- [docs/upstream-update.md](docs/upstream-update.md): what to do on a PR labelled `autoimplement`.
+
+## Hard rules
+
+- **No cgo.** Not here, not in a dependency. `make nocgo` checks it.
+- **Standard library, plus `github.com/klauspost/compress` for zstd.** Never add another
+  module without Florent's explicit go. `make deps` checks it.
+- **100% statement coverage, no exclusion.** `make cover` checks it. Code that no test can
+  reach is deleted, not excused.
+- **The Rust implementation is the judge.** Expected values come from the reference reader
+  (the oracle), never from our own code. Never edit an expected value by hand.
+- **`go test ./...` is offline.** No network, no Python, no Rust.
+- **No assembly**, and `unsafe` only in the one internal package meant for it.
+- **Every API change updates `api.txt`** and, when it changes the design, `docs/interface.md`.
+
+## Before every push
+
+```bash
+make check
+```
+
+```bash
+~/go/bin/golangci-lint run ./...
+```
+
+## References on this Mac
+
+- `~/code/other/vortex`: the upstream Rust implementation (shallow clone). The spec is
+  thin, the Rust code is the real reference.
+- `~/code/other/vortex-go`: `mprammer/vortex-go`, a scalar-only Go reader (Apache-2.0).
+  Good to read for the footer parsing and the Pco decoder. Do not copy code without
+  keeping its license notice.
+- Upstream fixtures: `https://vortex-compat-fixtures.s3.amazonaws.com` (`versions.json`,
+  then `v<version>/arrays/manifest.json`).

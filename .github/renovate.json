@@ -1,0 +1,52 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The upstream Vortex release this implementation follows",
+      "managerFilePatterns": [
+        "/^\\.vortex-version$/"
+      ],
+      "matchStrings": [
+        "^(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$"
+      ],
+      "depNameTemplate": "vortex-data",
+      "datasourceTemplate": "pypi"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "automerge": true,
+      "labels": [
+        "automerge"
+      ]
+    },
+    {
+      "description": "A new Vortex release is work to do, not a version to merge. The autoimplement label marks it. Nothing acts on that label alone: Florent adds the autopilot label to hand the PR to the agent.",
+      "matchDatasources": [
+        "pypi"
+      ],
+      "matchDepNames": [
+        "vortex-data"
+      ],
+      "sourceUrl": "https://github.com/vortex-data/vortex",
+      "automerge": false,
+      "labels": [
+        "autoimplement"
+      ],
+      "commitMessageTopic": "the Vortex format",
+      "prBodyNotes": [
+        "This PR only changes `.vortex-version`. CI stays red until the Go implementation follows upstream `{{{currentVersion}}}` to `{{{newVersion}}}`. The procedure is in [docs/upstream-update.md](../blob/main/docs/upstream-update.md)."
+      ]
+    }
+  ]
+}
