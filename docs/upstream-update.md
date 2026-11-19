@@ -28,8 +28,8 @@ Two things to know:
 - Renovate stops updating a branch once someone else pushed to it. A newer release waits
   until this PR is merged. So releases are done one at a time, in order.
 
-Before the first Renovate PR, `main` needs a branch protection that requires the
-`build-status` check. Without it, red blocks nothing.
+`main` has a ruleset that requires a pull request, a squash merge and the `build-status`
+check, with no bypass. So a red PR cannot be merged.
 
 ## The work
 
