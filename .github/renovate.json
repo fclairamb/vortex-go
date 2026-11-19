@@ -51,7 +51,7 @@
       "matchUpdateTypes": [
         "major"
       ],
-      "groupName": "go dependencies (major)"
+      "groupName": "go dependencies"
     },
     {
       "description": "GitHub Actions and runners, everything but majors, in one PR.",
@@ -74,7 +74,7 @@
       "matchUpdateTypes": [
         "major"
       ],
-      "groupName": "github-actions (major)"
+      "groupName": "github-actions"
     },
     {
       "description": "A new Vortex release is work to do, not a version to merge. It is never grouped and never automerged. Its label hands it to the agent.",
