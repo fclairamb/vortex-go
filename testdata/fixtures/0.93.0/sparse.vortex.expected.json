@@ -1,0 +1,277 @@
+{
+  "columns": {
+    "all_default": {
+      "first": [
+        "10",
+        "10",
+        "10",
+        "10",
+        "10"
+      ],
+      "last": [
+        "10",
+        "10",
+        "10",
+        "10",
+        "10"
+      ],
+      "nulls": 0,
+      "sha256": "755a6c0bc65a25cbdfc5f9554a86a22d956789eeaa141dcbf9d597d97e12b34c"
+    },
+    "almost_dense": {
+      "first": [
+        "None",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "last": [
+        "5",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "nulls": 32,
+      "sha256": "20b4d4cd20d0472d339c58fcdf153fd0ed086c21378024ffbbebb3c5bd429906"
+    },
+    "clustered_edges": {
+      "first": [
+        "0",
+        "9",
+        "18",
+        "27",
+        "36"
+      ],
+      "last": [
+        "9171",
+        "9180",
+        "9189",
+        "9198",
+        "9207"
+      ],
+      "nulls": 1008,
+      "sha256": "ff20d989226f26875dcaba8826f088e68ce5a7621c24549464c60a9da3c16fec"
+    },
+    "explicit_fill_values": {
+      "first": [
+        "99",
+        "10",
+        "10",
+        "10",
+        "10"
+      ],
+      "last": [
+        "10",
+        "10",
+        "10",
+        "10",
+        "10"
+      ],
+      "nulls": 0,
+      "sha256": "b4e81af4e85cf624d5a088ca7fd34935be9c0b5e10f9a0a5d2d2d49f84d9a9a4"
+    },
+    "mixed_null_and_values": {
+      "first": [
+        "None",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "0",
+        "None",
+        "0",
+        "0",
+        "0"
+      ],
+      "nulls": 61,
+      "sha256": "ee3ac037cb37e37a379dfa4575184f81a350e4f99e447f5cecb6b6dd50c7910b"
+    },
+    "sparse_bool": {
+      "first": [
+        "True",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 1013,
+      "sha256": "2993b608d2a5692f96f390932bf1b7e1f039d86af839543006ce6a7960ba9388"
+    },
+    "sparse_boundary": {
+      "first": [
+        "0",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "7161"
+      ],
+      "nulls": 1017,
+      "sha256": "b11de8067bc117f17a09f14b92454aafb5b392cde59afcade2b2ad6f993301f0"
+    },
+    "sparse_f64": {
+      "first": [
+        "0.0",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 1013,
+      "sha256": "b36e8b3799b5c237dd2e18da15585c0da1eb55dc4c322f2f150583d6bdac6a61"
+    },
+    "sparse_i64": {
+      "first": [
+        "0",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 1003,
+      "sha256": "921c7d5537af6fb6387b95e736373231f32921e1a9fefbc153ff3a3f928a6877"
+    },
+    "sparse_str": {
+      "first": [
+        "rare_value",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "rare_value",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 972,
+      "sha256": "bae012ddc7763e1672477a2227281b23d74f7684b1d697c9a852bb1704aca1ef"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.constant",
+    "vortex.primitive",
+    "vortex.sparse",
+    "vortex.struct",
+    "vortex.varbinview"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i64"
+        },
+        "name": "sparse_i64"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "sparse_str"
+      },
+      {
+        "dtype": {
+          "kind": "bool",
+          "nullable": true
+        },
+        "name": "sparse_bool"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "f64"
+        },
+        "name": "sparse_f64"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i64"
+        },
+        "name": "sparse_boundary"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "explicit_fill_values"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "all_default"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i64"
+        },
+        "name": "clustered_edges"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "almost_dense"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "mixed_null_and_values"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

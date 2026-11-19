@@ -82,6 +82,9 @@ func TestCheckUpstreamFailures(t *testing.T) {
 			t.Fatal(err)
 		}
 		for _, e := range entries {
+			if e.IsDir() {
+				continue
+			}
 			data, err := os.ReadFile(filepath.Join(src, e.Name()))
 			if err != nil {
 				t.Fatal(err)

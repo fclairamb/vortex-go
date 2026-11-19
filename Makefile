@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition upstream
+.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -40,5 +40,13 @@ fixtures:
 edition:
 	scripts/edition.sh $(VERSION)
 
-# Everything a .vortex-version bump needs (the oracle joins in a later spec).
-upstream: fixtures edition
+# The expected values: generates the fixtures upstream lacks, then writes the
+# <file>.expected.json of every fixture of the pinned version. Needs uv and network.
+# Existing extra fixtures are kept, the JSON files are rewritten (byte-identical).
+ORACLE = uv run --with vortex-data==$$(cat .vortex-version) --with pyarrow python
+oracle:
+	$(ORACLE) tools/oracle/genfixtures.py
+	find testdata/fixtures/$$(cat .vortex-version) -name '*.vortex' | sort | xargs $(ORACLE) tools/oracle/oracle.py expected
+
+# Everything a .vortex-version bump needs.
+upstream: fixtures edition oracle

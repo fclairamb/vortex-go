@@ -53,10 +53,32 @@ of a column: one validity byte, then the value if it is valid.
 |---|---|
 | Integers, floats | Little-endian, raw bits (NaN payloads and `-0` are kept) |
 | Bool | One byte |
-| Decimal | Little-endian two's complement, 16 or 32 bytes |
+| Decimal | Little-endian two's complement, 16 bytes up to precision 38, 32 bytes above, whatever the storage width |
 | Utf8, binary | `uint32` length, then the bytes |
 | Struct | Each field in order |
 | List | `uint32` length, then each element |
+| Fixed-size list | Each element in order, no length |
+| Map | A list of structs `{key, value}` |
+| Date, time, timestamp | The storage integer (no timezone, no unit) |
+| UUID | The 16 bytes, no length |
+| Null type | The validity byte only |
+| Variant | Left for the variant spec: the oracle writes `"sha256": null` |
+
+Every element of a list, every field of a struct and every entry of a map is a row of its
+own type, so it has its validity byte too. A null struct, list or map has no more bytes
+after its validity byte. The hash of a nested struct field (`inner.a`) is taken over the
+field as flattened: it is null where the parent is null.
+
+**The oracle.** `make oracle` runs `tools/oracle/genfixtures.py` (the fixtures upstream
+lacks, into `testdata/fixtures/<version>/extra/`) then `tools/oracle/oracle.py expected`
+on every fixture. `<file>.expected.json` holds `rows`, `schema` (the DType tree, parsed
+from the reference's text form of the DType, since its Python API hides map, extension and
+element types), `columns` (per column and per nested struct field as a dotted path:
+`nulls`, `sha256`, `first` and `last` 5 values as text) and `encodings` (the identifiers
+the reference reader met). There is no `layouts`: the reference Python API does not expose
+them. Keys are sorted and nothing is time-dependent, so a second run is byte-identical.
+Never edit these files by hand. What the reference writer cannot produce is listed in
+`testdata/fixtures/<version>/extra/MISSING.md`.
 
 ## 2. Completeness
 
@@ -192,6 +214,7 @@ encoding choice to the writer, and upstream's own compatibility check
 | Race detector | `make race` | yes | in place |
 | Lint | `make lint` | yes | in place |
 | Fixtures and edition table of the pinned release | `go test ./...` | yes | in place |
+| Expected values of every fixture exist and parse | `go test ./...` | yes | in place |
 | Corpus against the oracle | `go test ./...` | yes | planned |
 | Edition table complete and seen | `go test ./...` | yes | planned |
 | Allocation | `go test ./...` | yes | planned |

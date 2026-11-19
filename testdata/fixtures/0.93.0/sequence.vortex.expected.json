@@ -1,0 +1,301 @@
+{
+  "columns": {
+    "decreasing": {
+      "first": [
+        "10000",
+        "9997",
+        "9994",
+        "9991",
+        "9988"
+      ],
+      "last": [
+        "6943",
+        "6940",
+        "6937",
+        "6934",
+        "6931"
+      ],
+      "nulls": 0,
+      "sha256": "57272fd0e4a097798e68b44aa163160f386e89e96d4376767a4b349a31920cc9"
+    },
+    "large_step": {
+      "first": [
+        "0",
+        "1000",
+        "2000",
+        "3000",
+        "4000"
+      ],
+      "last": [
+        "1019000",
+        "1020000",
+        "1021000",
+        "1022000",
+        "1023000"
+      ],
+      "nulls": 0,
+      "sha256": "0c92c0e236ff80dff16130b2a2ffd41cfaa7de061fb3975c5c48c0f4528d16b5"
+    },
+    "near_overflow": {
+      "first": [
+        "18446744073709550591",
+        "18446744073709550592",
+        "18446744073709550593",
+        "18446744073709550594",
+        "18446744073709550595"
+      ],
+      "last": [
+        "18446744073709551610",
+        "18446744073709551611",
+        "18446744073709551612",
+        "18446744073709551613",
+        "18446744073709551614"
+      ],
+      "nulls": 0,
+      "sha256": "9401802105929d19a1a666951c2a60ffaf899f2bb8a6d128ec9b5b4e8e821ef8"
+    },
+    "nullable_i64": {
+      "first": [
+        "0",
+        "2",
+        "4",
+        "6",
+        "8"
+      ],
+      "last": [
+        "2038",
+        "2040",
+        "2042",
+        "2044",
+        "2046"
+      ],
+      "nulls": 0,
+      "sha256": "dfcf1e7ab544053704cb710048a6efd94ce7f8b6a8676b6f826ea4572015f6da"
+    },
+    "nullable_u32": {
+      "first": [
+        "100",
+        "107",
+        "114",
+        "121",
+        "128"
+      ],
+      "last": [
+        "7233",
+        "7240",
+        "7247",
+        "7254",
+        "7261"
+      ],
+      "nulls": 0,
+      "sha256": "8b16404a7080d66fc14f0c114ee8f2966024ecc2c97060be8511948c184c01ce"
+    },
+    "offset": {
+      "first": [
+        "1000",
+        "1001",
+        "1002",
+        "1003",
+        "1004"
+      ],
+      "last": [
+        "2019",
+        "2020",
+        "2021",
+        "2022",
+        "2023"
+      ],
+      "nulls": 0,
+      "sha256": "7fcf08dc68dff0e36b13af868b29a4b1820333fb3b350b6308f0f2c75ff000bf"
+    },
+    "row_ids": {
+      "first": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "last": [
+        "1019",
+        "1020",
+        "1021",
+        "1022",
+        "1023"
+      ],
+      "nulls": 0,
+      "sha256": "1f290f2e0bea1638d91a4791f241dedb38052c50e32320c9b84ca29a422f38f3"
+    },
+    "small_negative_i16": {
+      "first": [
+        "1200",
+        "1198",
+        "1196",
+        "1194",
+        "1192"
+      ],
+      "last": [
+        "-838",
+        "-840",
+        "-842",
+        "-844",
+        "-846"
+      ],
+      "nulls": 0,
+      "sha256": "2d61e8791379424ae49fca6faf363a47c026b995893048bd60b3bdb05dd577dd"
+    },
+    "stepped": {
+      "first": [
+        "0",
+        "5",
+        "10",
+        "15",
+        "20"
+      ],
+      "last": [
+        "5095",
+        "5100",
+        "5105",
+        "5110",
+        "5115"
+      ],
+      "nulls": 0,
+      "sha256": "18dacd4888361c502dc2db9e96be8290406645397161cd28a5c70f3c05ea1648"
+    },
+    "zero_crossing": {
+      "first": [
+        "-512",
+        "-511",
+        "-510",
+        "-509",
+        "-508"
+      ],
+      "last": [
+        "507",
+        "508",
+        "509",
+        "510",
+        "511"
+      ],
+      "nulls": 0,
+      "sha256": "92d91166c9c6311818d9dbbae49fa22e6e0e44596ad9b39b3dfc0d3e98e6ca4f"
+    },
+    "zero_step": {
+      "first": [
+        "7",
+        "7",
+        "7",
+        "7",
+        "7"
+      ],
+      "last": [
+        "7",
+        "7",
+        "7",
+        "7",
+        "7"
+      ],
+      "nulls": 0,
+      "sha256": "9a5907f6d265671cae99631381ea47d747829f374cbdd23044082ce2e1141a22"
+    }
+  },
+  "encodings": [
+    "vortex.sequence",
+    "vortex.struct"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u64"
+        },
+        "name": "row_ids"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "stepped"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "offset"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "decreasing"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u32"
+        },
+        "name": "large_step"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "zero_step"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "zero_crossing"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u64"
+        },
+        "name": "near_overflow"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i16"
+        },
+        "name": "small_negative_i16"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i64"
+        },
+        "name": "nullable_i64"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "u32"
+        },
+        "name": "nullable_u32"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}
