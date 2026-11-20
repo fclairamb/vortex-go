@@ -3,6 +3,7 @@ package vortex
 import (
 	"encoding/binary"
 	"math"
+	"slices"
 	"strings"
 	"testing"
 
@@ -248,5 +249,30 @@ func TestFileStatisticsOfTimes(t *testing.T) {
 		if _, ok := got[i][aggMin]; ok || len(got[i]) != 1 {
 			t.Errorf("a time out of its day has the null count only: %v", got[i])
 		}
+	}
+}
+
+// TestMaskedRootStatistics: the chunk of one value among nulls is a constant under a validity,
+// and its statistics are on the masked root node, as upstream puts them on the root of whatever
+// encoding it is.
+func TestMaskedRootStatistics(t *testing.T) {
+	n := 300
+	v, nulls := make([]int64, n), make([]bool, n)
+	for i := range v {
+		v[i], nulls[i] = 42, i%3 != 1
+	}
+	f, file := writeFile(t, NewSchema(Field{"c", Int64Type().AsNullable()}), []Data{Of(v).Nulls(nulls)})
+	if !slices.Contains(f.arrayEncodings, "vortex.masked") {
+		t.Fatalf("the file has %v, no vortex.masked", f.arrayEncodings)
+	}
+	st := rootStats(t, f, file, f.layout.children[0].children[0].segments[0])
+	if got, _, _ := st.NullCount(); got != 200 {
+		t.Errorf("%d nulls, want 200", got)
+	}
+	if got := (sv{t}).of(st.Min()); got.Int != 42 {
+		t.Errorf("min %+v", got)
+	}
+	if got := (sv{t}).of(st.Max()); got.Int != 42 {
+		t.Errorf("max %+v", got)
 	}
 }
