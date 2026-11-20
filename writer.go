@@ -96,29 +96,48 @@ type buffer struct {
 }
 
 // layoutBuild is a node of the layout tree being built: a struct (fields, and the validity
-// when it is nullable) or a column, with the segments that hold its chunks.
+// when it is nullable) or a column.
 type layoutBuild struct {
-	valid    *layoutBuild
+	valid    *validBuild
 	kids     []*layoutBuild
-	chunks   []chunk
+	col      *column
 	isStruct bool
 }
 
-type chunk struct {
-	rows uint64
-	seg  uint32
+// validBuild gathers the validity of a nullable struct, a bit a row, written as one chunk.
+type validBuild struct {
+	bits  []byte
+	rows  int
+	nulls uint64
+	seg   uint32
 }
 
-func newLayoutBuild(t Type) *layoutBuild {
-	n := &layoutBuild{isStruct: t.kind == Struct}
-	if !n.isStruct {
-		return n
+func (v *validBuild) add(nulls []bool, n int) {
+	for i := range n {
+		if v.rows&7 == 0 {
+			v.bits = append(v.bits, 0)
+		}
+		if isNull(nulls, i) {
+			v.nulls++
+		} else {
+			v.bits[len(v.bits)-1] |= 1 << (v.rows & 7)
+		}
+		v.rows++
 	}
+}
+
+// newLayoutBuild builds the tree of a column of type t. A field under a nullable struct has
+// no zone statistics (the reference writer has none either).
+func newLayoutBuild(t Type, underNullable bool) *layoutBuild {
+	if t.kind != Struct {
+		return &layoutBuild{col: newColumn(t, !underNullable)}
+	}
+	n := &layoutBuild{isStruct: true}
 	if t.nullable {
-		n.valid = &layoutBuild{}
+		n.valid = &validBuild{}
 	}
 	for _, f := range t.fields {
-		n.kids = append(n.kids, newLayoutBuild(f.Type))
+		n.kids = append(n.kids, newLayoutBuild(f.Type, underNullable || t.nullable))
 	}
 	return n
 }
@@ -129,7 +148,7 @@ func newLayoutBuild(t Type) *layoutBuild {
 func NewWriter(w io.Writer, s *Schema, o WriteOptions) *Writer {
 	wr := &Writer{w: w, schema: s, opt: o, fb: flatbuf.NewBuilder(1 << 10)}
 	wr.err = validType(s.root, "")
-	wr.root = newLayoutBuild(s.root)
+	wr.root = newLayoutBuild(s.root, false)
 	wr.out = make([]byte, 0, smallWrites)
 	return wr
 }
@@ -203,7 +222,7 @@ func (w *Writer) Write(cols ...Data) error {
 	if w.err != nil {
 		return w.err
 	}
-	if err := w.writeRows(cols, false); err != nil {
+	if err := w.writeRows(cols); err != nil {
 		w.setErr(err)
 		return w.err
 	}
@@ -211,8 +230,8 @@ func (w *Writer) Write(cols ...Data) error {
 	return w.err
 }
 
-// writeRows writes one chunk. With force a chunk of no row is written too.
-func (w *Writer) writeRows(cols []Data, force bool) error {
+// writeRows adds the rows of every column to its buffer.
+func (w *Writer) writeRows(cols []Data) error {
 	fields := w.schema.root.fields
 	if len(cols) != len(fields) {
 		return fmt.Errorf("vortex: Write: %d columns for a schema of %d fields", len(cols), len(fields))
@@ -226,7 +245,7 @@ func (w *Writer) writeRows(cols []Data, force bool) error {
 			return err
 		}
 	}
-	if n == 0 && !force {
+	if n == 0 {
 		return nil
 	}
 	w.start()
@@ -245,18 +264,15 @@ func (w *Writer) start() {
 	}
 }
 
-// writeNode writes the chunk of a column. A struct has no segment of its own: its validity,
+// writeNode adds the rows of a column. A struct has no segment of its own: its validity,
 // when it has one, and its fields do.
 func (w *Writer) writeNode(l *layoutBuild, t Type, d Data, n int) {
 	if t.kind != Struct {
-		w.beginFlat()
-		root := w.encode(t, d, n)
-		w.endFlat(root, l, n)
+		w.addRows(l.col, d, n)
 		return
 	}
 	if l.valid != nil {
-		w.beginFlat()
-		w.endFlat(w.encodeValidity(d, n), l.valid, n)
+		l.valid.add(d.nulls, n)
 	}
 	for i, f := range t.fields {
 		w.writeNode(l.kids[i], f.Type, d.kids[i], n)
@@ -287,15 +303,16 @@ func (w *Writer) alloc(n int) []byte {
 	return w.blocks[w.block][:n:n]
 }
 
-// endFlat writes the segment of the array whose root node is root, and records it as a chunk
-// of l: the buffers, each aligned in the file, the flatbuffer of the tree, its length.
-func (w *Writer) endFlat(root flatbuf.Off, l *layoutBuild, rows int) {
+// endFlat writes the segment of the array whose root node is root, and returns its index:
+// the buffers, each aligned in the file, the flatbuffer of the tree, its length. It is false
+// when the segment could not be written.
+func (w *Writer) endFlat(root flatbuf.Off) (uint32, bool) {
 	if w.err != nil {
-		return
+		return 0, false
 	}
 	if len(w.bufs) > maxBuffers {
 		w.setErr(fmt.Errorf("vortex: Write: an array of %d buffers, at most %d", len(w.bufs), maxBuffers))
-		return
+		return 0, false
 	}
 	align := 8 // the flatbuffer
 	for _, b := range w.bufs {
@@ -320,7 +337,7 @@ func (w *Writer) endFlat(root flatbuf.Off, l *layoutBuild, rows int) {
 	length := uint64(pos-start) + uint64(fbPad) + uint64(len(msg)) + 4
 	if length > maxSegment {
 		w.setErr(fmt.Errorf("vortex: Write: a segment of %d bytes, at most %d", length, maxSegment))
-		return
+		return 0, false
 	}
 	w.pad(int(start - w.pos))
 	for _, b := range w.bufs {
@@ -331,7 +348,7 @@ func (w *Writer) endFlat(root flatbuf.Off, l *layoutBuild, rows int) {
 	w.put(msg)
 	binary.LittleEndian.PutUint32(w.lenBuf[:], uint32(len(msg)))
 	w.put(w.lenBuf[:])
-	l.chunks = append(l.chunks, chunk{rows: uint64(rows), seg: w.addSegment(start, length, align)})
+	return w.addSegment(start, length, align), true
 }
 
 // addSegment records a segment of the footer, and returns its index.
@@ -354,46 +371,29 @@ func (w *Writer) Close() error {
 	if w.err != nil {
 		return w.err
 	}
-	if w.rows == 0 {
-		_ = w.writeRows(emptyColumns(w.schema.root.fields), true) // the fields were checked: only the io.Writer fails
-	}
 	w.start()
+	w.finishNode(w.root)
 	w.footer()
 	w.flush()
 	return w.err
 }
 
-// emptyColumns is a Data of no row for each field.
-func emptyColumns(fields []Field) []Data {
-	cols := make([]Data, len(fields))
-	for i, f := range fields {
-		cols[i] = emptyData(f.Type)
+// finishNode writes what is left of the columns: their last rows, their zones, the validity
+// of the structs.
+func (w *Writer) finishNode(l *layoutBuild) {
+	if !l.isStruct {
+		w.finish(l.col)
+		return
 	}
-	return cols
-}
-
-func emptyData(t Type) Data {
-	switch t.kind {
-	case Null:
-		return OfNulls(0)
-	case Bool:
-		return OfBools(nil)
-	case Utf8, Binary, UUID:
-		return OfBytes(nil)
-	case KindDecimal:
-		return OfDecimals(nil)
-	case Struct:
-		kids := make([]Data, len(t.fields))
-		for i, f := range t.fields {
-			kids[i] = emptyData(f.Type)
+	if v := l.valid; v != nil {
+		w.beginFlat()
+		root := w.leaf("vortex.bool", v.bits, 1)
+		if seg, ok := w.endFlat(root); ok {
+			v.seg = seg
 		}
-		return OfStruct(kids...)
-	case List, FixedSizeList:
-		return OfList([]int{0}, emptyData(*t.elem))
-	case Map:
-		return OfList([]int{0}, OfStruct(emptyData(*t.elem), emptyData(*t.value)))
-	default:
-		return Data{&body{kind: dPrim, pk: storageKind(t)}}
+	}
+	for _, k := range l.kids {
+		w.finishNode(k)
 	}
 }
 
@@ -422,7 +422,7 @@ func storageKind(t Type) Kind {
 // footer writes the dtype, the layout, the footer, the postscript and the trailer.
 func (w *Writer) footer() {
 	dtype := w.segment(func() flatbuf.Off { return w.dtypeTable(w.schema.root) })
-	layout := w.segment(func() flatbuf.Off { return w.layoutTable(w.root, w.rows, w.schema.root) })
+	layout := w.segment(func() flatbuf.Off { return w.layoutTable(w.root, w.rows) })
 	foot := w.segment(w.footerTable)
 	w.fb.Reset()
 	seg := func(s [2]uint64) flatbuf.Off {
@@ -493,54 +493,46 @@ func (w *Writer) footerTable() flatbuf.Off {
 	return b.EndTable()
 }
 
-// layoutTable writes the layout of a column: its flat segment, or the chunks that make it, or
-// for a struct its validity and its fields.
-func (w *Writer) layoutTable(l *layoutBuild, rows uint64, t Type) flatbuf.Off {
-	b := w.fb
-	var kids []flatbuf.Off
-	var segments flatbuf.Off
-	var id string
-	switch {
-	case l.isStruct:
-		id = "vortex.struct"
-		if l.valid != nil {
-			kids = append(kids, w.layoutTable(l.valid, rows, Type{kind: Bool}))
-		}
-		for i, k := range l.kids {
-			kids = append(kids, w.layoutTable(k, rows, t.fields[i].Type))
-		}
-	case len(l.chunks) == 1:
-		id = "vortex.flat"
-		segments = b.Uint32s([]uint32{l.chunks[0].seg})
-	default:
-		id = "vortex.chunked"
-		for _, c := range l.chunks {
-			kids = append(kids, w.flatLayout(c))
-		}
+// layoutTable writes the layout of a column, or for a struct its validity and its fields.
+func (w *Writer) layoutTable(l *layoutBuild, rows uint64) flatbuf.Off {
+	if !l.isStruct {
+		return w.columnLayout(l.col)
 	}
-	var children flatbuf.Off
+	var kids []flatbuf.Off
+	if l.valid != nil {
+		kids = append(kids, w.layoutNode("vortex.flat", rows, nil, nil, []uint32{l.valid.seg}))
+	}
+	for _, k := range l.kids {
+		kids = append(kids, w.layoutTable(k, rows))
+	}
+	return w.layoutNode("vortex.struct", rows, nil, kids, nil)
+}
+
+// layoutNode writes a node of the layout tree.
+func (w *Writer) layoutNode(id string, rows uint64, meta []byte, kids []flatbuf.Off, segs []uint32) flatbuf.Off {
+	b := w.fb
+	var md, children, segments flatbuf.Off
+	if len(meta) > 0 {
+		md = b.Bytes(meta)
+	}
 	if len(kids) > 0 {
 		children = b.Offsets(kids)
+	}
+	if len(segs) > 0 {
+		segments = b.Uint32s(segs)
 	}
 	b.StartTable(5)
 	b.Uint16(0, specIndex(&w.layoutIDs, id), 0)
 	b.Uint64(1, rows, 0)
-	if len(kids) > 0 {
+	if md != 0 {
+		b.Ref(2, md)
+	}
+	if children != 0 {
 		b.Ref(3, children)
 	}
 	if segments != 0 {
 		b.Ref(4, segments)
 	}
-	return b.EndTable()
-}
-
-func (w *Writer) flatLayout(c chunk) flatbuf.Off {
-	b := w.fb
-	seg := b.Uint32s([]uint32{c.seg})
-	b.StartTable(5)
-	b.Uint16(0, specIndex(&w.layoutIDs, "vortex.flat"), 0)
-	b.Uint64(1, c.rows, 0)
-	b.Ref(4, seg)
 	return b.EndTable()
 }
 

@@ -247,9 +247,11 @@ func TestWriteFaults(t *testing.T) {
 }
 
 func TestWriteFaultKeepsError(t *testing.T) {
-	// Tiny pending buffer: every Write reaches the io.Writer, so the error is the Write's own.
-	defer func(v int) { smallWrites = v }(smallWrites)
-	smallWrites = 16
+	// Tiny pending buffer and chunks: every Write reaches the io.Writer, so the error is the
+	// Write's own.
+	lowered(t, &smallWrites, 16)
+	lowered(t, &rowBlock, 4)
+	lowered(t, &chunkBytes, 1)
 	fw := &failingWriter{failAt: 2}
 	w := NewWriter(fw, NewSchema(Field{"a", Int64Type()}), WriteOptions{})
 	d := Of([]int64{1, 2, 3, 4, 5, 6, 7, 8})
@@ -457,7 +459,7 @@ func TestFileUsesTheEdition(t *testing.T) {
 			t.Errorf("the file has no %s array: %v", want, f.arrayEncodings)
 		}
 	}
-	for _, want := range []string{"vortex.struct", "vortex.chunked", "vortex.flat"} {
+	for _, want := range []string{"vortex.struct", "vortex.zoned", "vortex.dict", "vortex.flat"} {
 		if !slices.Contains(f.layoutEncodings, want) {
 			t.Errorf("the file has no %s layout: %v", want, f.layoutEncodings)
 		}
@@ -482,8 +484,8 @@ func TestSegmentsAreAligned(t *testing.T) {
 		}
 		end = s.Offset + uint64(s.Length)
 	}
-	if len(f.segments) != 6 {
-		t.Fatalf("%d segments, want 3 columns of 2 chunks", len(f.segments))
+	if len(f.segments) < 6 {
+		t.Fatalf("%d segments, want 3 columns of data and of zones", len(f.segments))
 	}
 }
 

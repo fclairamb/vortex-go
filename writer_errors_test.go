@@ -230,6 +230,8 @@ func TestFaultInSecondColumn(t *testing.T) {
 	// Every Write reaches the io.Writer: the second column fails after the first has been
 	// written, and the error is that of the io.Writer.
 	lowered(t, &smallWrites, 8)
+	lowered(t, &rowBlock, 10)
+	lowered(t, &chunkBytes, 1)
 	cols := []Field{{"a", Int64Type()}, {"b", Int64Type()}, {"c", Utf8Type()}}
 	data := []Data{Of(make([]int64, 100)), Of(make([]int64, 100)), OfStrings(make([]string, 100))}
 	for n := 2; n < 12; n++ {
