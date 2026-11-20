@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop
+.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -84,6 +84,11 @@ interop:
 	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^TestInterop$$' -count=1 .
 	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)
 	uv run --with vortex-data --with pyarrow python tools/oracle/oracle.py check $(INTEROP)
+
+# The byte-exact vectors of the encoders (testdata/vectors), made by the encoders of the
+# reference. Needs cargo and network; the tests never do. See tools/vectors/README.md.
+vectors:
+	cd tools/vectors && cargo run --release -- ../../testdata/vectors
 
 # Everything a .vortex-version bump needs.
 upstream: fixtures edition oracle

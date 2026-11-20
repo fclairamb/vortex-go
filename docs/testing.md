@@ -206,7 +206,10 @@ integers), `patched` (patches applied on top of an inner array) and `decimal_byt
   run-end, dictionary, sequence, ALP with fixed exponents, FSST with a fixed symbol
   table. For these, the Rust code produces vectors (input, parameters, output buffers),
   committed in `testdata/vectors/`. Our encoder must produce the same bytes, and our
-  decoder must give back the input.
+  decoder must give back the input. `tools/vectors` (Rust, outside the module) writes
+  them for bit-packing (with its patches and its best width), FoR, zigzag, RLE, run-end,
+  dictionary, sequence, constant and sparse; `make vectors` regenerates them, the tests of
+  `internal/encode` read them. ALP and FSST are not covered yet.
 - **Edition conformance.** Every identifier found in a file we wrote is in the target edition.
 - **Size.** On the TPC-H and ClickBench datasets, our file is at most 1.10 times the size
   of the reference writer's. The measured ratio is committed and can only go down.

@@ -50,6 +50,80 @@ func TestInterop(t *testing.T) {
 	empty := slices.DeleteFunc(slices.Clone(fields), func(f Field) bool { return f.Name == "list_struct" })
 	writeInterop(t, dir, "wide_empty", empty, nil)
 	writeInterop(t, dir, "wide_empty_write", empty, []int{0})
+	writeInteropEncoders(t, dir)
+}
+
+// writeInteropEncoders writes a file per encoder of internal/encode, forced on every type it
+// takes, with and without nulls, in two writes: the reference reader must give back the values.
+func writeInteropEncoders(t *testing.T, dir string) {
+	for _, enc := range slices.Sorted(maps.Keys(encodingIDs)) {
+		n := 2500
+		if enc == "sequence" {
+			n = 40 // a sequence of bytes
+		}
+		var fields []Field
+		var data []Data
+		hashes := map[string]hashEntry{}
+		for _, k := range forcedTypes(enc) {
+			for _, withNulls := range []bool{false, true} {
+				if enc == "sequence" && withNulls {
+					continue // a sequence has no null
+				}
+				ty, d, vals := forcedColumn(enc, k, n, withNulls)
+				name := fmt.Sprintf("%s_%v", k, withNulls)
+				fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
+				hashColumn(hashes, name, ty, vals)
+			}
+		}
+		if enc == "dict" {
+			fields, data = addInteropStrings(fields, data, hashes, n)
+		}
+		var buf bytes.Buffer
+		w := NewWriter(&buf, NewSchema(fields...), WriteOptions{})
+		w.force = enc
+		for _, r := range [][2]int{{0, n / 2}, {n / 2, n}} {
+			part := make([]Data, len(data))
+			for i, d := range data {
+				part[i] = sliceOf(d, fields[i].Type, r[0], r[1])
+			}
+			if err := w.Write(part...); err != nil {
+				t.Fatalf("%s: %v", enc, err)
+			}
+		}
+		if err := w.Close(); err != nil {
+			t.Fatalf("%s: %v", enc, err)
+		}
+		out, err := json.MarshalIndent(map[string]any{"rows": n, "columns": hashes}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		file := "encoder_" + enc
+		if err := os.WriteFile(filepath.Join(dir, file+".vortex"), buf.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, file+".hashes.json"), out, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// addInteropStrings adds the string columns of the dictionary file: utf8 and binary, nullable.
+func addInteropStrings(fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
+	words := []string{"", "a", "abcdefghijkl", "a string that is longer than twelve bytes", "zz"}
+	bins := make([][]byte, n)
+	nulls := make([]bool, n)
+	vals := make([]val, n)
+	for i := range bins {
+		bins[i] = []byte(words[i*7%len(words)])
+		nulls[i] = i%9 == 4
+		vals[i] = val{b: bins[i], null: nulls[i]}
+	}
+	for _, ty := range []Type{Utf8Type().AsNullable(), BinaryType().AsNullable()} {
+		name := "strings_" + ty.String()
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins).Nulls(nulls))
+		hashColumn(hashes, name, ty, vals)
+	}
+	return fields, data
 }
 
 // writeInterop writes a file with one Write per size, and its hashes.
