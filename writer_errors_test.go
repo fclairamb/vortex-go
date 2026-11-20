@@ -192,7 +192,7 @@ func TestLimits(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setup(t)
-			w := NewWriter(io.Discard, NewSchema(tc.field), WriteOptions{})
+			w := NewWriter(io.Discard, NewSchema(tc.field), WriteOptions{Compression: None})
 			err := w.Write(tc.data)
 			if err == nil {
 				err = w.Close()
@@ -209,6 +209,7 @@ func TestSmallBuffers(t *testing.T) {
 	lowered(t, &maxViewBuffer, 40)
 	lowered(t, &smallWrites, 64)
 	lowered(t, &arenaBlock, 16)
+	lowered(t, &testOptions, WriteOptions{Compression: None}) // plain strings
 	strs := make([]string, 50)
 	for i := range strs {
 		strs[i] = strings.Repeat(string(rune('a'+i%26)), 13+i)

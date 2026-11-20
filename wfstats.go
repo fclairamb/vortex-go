@@ -138,9 +138,9 @@ func encodeScalar(v *scalar.Value) []byte {
 	return out
 }
 
-// arrayStats writes the ArrayStats of the rows of the buffer of the column, and returns it.
-func (w *Writer) arrayStats(c *column) flatbuf.Off {
-	b, n := c.buf, c.buf.n
+// arrayStats writes the ArrayStats of the rows b of the column, and returns it.
+func (w *Writer) arrayStats(c *column, b *body) flatbuf.Off {
+	n := b.n
 	s := astat{nulls: countNulls(b, c.t, 0, n)}
 	r := &c.ranger
 	imin, imax, nans := -1, -1, 0

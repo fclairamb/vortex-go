@@ -6,10 +6,11 @@ Open and OpenFile read the trailer, the footer and the schema of a file.
 Scan reads columns of numbers, booleans, strings, binaries, decimals, lists,
 maps and structs, batch by batch, for the columns, the row range and the filter
 of a Query, and skips what the statistics of the file rule out. Rows reads the
-same rows into Go structs. NewWriter writes a file from a Schema and Data, in
-chunks of 8,192 rows, with zone statistics and dictionaries, and plain arrays.
-The goals are in docs/goals.md, the planned interface in docs/interface.md and
-the test plan in docs/testing.md.
+same rows into Go structs. NewWriter writes a file from a Schema and Data,
+in chunks of 8,192 rows, with zone statistics and dictionaries, and the
+encodings of each chunk picked by a compressor, like the reference writer,
+and NewRowWriter writes a slice of structs. The goals are in docs/goals.md,
+the planned interface in docs/interface.md and the test plan in docs/testing.md.
 
 VARIABLES
 
@@ -145,14 +146,17 @@ type Compression uint8
     Compression is how much effort the writer spends to make the file smaller.
 
 const (
-	// Default is the level to use when there is no reason to pick another.
+	// Default is the level to use when there is no reason to pick another: the compressor
+	// picks the lightweight encodings of each chunk (bit-packing, frame of reference,
+	// dictionaries, run-end, ALP, FSST...), as the reference writer does.
 	Default Compression = iota
-	// Compact favors a small file over the time to write it.
+	// Compact favors a small file over the time to write it: zstd is a candidate too, for
+	// the numbers and the strings.
 	Compact
-	// None writes the values as they are.
+	// None writes the values as they are, in plain arrays.
 	None
 )
-    The compression levels. Every level writes plain arrays for now.
+    The compression levels.
 
 type Data struct {
 	// Has unexported fields.
@@ -394,6 +398,55 @@ func (r Ref) Lt(v any) Expr
 
 func (r Ref) Ne(v any) Expr
     Ne is true for the rows whose non-null value differs from v.
+
+type RowWriter[T any] struct {
+	// Has unexported fields.
+}
+    RowWriter writes rows, values of the struct type T, to a Vortex file. It is
+    the other half of Rows: the schema comes from the fields of T, with the same
+    tags, and the Go types are the ones that Rows reads. It drives a Writer,
+    which sets the chunks, the statistics and the encodings.
+
+    A field is the column named by its tag, vortex:"name", else its own name.
+    The tag vortex:"-" skips the field, unexported fields are skipped and
+    embedded structs are flattened. The Vortex type of a field follows from its
+    Go type:
+
+      - bool, the numbers (int and uint are 64 bits), string (utf8), []byte
+        (binary), [16]byte (uuid) and vortex.Decimal (a decimal, with the tag
+        option decimal(p,s), for precision p and scale s, which int64 takes as
+        well, p up to 18);
+      - time.Time is a timestamp in microseconds, UTC, with no zone in the type;
+        the options timestamp(unit) and timestamp(unit,zone) pick another unit
+        (s, ms, us or ns) and a zone name, and date a date in days;
+      - time.Duration is a time of day in nanoseconds; the option time(unit)
+        picks another unit;
+      - sql.Null[X] and *X are nullable, anything else is not;
+      - a struct is a struct, []X a list, [N]X a fixed-size list and map[K]V a
+        map, whose keys are not nullable and whose order of entries is the one
+        of Go's iteration. The options of a list field apply to its elements.
+
+    A T that cannot be written is the error of the first Write, and of Close if
+    Write was never called: it names the field and its Go type.
+
+    A Write call copies what it needs, so the caller can reuse the rows as soon
+    as it returns. A field that is a number, a bool, a decimal, a time, a uuid,
+    a string or a []byte, plain or in sql.Null, is read without allocating.
+    Pointers, structs, slices and maps allocate.
+
+    Write and Close are not safe for concurrent use.
+
+func NewRowWriter[T any](w io.Writer, o WriteOptions) *RowWriter[T]
+    NewRowWriter returns a RowWriter that writes to w. It does not close w.
+
+func (w *RowWriter[T]) Close() error
+    Close writes the footer. A second Close returns nil, and Close does not
+    close the io.Writer.
+
+func (w *RowWriter[T]) Write(rows []T) (int, error)
+    Write adds rows to the file. It returns the number of rows it took, which is
+    less than len(rows) when it returns an error. An error closes the writer for
+    writing, and every later call returns it.
 
 type Schema struct {
 	// Has unexported fields.

@@ -150,22 +150,22 @@ func extensionType(d fbs.DType) (Type, error) {
 // extensionTypes are the extension types of the format, by identifier: each sets the kind
 // and the parameters of the type from the metadata.
 var extensionTypes = map[string]func(t *Type, meta []byte) error{
-	"vortex.date": func(t *Type, meta []byte) (err error) {
+	extDate: func(t *Type, meta []byte) (err error) {
 		t.kind = Date
 		t.unit, err = unitOf(meta, Millisecond, Day)
 		return err
 	},
-	"vortex.time": func(t *Type, meta []byte) (err error) {
+	extTime: func(t *Type, meta []byte) (err error) {
 		t.kind = Time
 		t.unit, err = unitOf(meta, Nanosecond, Second)
 		return err
 	},
-	"vortex.timestamp": func(t *Type, meta []byte) (err error) {
+	extTimestamp: func(t *Type, meta []byte) (err error) {
 		t.kind = Timestamp
 		t.unit, t.zone, err = timestampMeta(meta)
 		return err
 	},
-	"vortex.uuid": func(t *Type, meta []byte) error {
+	extUUID: func(t *Type, meta []byte) error {
 		t.kind = UUID
 		if len(meta) > 1 {
 			return fmt.Errorf("uuid metadata of %d bytes", len(meta))
@@ -173,6 +173,14 @@ var extensionTypes = map[string]func(t *Type, meta []byte) error{
 		return nil
 	},
 }
+
+// The identifiers of the extension types.
+const (
+	extDate      = "vortex.date"
+	extTime      = "vortex.time"
+	extTimestamp = "vortex.timestamp"
+	extUUID      = "vortex.uuid"
+)
 
 // extensionIDs lists the extension types that are read.
 func extensionIDs() []string { return slices.Sorted(maps.Keys(extensionTypes)) }

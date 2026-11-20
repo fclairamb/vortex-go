@@ -50,15 +50,122 @@ func TestInterop(t *testing.T) {
 	empty := slices.DeleteFunc(slices.Clone(fields), func(f Field) bool { return f.Name == "list_struct" })
 	writeInterop(t, dir, "wide_empty", empty, nil)
 	writeInterop(t, dir, "wide_empty_write", empty, []int{0})
+	writeInteropEncoders(t, dir)
 }
 
-// writeInterop writes a file with one Write per size, and its hashes.
+// writeInteropEncoders writes a file per encoder of internal/encode, forced on every type it
+// takes, with and without nulls, in two writes: the reference reader must give back the values.
+func writeInteropEncoders(t *testing.T, dir string) {
+	for _, enc := range slices.Sorted(maps.Keys(encodingIDs)) {
+		n := 2500
+		if enc == "sequence" {
+			n = 40 // a sequence of bytes
+		}
+		var fields []Field
+		var data []Data
+		hashes := map[string]hashEntry{}
+		for _, k := range forcedTypes(enc) {
+			for _, withNulls := range []bool{false, true} {
+				if enc == "sequence" && withNulls {
+					continue // a sequence has no null
+				}
+				ty, d, vals := forcedColumn(enc, k, n, withNulls)
+				name := fmt.Sprintf("%s_%v", k, withNulls)
+				fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
+				hashColumn(hashes, name, ty, vals)
+			}
+		}
+		switch enc {
+		case "dict", "fsst", "zstd":
+			fields, data = addInteropStrings(fields, data, hashes, n)
+		case "decimal_byte_parts", "datetimeparts":
+			fields, data = addInteropParts(enc, fields, data, hashes, n)
+		}
+		var buf bytes.Buffer
+		w := NewWriter(&buf, NewSchema(fields...), WriteOptions{})
+		w.force = enc
+		for _, r := range [][2]int{{0, n / 2}, {n / 2, n}} {
+			part := make([]Data, len(data))
+			for i, d := range data {
+				part[i] = sliceOf(d, fields[i].Type, r[0], r[1])
+			}
+			if err := w.Write(part...); err != nil {
+				t.Fatalf("%s: %v", enc, err)
+			}
+		}
+		if err := w.Close(); err != nil {
+			t.Fatalf("%s: %v", enc, err)
+		}
+		out, err := json.MarshalIndent(map[string]any{"rows": n, "columns": hashes}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		file := "encoder_" + enc
+		if err := os.WriteFile(filepath.Join(dir, file+".vortex"), buf.Bytes(), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, file+".hashes.json"), out, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// addInteropParts adds the columns of the decimal byte parts (decimals that fit an i64) and of
+// the datetime parts (a timestamp of every unit), nullable or not.
+func addInteropParts(enc string, fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
+	g := &gen{r: rand.New(rand.NewPCG(26, 27))}
+	var types []Type
+	if enc == "decimal_byte_parts" {
+		types = []Type{DecimalOf(5, 2), DecimalOf(18, 4), DecimalOf(2, 0)}
+	} else {
+		for _, u := range []Unit{Second, Millisecond, Microsecond, Nanosecond} {
+			types = append(types, TimestampType(u, ""), TimestampType(u, "UTC").AsNullable())
+		}
+	}
+	for i, ty := range types {
+		if enc == "decimal_byte_parts" && i%2 == 1 {
+			ty = ty.AsNullable()
+		}
+		d, vals := g.make(ty, n)
+		name := fmt.Sprintf("%s_%d", enc, i)
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
+		hashColumn(hashes, name, ty, vals)
+	}
+	return fields, data
+}
+
+// addInteropStrings adds the string columns of the dictionary file: utf8 and binary, nullable.
+func addInteropStrings(fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
+	words := []string{"", "a", "abcdefghijkl", "a string that is longer than twelve bytes", "zz"}
+	bins := make([][]byte, n)
+	nulls := make([]bool, n)
+	vals := make([]val, n)
+	for i := range bins {
+		bins[i] = []byte(words[i*7%len(words)])
+		nulls[i] = i%9 == 4
+		vals[i] = val{b: bins[i], null: nulls[i]}
+	}
+	for _, ty := range []Type{Utf8Type().AsNullable(), BinaryType().AsNullable()} {
+		name := "strings_" + ty.String()
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins).Nulls(nulls))
+		hashColumn(hashes, name, ty, vals)
+	}
+	return fields, data
+}
+
+// interopModes are the compression levels each file of writeInterop is written in, and the
+// suffix of their names.
+var interopModes = []struct {
+	suffix string
+	c      Compression
+}{{"", Default}, {"_compact", Compact}, {"_none", None}}
+
+// writeInterop writes a file with one Write per size, and its hashes, in each compression level.
 func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 	t.Helper()
 	g := &gen{r: rand.New(rand.NewPCG(11, uint64(len(file)))), inDay: strings.HasPrefix(file, "inday_")}
-	var buf bytes.Buffer
-	w := NewWriter(&buf, NewSchema(fields...), WriteOptions{})
 	all := make([][]val, len(fields))
+	var writes [][]Data
 	total := 0
 	for _, n := range sizes {
 		cols := make([]Data, len(fields))
@@ -67,13 +174,8 @@ func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 			cols[i], vals = g.make(f.Type, n)
 			all[i] = append(all[i], vals...)
 		}
-		if err := w.Write(cols...); err != nil {
-			t.Fatalf("%s: %v", file, err)
-		}
+		writes = append(writes, cols)
 		total += n
-	}
-	if err := w.Close(); err != nil {
-		t.Fatalf("%s: %v", file, err)
 	}
 	hashes := map[string]hashEntry{}
 	for i, f := range fields {
@@ -83,10 +185,27 @@ func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, file+".vortex"), buf.Bytes(), 0o644); err != nil {
+	for _, m := range interopModes {
+		var buf bytes.Buffer
+		w := NewWriter(&buf, NewSchema(fields...), WriteOptions{Compression: m.c})
+		for _, cols := range writes {
+			if err := w.Write(cols...); err != nil {
+				t.Fatalf("%s: %v", file, err)
+			}
+		}
+		if err := w.Close(); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		writeInteropFile(t, dir, file+m.suffix, buf.Bytes(), out)
+	}
+}
+
+// writeInteropFile writes a file and its hashes into the folder of the oracle.
+func writeInteropFile(t testing.TB, dir, file string, data, hashes []byte) {
+	if err := os.WriteFile(filepath.Join(dir, file+".vortex"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, file+".hashes.json"), out, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, file+".hashes.json"), hashes, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

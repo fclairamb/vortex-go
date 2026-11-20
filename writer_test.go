@@ -15,10 +15,14 @@ import (
 )
 
 // writeFile writes the chunks of columns, one Write each, and opens the result.
+// testOptions are the options of the writer of writeFile: a test that checks what the writer
+// does without the compressor lowers them to None.
+var testOptions = WriteOptions{}
+
 func writeFile(t testing.TB, s *Schema, chunks ...[]Data) (*File, []byte) {
 	t.Helper()
 	var buf bytes.Buffer
-	w := NewWriter(&buf, s, WriteOptions{})
+	w := NewWriter(&buf, s, testOptions)
 	for _, c := range chunks {
 		if err := w.Write(c...); err != nil {
 			t.Fatal(err)
@@ -322,8 +326,11 @@ func TestNoAllocationPerWrite(t *testing.T) {
 	null := make([]bool, 1000)
 	null[3] = true
 	da, db, dc := Of(a), Of(b).Nulls(null), Of(c)
-	if err := w.Write(da, db, dc); err != nil {
-		t.Fatal(err)
+	// the first chunks of each column, compressed, size the memory of the writer
+	for range 2200 {
+		if err := w.Write(da, db, dc); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if n := testing.AllocsPerRun(200, func() {
 		if err := w.Write(da, db, dc); err != nil {

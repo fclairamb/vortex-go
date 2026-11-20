@@ -27,6 +27,14 @@ jobs:
         if: matrix.lint
         uses: golangci/golangci-lint-action@v9
 
+      # The README example and matrix, and api.txt, are generated: a stale one fails here.
+      # api.txt is made with Go 1.27 only (go doc output is not promised stable).
+      - name: Generated files are up to date
+        if: matrix.lint
+        run: |
+          make api
+          git diff --exit-code
+
       # No cgo, standard library only, 100% coverage, race detector.
       - name: Gates
         run: make check
@@ -56,6 +64,41 @@ jobs:
           # Without this the uploader also sends scripts/coverage.awk.
           disable_search: true
           fail_ci_if_error: false
+
+  # The benchmarks of the PR against main, compared with benchstat and posted on the PR. It
+  # never blocks: the numbers of a shared runner are for information.
+  bench:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      VORTEX_BENCH_ROWS: '1000000'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+
+      - name: Benchmark main and the PR
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/main" "origin/${{ github.base_ref }}"
+          (cd "$RUNNER_TEMP/main" && go test -run '^$' -bench . -benchmem -count 6 ./... > "$RUNNER_TEMP/old.txt" || true)
+          go test -run '^$' -bench . -benchmem -count 6 ./... > "$RUNNER_TEMP/new.txt"
+          # go run pkg@version does not touch go.mod: benchstat is not a dependency.
+          go run golang.org/x/perf/cmd/benchstat@latest "$RUNNER_TEMP/old.txt" "$RUNNER_TEMP/new.txt" > "$RUNNER_TEMP/benchstat.txt" || true
+          { echo '### Benchmarks against the base branch'; echo; echo '```'; cat "$RUNNER_TEMP/benchstat.txt"; echo '```'; } > "$RUNNER_TEMP/comment.md"
+
+      - name: Post on the PR
+        if: github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file "$RUNNER_TEMP/comment.md"
 
   build-status:
     needs: build

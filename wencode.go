@@ -75,7 +75,10 @@ func (w *Writer) leaf(id string, data []byte, align int) flatbuf.Off {
 // encode writes the array of a column of type t.
 func (w *Writer) encode(t Type, d Data, n int) flatbuf.Off {
 	w.depth++
-	off := w.encodeNode(t, d, n)
+	off, ok := w.encodeCompressed(t, d)
+	if !ok {
+		off = w.encodeNode(t, d, n)
+	}
 	w.depth--
 	return off
 }
@@ -102,6 +105,11 @@ func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
 	case UUID:
 		return w.arrayExtension(w.encodeUUID(d, n))
 	case Date, Time, Timestamp:
+		if t.kind == Timestamp {
+			if off, ok := w.encodeForcedTimestamps(t, d); ok {
+				return off
+			}
+		}
 		return w.arrayExtension(w.encodePrimitive(d, n))
 	default:
 		return w.encodePrimitive(d, n)
@@ -140,6 +148,13 @@ func (w *Writer) encodeValidity(d Data, n int) flatbuf.Off {
 }
 
 func (w *Writer) encodePrimitive(d Data, n int) flatbuf.Off {
+	if w.force != "" && w.depth == 1 { // the array of a column, not the one of a table of zones
+		return w.encodeForced(d, n)
+	}
+	return w.encodePlain(d, n)
+}
+
+func (w *Writer) encodePlain(d Data, n int) flatbuf.Off {
 	first := len(w.bufs)
 	w.addBuf(d.raw, numberWidth(d.pk))
 	base := len(w.stack)
@@ -179,6 +194,9 @@ func (w *Writer) encodeBool(d Data, n int) flatbuf.Off {
 // string of up to 12 bytes is in its view, a longer one is in a data buffer that its view
 // points to.
 func (w *Writer) encodeStrings(d Data) flatbuf.Off {
+	if off, ok := w.encodeForcedStrings(d); ok {
+		return off
+	}
 	first := len(w.bufs)
 	writeViews(w, d.bins, d.nulls)
 	own := len(w.bufs) - first
@@ -227,6 +245,9 @@ func writeViews(w *Writer, vals [][]byte, nulls []bool) {
 }
 
 func (w *Writer) encodeDecimals(t Type, d Data, n int) flatbuf.Off {
+	if off, ok := w.encodeForcedDecimals(t, d, n); ok {
+		return off
+	}
 	width := decimalWidth(t.precision)
 	buf := w.alloc(n * width)
 	for i, v := range d.decs {
@@ -280,8 +301,8 @@ func (w *Writer) encodeList(t Type, d Data, n int) flatbuf.Off {
 		binary.LittleEndian.PutUint32(offsets[4*i:], uint32(d.offs[i]))
 		binary.LittleEndian.PutUint32(sizes[4*i:], uint32(d.offs[i+1]-d.offs[i]))
 	}
-	w.push(w.leaf("vortex.primitive", offsets, 4))
-	w.push(w.leaf("vortex.primitive", sizes, 4))
+	w.push(w.encodeU32s(offsets))
+	w.push(w.encodeU32s(sizes))
 	w.validity(d, n)
 	meta := protowire.AppendUint(w.meta[:0], 1, uint64(elems.n))
 	meta = protowire.AppendUint(meta, 2, pU32)

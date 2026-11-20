@@ -40,6 +40,10 @@ func sliceOf(d Data, ty Type, lo, hi int) Data {
 		out = Data{&body{kind: dPrim, pk: d.pk, n: hi - lo, raw: d.raw[lo*w : hi*w]}}
 	case dStr:
 		out = OfStrings(d.strs[lo:hi])
+	case dDec:
+		out = OfDecimals(d.decs[lo:hi])
+	case dBool:
+		out = OfBools(d.bools[lo:hi])
 	default:
 		out = OfBytes(d.bins[lo:hi])
 	}
@@ -75,6 +79,7 @@ func strCase(n int, value func(i int) (string, bool)) (Data, []val) {
 
 func TestDictionaryOfNumbersAndStrings(t *testing.T) {
 	lowered(t, &rowBlock, 100)
+	lowered(t, &testOptions, WriteOptions{Compression: None}) // the probe without a compressor
 	nullable := Int32Type().AsNullable()
 	d, vals := int32Case(450, func(i int) (int32, bool) { return int32(i % 7 * 1000), i%11 == 5 })
 	f := roundTrip(t, nullable, d, vals, 150, 1, 299)

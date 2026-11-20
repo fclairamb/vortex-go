@@ -2,6 +2,8 @@ package vortex
 
 import (
 	"encoding/binary"
+
+	"github.com/fclairamb/vortex-go/internal/flatbuf"
 )
 
 // The dictionary layout (vortex-layout/src/layouts/dict/writer.rs): a column of numbers,
@@ -34,11 +36,18 @@ func (c *column) codeWidth() int {
 }
 
 // decide chooses between plain chunks and a dictionary, from the rows lo to hi of the
-// buffer, the first of the column: a dictionary is used when fewer than half of them are
-// distinct, a null counting as a value.
-func (c *column) decide(lo, hi int) {
+// buffer, the first of the column: a dictionary is used when the compressor would pick one for
+// them, as the reference does. When the chunks are not compressed (and for a Float16), it is
+// used when fewer than half of them are distinct, a null counting as a value.
+func (c *column) decide(w *Writer, lo, hi int) {
 	c.mode = modePlain
 	if !c.eligible || hi == lo {
+		return
+	}
+	if w.compressing() && c.t.kind != Float16 {
+		if w.probeDict(c, lo, hi) {
+			c.startDict()
+		}
 		return
 	}
 	seen := map[string]struct{}{}
@@ -55,6 +64,11 @@ func (c *column) decide(lo, hi int) {
 			return
 		}
 	}
+	c.startDict()
+}
+
+// startDict makes the column a dictionary.
+func (c *column) startDict() {
 	c.mode = modeDict
 	c.dict = &dictEnc{idx: map[string]int{}, nullCode: -1, width: c.codeWidth()}
 }
@@ -167,7 +181,8 @@ func (w *Writer) flushCodes(c *column) {
 	}
 	w.start()
 	w.beginFlat()
-	root := w.encode(t, Data{&body{kind: dPrim, pk: k, n: n, raw: d.codes}}, n)
+	var root flatbuf.Off
+	w.withCompressor(c, func() { root = w.encode(t, Data{&body{kind: dPrim, pk: k, n: n, raw: d.codes}}, n) })
 	if seg, ok := w.endFlat(root); ok {
 		d.chunks = append(d.chunks, chunk{rows: uint64(n), seg: seg})
 	}
@@ -183,7 +198,8 @@ func (w *Writer) endRun(c *column) {
 		vals = Data{&body{kind: dBytes, n: d.n, bins: d.vals, nulls: d.nulls}}
 	}
 	w.beginFlat()
-	root := w.encode(c.t, vals, d.n)
+	var root flatbuf.Off
+	w.withCompressor(c, func() { root = w.encode(c.t, vals, d.n) })
 	if seg, ok := w.endFlat(root); ok {
 		c.pieces = append(c.pieces, piece{rows: uint64(d.rows), seg: seg, nvals: d.n, codes: d.chunks})
 	}

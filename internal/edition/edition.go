@@ -41,7 +41,8 @@ func Has(kind, id string) bool {
 // Register in a package-level variable, so no init function is needed.
 var (
 	regMu      sync.Mutex
-	registries = map[string]func() []string{}
+	registries = map[string][]func() []string{}
+	writers    = map[string][]func() []string{}
 )
 
 // Register declares the identifiers of one kind that a package decodes. It returns true so
@@ -49,7 +50,16 @@ var (
 func Register(kind string, ids func() []string) bool {
 	regMu.Lock()
 	defer regMu.Unlock()
-	registries[kind] = ids
+	registries[kind] = append(registries[kind], ids)
+	return true
+}
+
+// RegisterWritten declares the identifiers of one kind that a package writes, besides those of
+// the other packages that did. It returns true so that it can initialize a package-level variable.
+func RegisterWritten(kind string, ids func() []string) bool {
+	regMu.Lock()
+	defer regMu.Unlock()
+	writers[kind] = append(writers[kind], ids)
 	return true
 }
 
@@ -57,23 +67,32 @@ func Register(kind string, ids func() []string) bool {
 type Support struct {
 	Member
 	Decoded bool
+	Written bool
 }
 
-// Supported lists every member of the edition with what the registered packages decode.
-// The generator of the README matrix uses it.
+// Supported lists every member of the edition with what the registered packages decode and
+// write. The generator of the README matrix uses it.
 func Supported() []Support {
 	regMu.Lock()
 	defer regMu.Unlock()
-	known := map[string]map[string]bool{}
-	for kind, ids := range registries {
-		known[kind] = map[string]bool{}
-		for _, id := range ids() {
-			known[kind][id] = true
-		}
-	}
+	known, written := idSets(registries), idSets(writers)
 	out := make([]Support, len(members))
 	for i, m := range members {
-		out[i] = Support{Member: m, Decoded: known[m.Kind][m.ID]}
+		out[i] = Support{Member: m, Decoded: known[m.Kind][m.ID], Written: written[m.Kind][m.ID]}
+	}
+	return out
+}
+
+// idSets calls every registry and returns its identifiers as a set per kind.
+func idSets(regs map[string][]func() []string) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for kind, fs := range regs {
+		out[kind] = map[string]bool{}
+		for _, ids := range fs {
+			for _, id := range ids() {
+				out[kind][id] = true
+			}
+		}
 	}
 	return out
 }

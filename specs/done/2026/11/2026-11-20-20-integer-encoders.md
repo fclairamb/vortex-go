@@ -78,3 +78,22 @@ Upstream paths are in `~/code/other/vortex`.
 - **A Rust program in `tools/vectors/`**, if Python cannot reach the encoders.
   Recommended answer: yes. It is a test tool outside the module, like the Python oracle,
   and `docs/testing.md` already says "the Rust code produces vectors".
+
+## Verified against 0.93.0
+
+- `vortex-data` 0.93.0 does not expose the encoders (only `ZigZagArray.encode`), so
+  `tools/vectors` is a Rust program on the `vortex-*` crates `=0.93.0`.
+- The patch layout is deterministic: indices in u8, u16, u32 or u64 by the length of the array
+  (under 255, 65,535, 2^32), values, and one u64 offset per block of 1,024 (the number of patches
+  before it), with `offset_within_chunk` 0. A null is never a patch; bit-packing a signed type
+  fails on a negative valid value, and `bitpack_to_best_bit_width` fails when the best width is
+  the bits of the type.
+- The default is `fastlanes.bitpacked` (v1, one width in the metadata); `.v2` is written only
+  for blocks of different widths, which these encoders do not make. `fastlanes.for` likewise
+  writes v1 (`fastlanes.for.v2` for one reference per block).
+- FoR's child has the type of the input (signed stays signed, wrapping subtraction), not an
+  unsigned one; null rows are written 0. A sequence needs a non-zero step, no null, and no
+  overflow; one value is a sequence of step 0 (the step is a signed integer in the metadata, even
+  for unsigned types). A constant is all equal or all null. A sparse array whose values all equal
+  its fill is a constant array. The reference picks the most frequent value among equal counts
+  in hash order, ours takes the first one. An all-null validity is a constant `false` array.

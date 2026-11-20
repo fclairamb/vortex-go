@@ -8,6 +8,8 @@ import (
 	"math"
 	mbits "math/bits"
 
+	"github.com/fclairamb/vortex-go/internal/compress"
+	"github.com/fclairamb/vortex-go/internal/encode"
 	"github.com/fclairamb/vortex-go/internal/fbs"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 )
@@ -15,13 +17,16 @@ import (
 // Compression is how much effort the writer spends to make the file smaller.
 type Compression uint8
 
-// The compression levels. Every level writes plain arrays for now.
+// The compression levels.
 const (
-	// Default is the level to use when there is no reason to pick another.
+	// Default is the level to use when there is no reason to pick another: the compressor
+	// picks the lightweight encodings of each chunk (bit-packing, frame of reference,
+	// dictionaries, run-end, ALP, FSST...), as the reference writer does.
 	Default Compression = iota
-	// Compact favors a small file over the time to write it.
+	// Compact favors a small file over the time to write it: zstd is a candidate too, for
+	// the numbers and the strings.
 	Compact
-	// None writes the values as they are.
+	// None writes the values as they are, in plain arrays.
 	None
 )
 
@@ -69,6 +74,12 @@ type Writer struct {
 	schema    *Schema
 	root      *layoutBuild
 	fb        *flatbuf.Builder
+	enc       *encode.Encoder      // the encoders of a forced encoding
+	force     string               // the encoding a test forces, see wforce.go
+	comp      *compress.Compressor // the compressor of the arrays written now, see wcompress.go
+	pre       *encode.Node         // the array of the chunk being written, compressed before
+	queue     []*column            // the chunks that wait to be compressed
+	decRaw    []byte
 	statsID   string
 	bufs      []buffer
 	blocks    [][]byte
@@ -91,6 +102,8 @@ type Writer struct {
 	opt       WriteOptions
 	started   bool
 	done      bool
+	hasPre    bool // pre is the array of the chunk, nil for the plain one
+	leaves    int  // the columns that have no children
 }
 
 // buffer is a data buffer of the array being built, and the alignment its first byte needs.
@@ -146,6 +159,18 @@ func newLayoutBuild(t Type, underNullable bool) *layoutBuild {
 	return n
 }
 
+// countLeaves is the columns of the tree that have no children.
+func countLeaves(l *layoutBuild) int {
+	if !l.isStruct {
+		return 1
+	}
+	n := 0
+	for _, k := range l.kids {
+		n += countLeaves(k)
+	}
+	return n
+}
+
 // NewWriter returns a Writer of a file with this schema. Nothing is written until the first
 // Write or Close. A schema that cannot be written (a decimal of precision 0, say) is
 // reported by the first Write or Close.
@@ -153,6 +178,7 @@ func NewWriter(w io.Writer, s *Schema, o WriteOptions) *Writer {
 	wr := &Writer{w: w, schema: s, opt: o, fb: flatbuf.NewBuilder(1 << 10)}
 	wr.err = validType(s.root, "")
 	wr.root = newLayoutBuild(s.root, false)
+	wr.leaves = countLeaves(wr.root)
 	wr.out = make([]byte, 0, smallWrites)
 	return wr
 }
@@ -256,6 +282,7 @@ func (w *Writer) writeRows(cols []Data) error {
 	for i, f := range fields {
 		w.writeNode(w.root.kids[i], f.Type, cols[i], n)
 	}
+	w.drain()
 	w.rows += uint64(n)
 	return w.err
 }
@@ -289,6 +316,9 @@ func (w *Writer) beginFlat() {
 	w.stack = w.stack[:0]
 	w.fb.Reset()
 	w.block, w.used = 0, 0
+	if w.enc != nil {
+		w.enc.Reset()
+	}
 }
 
 // alloc returns n zeroed bytes that live until the next beginFlat. Blocks are kept between
@@ -377,6 +407,7 @@ func (w *Writer) Close() error {
 	}
 	w.start()
 	w.finishNode(w.root)
+	w.drain()
 	w.footer()
 	w.flush()
 	return w.err
@@ -655,15 +686,15 @@ func (w *Writer) dtypeExtension(t Type) flatbuf.Off {
 	storage := Type{kind: storageKind(t), nullable: t.nullable}
 	switch t.kind {
 	case Date:
-		id, meta = "vortex.date", []byte{byte(t.unit)}
+		id, meta = extDate, []byte{byte(t.unit)}
 	case Time:
-		id, meta = "vortex.time", []byte{byte(t.unit)}
+		id, meta = extTime, []byte{byte(t.unit)}
 	case Timestamp:
-		id = "vortex.timestamp"
+		id = extTimestamp
 		meta = binary.LittleEndian.AppendUint16([]byte{byte(t.unit)}, uint16(len(t.zone)))
 		meta = append(meta, t.zone...)
 	default:
-		id = "vortex.uuid"
+		id = extUUID
 		u8 := Uint8Type()
 		storage = Type{kind: FixedSizeList, elem: &u8, size: 16, nullable: t.nullable}
 	}

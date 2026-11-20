@@ -1,6 +1,8 @@
 package vortex
 
 import (
+	"github.com/fclairamb/vortex-go/internal/compress"
+	"github.com/fclairamb/vortex-go/internal/encode"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 	"github.com/fclairamb/vortex-go/internal/protowire"
 )
@@ -36,13 +38,18 @@ type chunk struct {
 // column is a column that has no children: the rows that are not in a segment yet, and what
 // has been written of it.
 type column struct {
-	zones  *zoneAcc
-	dict   *dictEnc
-	buf    *body
-	pieces []piece
-	arena  []byte
-	specs  []aggSpec
-	t      Type
+	zones      *zoneAcc
+	dict       *dictEnc
+	buf        *body
+	spare      *body                // the chunk that waits to be compressed, see wcompress.go
+	comp       *compress.Compressor // made on the first chunk
+	node       *encode.Node         // the compressed array of the spare chunk
+	pieces     []piece
+	arena      []byte
+	spareArena []byte
+	decRaw     []byte
+	specs      []aggSpec
+	t          Type
 	ranger
 	block    int
 	size     int
@@ -50,6 +57,7 @@ type column struct {
 	zoneSeg  uint32
 	mode     colMode
 	eligible bool
+	pending  bool // the spare chunk waits
 }
 
 func newColumn(t Type, zoned bool) *column {
@@ -82,7 +90,11 @@ func (w *Writer) consume(c *column, hi int) {
 		c.zones.add(c.buf, lo, hi)
 	}
 	if c.mode == modeUndecided {
-		c.decide(lo, hi)
+		if w.force != "" {
+			c.mode = modePlain // a test that forces an encoding gets no dictionary layout
+		} else {
+			c.decide(w, lo, hi)
+		}
 	}
 	if c.mode == modeDict {
 		w.encodeDict(c, lo, hi)
@@ -103,17 +115,30 @@ func (c *column) empty() {
 	c.block, c.size = 0, 0
 }
 
-// flushPlain writes the buffer as one flat chunk.
+// flushPlain makes the buffer one flat chunk: written now, or compressed with the other
+// chunks that are full.
 func (w *Writer) flushPlain(c *column) {
-	w.start()
-	w.beginFlat()
-	w.stats, w.statsID = w.arrayStats(c), rootID(c.t)
-	root := w.encode(c.t, Data{c.buf}, c.buf.n)
-	w.stats = 0
-	if seg, ok := w.endFlat(root); ok {
-		c.pieces = append(c.pieces, piece{rows: uint64(c.buf.n), seg: seg})
+	switch {
+	case !w.compressing():
+		w.writeChunk(c, c.buf)
+	case w.leaves > 1:
+		w.queueChunk(c)
+	default: // nothing to compress in parallel: no chunk waits
+		w.withCompressor(c, func() { w.writeChunk(c, c.buf) })
 	}
 	c.empty()
+}
+
+// writeChunk writes the rows of b, a chunk of the column, as a flat layout.
+func (w *Writer) writeChunk(c *column, b *body) {
+	w.start()
+	w.beginFlat()
+	w.stats, w.statsID = w.arrayStats(c, b), rootID(c.t)
+	root := w.encode(c.t, Data{b}, b.n)
+	w.stats = 0
+	if seg, ok := w.endFlat(root); ok {
+		c.pieces = append(c.pieces, piece{rows: uint64(b.n), seg: seg})
+	}
 }
 
 // finish writes what is left of the column: the last rows, the dictionary being built, and
@@ -124,7 +149,7 @@ func (w *Writer) finish(c *column) {
 	}
 	if c.mode == modeDict {
 		w.endRun(c)
-	} else if c.buf.n > 0 || len(c.pieces) == 0 {
+	} else if c.buf.n > 0 || len(c.pieces) == 0 && !c.pending {
 		w.flushPlain(c)
 	}
 	if c.zones != nil && c.rows > 0 && w.err == nil {
