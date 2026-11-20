@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors api bench bench-compare bench-parquet
+.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors api bench bench-compare bench-parquet bench-rust
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -103,19 +103,24 @@ upstream: fixtures edition oracle
 # ClickBench files are used when .cache/fixtures/ has them, and a benchmark skips without data.
 BENCHFLAGS = -run '^$$' -bench . -benchmem -count 1
 bench:
-	go test $(BENCHFLAGS) .
+	go test $(BENCHFLAGS) ./...
 
 # benchstat of this tree against main, on the same machine. benchstat is run with go run, so
 # it is not a module of go.mod. BENCH_COUNT repeats each benchmark for the statistics.
 BENCH_COUNT ?= 6
 bench-compare:
 	rm -rf .cache/bench-main && git worktree add --detach .cache/bench-main main
-	cd .cache/bench-main && go test -run '^$$' -bench . -benchmem -count $(BENCH_COUNT) . > ../bench-main.txt
+	cd .cache/bench-main && go test -run '^$$' -bench . -benchmem -count $(BENCH_COUNT) ./... > ../bench-main.txt
 	git worktree remove --force .cache/bench-main
-	go test -run '^$$' -bench . -benchmem -count $(BENCH_COUNT) . > .cache/bench-new.txt
+	go test -run '^$$' -bench . -benchmem -count $(BENCH_COUNT) ./... > .cache/bench-new.txt
 	go run golang.org/x/perf/cmd/benchstat@latest .cache/bench-main.txt .cache/bench-new.txt
 
 # The comparison with parquet-go, a separate module (bench/go.mod) that is not in make deps
-# or in the coverage gate.
+# or in the coverage gate. It reads the file the root benchmarks generate, made first here.
 bench-parquet:
+	go test -run '^$$' -bench '^BenchmarkOpen$$' -benchtime 1x .
 	cd bench && go test -run '^$$' -bench . -benchmem -count 1 ./...
+
+# The reference reader through Python, on the same generated file, for docs/benchmarks.md.
+bench-rust:
+	$(ORACLE) tools/oracle/bench.py

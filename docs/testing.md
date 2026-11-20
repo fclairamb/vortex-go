@@ -305,10 +305,10 @@ encoding choice to the writer, and upstream's own compatibility check
 | Corpus against the oracle | `go test ./...` | yes | in place |
 | Edition table complete and seen | `go test ./...` | yes | in place |
 | Allocation | `go test ./...` | yes | in place |
-| Examples, API snapshot, README | `go test ./...`, `make api` | yes | planned |
+| Examples, API snapshot, README | `go test ./...`, `make api` | yes | in place |
 | Reference reads our files, and filters on our zone statistics | `make interop` | yes | in place |
 | File size ratio | `make interop` | yes | in place |
 | Fuzzing, 30 seconds | `make fuzz` | yes | in place |
 | All published releases | `make compat` | nightly | in place |
 | Long fuzzing | `make fuzz FUZZTIME=30m` | nightly | in place |
-| Benchmarks against main | `make bench` | no, posted on the PR | planned |
+| Benchmarks against main | `make bench-compare` | no, posted on the PR | in place |
