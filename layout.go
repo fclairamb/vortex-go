@@ -18,6 +18,8 @@ type reader interface {
 	avail() int
 	// take returns the next n rows, n being at most avail().
 	take(n int) (*array.Array, error)
+	// skip drops the next n rows, n being at most avail(), without reading what only they need.
+	skip(n int)
 }
 
 // newReader makes the reader of the rows lo to hi (excluded) of a layout whose rows have
@@ -47,16 +49,26 @@ var layoutReaders = sync.OnceValue(func() map[string]layoutMaker {
 		}
 	}
 	return map[string]layoutMaker{
-		"vortex.flat": func(f *File, l *layoutNode, t array.DType, opt array.Options, _ string, lo, hi int) (reader, error) {
+		layoutFlat: func(f *File, l *layoutNode, t array.DType, opt array.Options, _ string, lo, hi int) (reader, error) {
 			return f.newFlat(l, t, opt, lo, hi)
 		},
-		"vortex.struct":  (*File).newStruct,
-		"vortex.chunked": (*File).newChunked,
-		"vortex.zoned":   zoned(false),
-		"vortex.stats":   zoned(true),
-		"vortex.dict":    (*File).newDict,
+		layoutStruct:  (*File).newStruct,
+		layoutChunked: (*File).newChunked,
+		layoutZoned:   zoned(false),
+		layoutStats:   zoned(true),
+		layoutDict:    (*File).newDict,
 	}
 })
+
+// The identifiers of the layouts the scan looks at.
+const (
+	layoutFlat    = "vortex.flat"
+	layoutStruct  = "vortex.struct"
+	layoutChunked = "vortex.chunked"
+	layoutZoned   = "vortex.zoned"
+	layoutStats   = "vortex.stats"
+	layoutDict    = "vortex.dict"
+)
 
 // readerLayoutIDs lists the layouts that have a reader.
 func readerLayoutIDs() []string {
@@ -85,6 +97,8 @@ func (f *File) newFlat(l *layoutNode, t array.DType, opt array.Options, lo, hi i
 }
 
 func (r *flat) avail() int { return r.end - r.pos }
+
+func (r *flat) skip(n int) { r.pos += n }
 
 func (r *flat) take(n int) (*array.Array, error) {
 	if r.arr == nil {
@@ -117,43 +131,60 @@ type structLayout struct {
 }
 
 func (f *File) newStruct(l *layoutNode, t array.DType, opt array.Options, path string, lo, hi int) (reader, error) {
+	valid, fields, err := f.structParts(l, t, opt, path, lo, hi, nil)
+	if err != nil {
+		return nil, err
+	}
+	return &structLayout{t: t, left: hi - lo, valid: valid, fields: fields}, nil
+}
+
+// structParts makes the readers of the validity (nil when the struct is not nullable) and of
+// the fields of a struct layout. A field that want rejects (nil want accepts all) has no
+// reader: its entry is nil.
+func (f *File) structParts(
+	l *layoutNode, t array.DType, opt array.Options, path string, lo, hi int, want []bool,
+) (reader, []reader, error) {
 	if t.Kind != array.Struct {
-		return nil, badLayout("a struct layout for the type %s", t)
+		return nil, nil, badLayout("a struct layout for the type %s", t)
 	}
 	first := 0
 	if t.Nullable {
 		first = 1
 	}
 	if len(l.children) != first+len(t.Fields) {
-		return nil, badLayout("a struct layout of %d children for %d fields", len(l.children), len(t.Fields))
+		return nil, nil, badLayout("a struct layout of %d children for %d fields", len(l.children), len(t.Fields))
 	}
 	for i, c := range l.children {
 		if c.rowCount != l.rowCount {
-			return nil, badLayout("struct child %d has %d rows, its parent %d", i, c.rowCount, l.rowCount)
+			return nil, nil, badLayout("struct child %d has %d rows, its parent %d", i, c.rowCount, l.rowCount)
 		}
 	}
-	s := &structLayout{t: t, left: hi - lo}
+	var valid reader
 	var err error
 	if first == 1 {
-		if s.valid, err = f.newReader(l.children[0], array.DType{Kind: array.Bool}, opt, "", lo, hi); err != nil {
-			return nil, err
+		if valid, err = f.newReader(l.children[0], array.DType{Kind: array.Bool}, opt, "", lo, hi); err != nil {
+			return nil, nil, err
 		}
 	}
+	fields := make([]reader, len(t.Fields))
 	for i, ft := range t.Fields {
+		if want != nil && !want[i] {
+			continue
+		}
 		fp := ft.Name
 		if path != "" {
 			fp = path + "." + ft.Name
 		}
 		r, err := f.newReader(l.children[first+i], ft.Type, opt, fp, lo, hi)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if opt.Tolerate != nil {
 			r = &tolerant{reader: r, path: fp, t: ft.Type, tolerate: opt.Tolerate, left: hi - lo}
 		}
-		s.fields = append(s.fields, r)
+		fields[i] = r
 	}
-	return s, nil
+	return valid, fields, nil
 }
 
 func (s *structLayout) avail() int {
@@ -165,6 +196,16 @@ func (s *structLayout) avail() int {
 		n = min(n, r.avail())
 	}
 	return n
+}
+
+func (s *structLayout) skip(n int) {
+	if s.valid != nil {
+		s.valid.skip(n)
+	}
+	for _, r := range s.fields {
+		r.skip(n)
+	}
+	s.left -= n
 }
 
 func (s *structLayout) take(n int) (*array.Array, error) {
@@ -227,6 +268,8 @@ func (c *chunked) avail() int {
 	return 0
 }
 
+func (c *chunked) skip(n int) { c.chunks[c.i].skip(n) }
+
 func (c *chunked) take(n int) (*array.Array, error) { return c.chunks[c.i].take(n) }
 
 // tolerant is a field of a struct layout that Options.Tolerate may skip: when its rows fail
@@ -246,6 +289,13 @@ func (r *tolerant) avail() int {
 		return r.left
 	}
 	return r.reader.avail()
+}
+
+func (r *tolerant) skip(n int) {
+	if r.skipped == nil {
+		r.reader.skip(n)
+	}
+	r.left -= n
 }
 
 func (r *tolerant) take(n int) (*array.Array, error) {

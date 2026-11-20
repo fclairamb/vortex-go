@@ -228,9 +228,9 @@ func TestScanMethod(t *testing.T) {
 	if n != 1 {
 		t.Fatalf("%d batches", n)
 	}
-	for _, err := range f.Scan(context.Background(), Query{}, "a") {
-		if err == nil || !strings.Contains(err.Error(), "every column") {
-			t.Fatalf("columns must be refused for now: %v", err)
+	for b, err := range f.Scan(context.Background(), Query{}, "a") {
+		if err != nil || b.Len() != 3 {
+			t.Fatal(b, err)
 		}
 	}
 	// Breaking out of the loop stops the scan.

@@ -120,9 +120,9 @@ type zoned struct {
 	zones zoneMap
 }
 
-func (f *File) newZoned(
-	l *layoutNode, legacy bool, t array.DType, opt array.Options, path string, lo, hi int,
-) (reader, error) {
+// parseZoneLayout reads the metadata of a zoned layout and checks its children. The zones
+// child of the zone map is the second one.
+func parseZoneLayout(l *layoutNode, legacy bool) (zoneMap, error) {
 	var z zoneMap
 	var err error
 	if legacy {
@@ -131,15 +131,25 @@ func (f *File) newZoned(
 		z, err = parseZoned(l.metadata)
 	}
 	if err != nil {
-		return nil, err
+		return z, err
 	}
 	if len(l.children) != 2 {
-		return nil, badLayout("a zoned layout has %d children, want 2 (data, zones)", len(l.children))
+		return z, badLayout("a zoned layout has %d children, want 2 (data, zones)", len(l.children))
 	}
 	if l.children[0].rowCount != l.rowCount {
-		return nil, badLayout("zoned data has %d rows, its parent %d", l.children[0].rowCount, l.rowCount)
+		return z, badLayout("zoned data has %d rows, its parent %d", l.children[0].rowCount, l.rowCount)
 	}
 	z.zones = l.children[1]
+	return z, nil
+}
+
+func (f *File) newZoned(
+	l *layoutNode, legacy bool, t array.DType, opt array.Options, path string, lo, hi int,
+) (reader, error) {
+	z, err := parseZoneLayout(l, legacy)
+	if err != nil {
+		return nil, err
+	}
 	data, err := f.newReader(l.children[0], t, opt, path, lo, hi)
 	if err != nil {
 		return nil, err
@@ -206,6 +216,8 @@ func parseDict(meta []byte, parentNullable bool) (array.PType, bool, error) {
 }
 
 func (d *dict) avail() int { return d.codes.avail() }
+
+func (d *dict) skip(n int) { d.codes.skip(n) }
 
 func (d *dict) take(n int) (*array.Array, error) {
 	if d.vals == nil {

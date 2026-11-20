@@ -2,11 +2,12 @@ package vortex // import "github.com/fclairamb/vortex-go"
 
 Package vortex reads and writes files in the Vortex columnar format.
 
-Open and OpenFile read the trailer, the footer and the schema of a file. Scan
-reads whole columns of numbers, booleans, strings, binaries, decimals, lists,
-maps and structs, batch by batch. Filters, dictionaries and the other encodings,
-and writing files are not implemented yet. The goals are in docs/goals.md,
-the planned interface in docs/interface.md and the test plan in docs/testing.md.
+Open and OpenFile read the trailer, the footer and the schema of a file.
+Scan reads columns of numbers, booleans, strings, binaries, decimals, lists,
+maps and structs, batch by batch, for the columns, the row range and the filter
+of a Query, and skips what the statistics of the file rule out. Writing files
+is not implemented yet. The goals are in docs/goals.md, the planned interface in
+docs/interface.md and the test plan in docs/testing.md.
 
 VARIABLES
 
@@ -130,6 +131,35 @@ func (d Decimal) Text(scale int) string
     sign when negative, the digits, no exponent. A negative scale adds zeros:
     the value is multiplied by 10^-scale.
 
+type Expr struct {
+	// Has unexported fields.
+}
+    Expr is a filter: a small tree of comparisons of columns with Go values,
+    and of And, Or and Not. The zero Expr keeps every row. Build one with Col
+    and the methods of Ref.
+
+    A comparison with a null is unknown, like in SQL, and And, Or and Not are
+    three-valued: a row is kept only when the filter is true for it. IsNull
+    is never unknown. For the floats, NaN equals nothing (not even itself), is
+    neither less nor greater than anything, and so is different from everything,
+    like in Go.
+
+    The literals are Go values: any integer or float type, bool, string (for a
+    Utf8 column), []byte (Binary, UUID), Decimal, time.Time (date and timestamp,
+    truncated to the unit of the column) and time.Duration (time). An integer
+    can be compared with a float column. The filter is checked against the
+    schema before any read: a literal that does not fit the column, and for Eq,
+    Ne and In an integer out of the range of the column, are errors.
+
+func And(e ...Expr) Expr
+    And is true when every expression is. With none, it keeps every row.
+
+func Not(e Expr) Expr
+    Not is true when e is false, false when e is true and unknown when e is.
+
+func Or(e ...Expr) Expr
+    Or is true when one of the expressions is. With none, it keeps no row.
+
 type Field struct {
 	Name string
 	Type Type
@@ -158,10 +188,17 @@ func (f *File) Close() error
 func (f *File) NumRows() int64
     NumRows returns the number of rows of the file.
 
-func (f *File) Scan(ctx context.Context, _ Query, columns ...string) iter.Seq2[*Batch, error]
-    Scan reads the columns of the file, batch by batch, in order, on the calling
-    goroutine. A batch has at most 8,192 rows. Every column is read: columns
-    must be empty for now.
+func (f *File) Scan(ctx context.Context, q Query, columns ...string) iter.Seq2[*Batch, error]
+    Scan reads the columns of the file that meet the query, batch by batch,
+    in order, on the calling goroutine. A batch has at most 8,192 rows and is
+    dense: its Len is the number of rows kept, and a batch without any is not
+    returned. The batch has the columns that are named, in that order, and
+    every column in the order of the schema when none is. A name is a top-level
+    column; the fields of a struct come with Column.Field. A column that only
+    the filter needs is read and not returned.
+
+    An unknown column, an invalid range, or a filter that does not fit the
+    schema is the error of the first iteration, before any read.
 
 func (f *File) Schema() *Schema
     Schema returns the schema of the file.
@@ -207,8 +244,53 @@ type Number interface {
 }
     Number is the set of the Go types a numeric column can be read as.
 
-type Query struct{}
-    Query selects the rows of a scan. It has no field yet: every row is read.
+type Query struct {
+	// Filter is exact: a row is returned when it is true, and the caller never has to filter
+	// again. The statistics of the file are used to skip what it rules out.
+	Filter Expr
+	// Rows limits the scan to a range of rows.
+	Rows Range
+}
+    Query selects the rows of a scan: the rows of Rows for which Filter is true.
+    The zero value selects every row.
+
+type Range struct{ Start, End int64 }
+    Range is a half-open range of rows of a file: Start is the first row,
+    End the one after the last. The zero value is the whole file, so an End of 0
+    means the end of the file. A range outside the file is clamped to it.
+
+type Ref struct {
+	// Has unexported fields.
+}
+    Ref is a column, or a field of a struct column, to compare.
+
+func Col(path ...string) Ref
+    Col is the column called path[0], or its field path[1], and so on for nested
+    structs.
+
+func (r Ref) Eq(v any) Expr
+    Eq is true for the rows whose value equals v.
+
+func (r Ref) Ge(v any) Expr
+    Ge is true for the rows whose value is at least v.
+
+func (r Ref) Gt(v any) Expr
+    Gt is true for the rows whose value is greater than v.
+
+func (r Ref) In(vs ...any) Expr
+    In is true for the rows whose value equals one of vs.
+
+func (r Ref) IsNull() Expr
+    IsNull is true for the rows that are null, and false for the others.
+
+func (r Ref) Le(v any) Expr
+    Le is true for the rows whose value is at most v.
+
+func (r Ref) Lt(v any) Expr
+    Lt is true for the rows whose value is less than v.
+
+func (r Ref) Ne(v any) Expr
+    Ne is true for the rows whose non-null value differs from v.
 
 type Schema struct {
 	// Has unexported fields.

@@ -67,7 +67,7 @@ func (f *File) Close() error
 // Select rows
 type Query struct {
     Filter Expr  // exact, zero value keeps every row
-    Rows   Range // zero value is the whole file
+    Rows   Range // half-open {Start, End}; zero value is the whole file, End == 0 is the end
 }
 func Col(path ...string) Ref // .Eq .Ne .Lt .Le .Gt .Ge .In .IsNull
 func And(e ...Expr) Expr     // also Or, Not
