@@ -28,6 +28,7 @@ const (
 	scBool                   //
 	scDec                    // decimals
 	scBytes                  // strings and binary, bounded
+	scUUID                   // uuids: 16 bytes compared as bytes, exact (a byte-string extension)
 )
 
 // classOf returns how the values of a column of type t compare.
@@ -39,6 +40,8 @@ func classOf(t Type) statClass {
 		return scDec
 	case Utf8, Binary:
 		return scBytes
+	case UUID:
+		return scUUID
 	case Float16, Float32, Float64:
 		return scFloat
 	case Int8, Int16, Int32, Int64, Date, Time, Timestamp:
@@ -56,7 +59,7 @@ func statWidth(t Type, class statClass) int {
 		return 1
 	case scDec:
 		return decimalWidth(t.precision)
-	case scBytes, scNone:
+	case scBytes, scUUID, scNone:
 		return 0
 	}
 	return numberWidth(storageKind(t))
@@ -103,7 +106,7 @@ func (z *zoneAcc) add(b *body, lo, hi int) {
 	if z.class == scFloat {
 		z.nans = append(z.nans, uint64(nans))
 	}
-	if z.class == scBytes {
+	if z.class == scBytes || z.class == scUUID {
 		z.addBounds(b, imin, imax)
 		return
 	}
@@ -369,6 +372,9 @@ func (z *zoneAcc) table() ([]Field, []Data, []aggSpec) {
 		if anyHas {
 			add(aggBoundedMin, optsBounded, nullable, OfBytes(z.minV).Nulls(missing))
 		}
+	case z.class == scUUID && anyHas:
+		add(aggMax, optsSkipNaNs, nullable, OfBytes(z.maxV).Nulls(missing))
+		add(aggMin, optsSkipNaNs, nullable, OfBytes(z.minV).Nulls(missing))
 	case z.class != scNone && anyHas:
 		add(aggMax, optsSkipNaNs, nullable, z.fixed(z.maxB).Nulls(missing))
 		add(aggMin, optsSkipNaNs, nullable, z.fixed(z.minB).Nulls(missing))

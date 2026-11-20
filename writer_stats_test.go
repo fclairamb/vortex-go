@@ -207,8 +207,8 @@ func TestFileStatistics(t *testing.T) {
 	if f := got[2]; f[aggNanCount].Uint != 1 || f[aggMax].F32 != 3 {
 		t.Errorf("f: %v", f)
 	}
-	if len(got[6]) != 1 || got[6][aggNullCount].Uint != 0 {
-		t.Errorf("u has a null count only: %v", got[6])
+	if u := got[6]; len(u) != 3 || u[aggNullCount].Uint != 0 || len(u[aggMin].List) != uuidSize || len(u[aggMax].List) != uuidSize {
+		t.Errorf("u has a min and a max of 16 bytes: %v", u)
 	}
 }
 
@@ -232,5 +232,21 @@ func TestFileStatisticsOfUnknownBounds(t *testing.T) {
 	_, file = writeFile(t, NewSchema())
 	if got := entries(t, fileStats(t, file)); len(got) != 0 {
 		t.Errorf("%v", got)
+	}
+}
+
+// A time keeps its min and max in the array and file statistics only within its day: the
+// reference reader (0.93.0) fails to open a file whose time scalar overflows its day.
+func TestFileStatisticsOfTimes(t *testing.T) {
+	_, file := writeFile(t, NewSchema(Field{"in", TimeType(Second)}, Field{"out", TimeType(Second)}, Field{"ms", TimeType(Millisecond)}),
+		[]Data{Of([]int32{10, 86399, 5}), Of([]int32{10, 86400, 5}), Of([]int32{-1, 3, 4})})
+	got := entries(t, fileStats(t, file))
+	if in := got[0]; in[aggMin].Int != 5 || in[aggMax].Int != 86399 {
+		t.Errorf("a time within its day: %v", in)
+	}
+	for _, i := range []int{1, 2} {
+		if _, ok := got[i][aggMin]; ok || len(got[i]) != 1 {
+			t.Errorf("a time out of its day has the null count only: %v", got[i])
+		}
 	}
 }

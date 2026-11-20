@@ -23,8 +23,14 @@ Upstream paths are in `~/code/other/vortex`.
      (`strategy.rs:141`);
    - a data chunk targets 1 MiB of uncompressed data, rounded to whole row blocks
      (`strategy.rs:36,142`);
-   - the buffered data of a column is bounded (upstream: 2 MiB, `strategy.rs:228`), so
-     memory depends on the column count and not on the file size;
+   - the buffered data of a column is bounded, so memory depends on the column count and not
+     on the file size. Upstream bounds it by rows only: step 1 repartitions into 8,192-row
+     blocks with no byte limit (`strategy.rs:238-250`, `block_size_target: None`), and its
+     2 MiB (`strategy.rs:169`) is the `BufferedStrategy` that holds compressed chunks, after
+     the cut. Only step 4 (`strategy.rs:182-200`, `repartition.rs:62-75`) caps a block at 1 MiB, and only for
+     fixed-width types, after the zone statistics. We do the same: one block of rows is
+     buffered, and a chunk is cut at a block (`TestWideRows`: rows of 2 KiB give 16 MB
+     blocks, chunks of whole blocks, a heap that does not grow with the rows);
    - the layout of a column is `vortex.chunked` over `vortex.flat`, a single chunk
      unwrapped.
 2. **Zone statistics.** Each column is wrapped in `vortex.zoned`
@@ -35,7 +41,11 @@ Upstream paths are in `~/code/other/vortex`.
    - strings and binary: `vortex.bounded_max` and `vortex.bounded_min`, bounds truncated
      to 64 bytes, options the `u64` LE 64. A truncated max is rounded up so it stays a
      bound;
-   - other types: `vortex.max` and `vortex.min`, NaN skipped;
+   - other types: `vortex.max` and `vortex.min`, NaN skipped. UUID has them too (byte order,
+     `encodings/uuid/src/lib.rs`, `min_max/extension.rs`). Lists, fixed-size lists of
+     anything but `u8`, and maps have none: `min_max` cannot compute them
+     (`aggregate_fn/fns/min_max/mod.rs:334`, "does not yet implement lexicographic list
+     comparison"), the column comes out all null and `zoned/builder.rs:93-95` drops it;
    - floats: `vortex.nan_count`. Every type: `vortex.null_count`;
    - no zone statistics under a nullable struct (`zoned/writer.rs:127-132`);
    - the zones table is a struct array written as a flat layout, with the field names and
@@ -75,9 +85,28 @@ Upstream paths are in `~/code/other/vortex`.
 
 ## To verify
 
-- The exact names and types of the zones table fields in a file written by 0.93.0, read
-  from `extra/default_ints.vortex` with our own reader.
-- Whether 0.93.0 writes the legacy `field_stats` or the newer aggregate form in
-  `FileStatistics`, and whether the reference reader needs the segment at all.
-- The rule that rounds a truncated max up (and what happens when the 64 bytes are all
-  `0xFF`): `vortex-array/src/aggregate_fn/fns/bounded_max/mod.rs`.
+Answers (checked against 0.93.0, `/tmp/vx/vortex`):
+
+- Zones table fields: one field per aggregate, named by the aggregate id
+  (`aggregate_fn.to_string()`, `zoned/schema.rs:92-103`): `vortex.bounded_max` (a struct
+  `{bound, unknown}`), `vortex.bounded_min`, `vortex.max`, `vortex.min`, `vortex.nan_count`,
+  `vortex.null_count` (u64), each nullable, sorted by name, an aggregate with no value in any
+  zone left out (`builder.rs:93-95`). Our reader parses what our writer writes, and the
+  reference reader reads it (`make interop`, filters pushed down).
+- File statistics: `write_nested_statistics` is off by default and `write_legacy_statistics`
+  on (`vortex-file/src/writer.rs:117-118`), so the reference writes `field_stats` only. We
+  write both: a reader of either form finds its statistics. The defaults are max, min,
+  null count, NaN count, and the uncompressed size only when the enabled edition allows it
+  (`file_stats.rs:371-392`, `vortex-file/src/tests.rs:1620-1660`: `core` no, `preview`
+  yes). There is no `sum`: "left out until the footer records the overflow-aware SumV2".
+  So we write no `sum` and no `uncompressed_size_in_bytes`, as the default `core` edition.
+- Time: `vortex.time` min and max are written only when they lie within the day. The
+  reference reader fails with "Invalid time scalar: adding duration to time overflowed"
+  on a file whose time statistic is out of its day (reproduced with vortex-data 0.93.0 on
+  the random `type_time_*` interop files, 12 files failing); `inday_time_*` files, whose
+  statistics are written, are read fine. A time out of its day keeps its bounds in the
+  zones table, which holds plain integers.
+- The upper bound of a truncated max: the 64-byte prefix with its last byte incremented
+  (carry on 0xFF), a character incremented for utf8; when every byte is `0xFF` there is no
+  bound, the partial is `{null, unknown: true}` and the file statistics have no max
+  (`bounded_max/mod.rs`). Tested by `TestStringBounds` and `TestFileStatisticsOfUnknownBounds`.

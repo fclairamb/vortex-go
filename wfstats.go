@@ -101,6 +101,15 @@ func (r *ranger) valueAt(elem []byte) *scalar.Value {
 	return &scalar.Value{Kind: scalar.Bytes, Bytes: elem}
 }
 
+// uuidValue is the ScalarValue of a uuid: the list of its bytes, the storage of the extension.
+func uuidValue(v []byte) *scalar.Value {
+	out := &scalar.Value{Kind: scalar.List, List: make([]scalar.Value, len(v))}
+	for i, c := range v {
+		out.List[i] = scalar.Value{Kind: scalar.Uint, Uint: uint64(c)}
+	}
+	return out
+}
+
 // bytesValue is the ScalarValue of a string or of binary.
 func (r *ranger) bytesValue(v []byte) *scalar.Value {
 	if r.t.kind == Utf8 {
@@ -142,7 +151,7 @@ func (w *Writer) arrayStats(c *column) flatbuf.Off {
 		v := uint64(nans)
 		s.nans = &v
 	}
-	if imin >= 0 && r.t.kind != Time { // see reduce
+	if imin >= 0 && r.timeOK(r.putFixed(nil, b, imin), r.putFixed(nil, b, imax)) {
 		r.minMax(&s, b, imin, imax)
 	}
 	if r.class != scNone && s.nulls == 0 && nans == 0 && n > 0 {
@@ -158,6 +167,11 @@ func (w *Writer) arrayStats(c *column) flatbuf.Off {
 // minMax sets the min and the max of the stats from the rows imin and imax of the buffer. A
 // string is cut to the bounds of the zones, and marked inexact when it was.
 func (r *ranger) minMax(s *astat, b *body, imin, imax int) {
+	if r.class == scUUID {
+		s.min, s.max = encodeScalar(uuidValue(b.bins[imin])), encodeScalar(uuidValue(b.bins[imax]))
+		s.minExact, s.maxExact = true, true
+		return
+	}
 	if r.class != scBytes {
 		s.min = encodeScalar(r.valueAt(r.putFixed(nil, b, imin)))
 		s.max = encodeScalar(r.valueAt(r.putFixed(nil, b, imax)))
@@ -192,9 +206,6 @@ func (z *zoneAcc) reduce() colStat {
 	}
 	var lo, hi []byte
 	for i, has := range z.has {
-		if z.t.kind == Time { // a time out of its day makes the reference reader fail to open the file
-			break
-		}
 		if z.class == scBytes && z.unk[i] {
 			s.maxUnknown = true
 		}
@@ -209,7 +220,7 @@ func (z *zoneAcc) reduce() colStat {
 			hi = maxV
 		}
 	}
-	if lo == nil {
+	if lo == nil || !z.timeOK(lo, hi) {
 		return s
 	}
 	s.min = z.stat(lo)
@@ -219,15 +230,39 @@ func (z *zoneAcc) reduce() colStat {
 	return s
 }
 
+// timeOK tells whether the bounds lo and hi, as stored, may be written as scalars. The
+// reference reader rejects a time scalar that is not within its day ("adding duration to
+// time overflowed") and then fails to open the file: so a time column whose values leave
+// [0, 1 day) gets no min and no max in the array and file statistics (the zones table holds
+// plain integers, and keeps its bounds). Reproduced with vortex-data 0.93.0 on type_time_*.
+func (r *ranger) timeOK(lo, hi []byte) bool {
+	if r.t.kind != Time {
+		return true
+	}
+	day := int64(86400)
+	switch r.t.unit {
+	case Millisecond:
+		day *= 1000
+	case Microsecond:
+		day *= 1000 * 1000
+	case Nanosecond:
+		day *= 1000 * 1000 * 1000
+	}
+	return rawInt(lo, r.width, 0) >= 0 && rawInt(hi, r.width, 0) < day
+}
+
 // stored is the min or the max of zone i: the bytes of a number, or the bound of a string.
 func (z *zoneAcc) stored(fixed []byte, varlen [][]byte, i int) []byte {
-	if z.class == scBytes {
+	if z.class == scBytes || z.class == scUUID {
 		return varlen[i]
 	}
 	return fixed[i*z.width : (i+1)*z.width]
 }
 
 func (r *ranger) stat(v []byte) *scalar.Value {
+	if r.class == scUUID {
+		return uuidValue(v)
+	}
 	if r.class == scBytes {
 		return r.bytesValue(v)
 	}

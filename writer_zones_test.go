@@ -172,6 +172,8 @@ func renderStat(a *array.Array, k int, ty Type) string {
 	switch ty.kind {
 	case Utf8, Binary:
 		return string(a.Data[a.Starts[k]:a.Ends[k]])
+	case UUID:
+		return string(a.Elems.Data[k*uuidSize : (k+1)*uuidSize])
 	case Bool:
 		return strconv.FormatBool(a.Bits.Get(k))
 	case KindDecimal:
@@ -237,7 +239,7 @@ func isNaNVal(ty Type, b []byte) bool {
 // cmpStat compares two values of a type, with plain Go: the order of the statistics.
 func cmpStat(ty Type, a, b []byte) int {
 	switch ty.kind {
-	case Utf8, Binary:
+	case Utf8, Binary, UUID:
 		return bytes.Compare(a, b)
 	case Bool:
 		return int(a[0]) - int(b[0])
@@ -275,7 +277,7 @@ func wantZone(ty Type, rows []val) (s zoneStat, lo, hi []byte) {
 
 func hasStats(ty Type) bool {
 	switch ty.kind {
-	case Null, UUID, List, FixedSizeList, Map, Struct:
+	case Null, List, FixedSizeList, Map, Struct:
 		return false
 	}
 	return true
@@ -332,6 +334,8 @@ func checkZones(t *testing.T, name string, f *File, col int, ty Type, vals []val
 // statText prints a value the way renderStat prints the statistic.
 func statText(ty Type, b []byte) string {
 	switch ty.kind {
+	case UUID:
+		return string(b)
 	case Bool:
 		return strconv.FormatBool(b[0] != 0)
 	case KindDecimal:
@@ -584,4 +588,44 @@ func TestPeakHeapWhileWriting(t *testing.T) {
 	if peak > 64<<20 {
 		t.Fatalf("the heap peaks at %d MB", peak>>20)
 	}
+}
+
+// A column of wide rows is buffered a block of rows at a time, like the reference writer does
+// (its repartition into 8,192 rows has no byte limit, strategy.rs step 1): the chunks keep to
+// whole blocks, and the heap depends on the width of a block, not on the rows written.
+func TestWideRows(t *testing.T) {
+	wide := strings.Repeat("w", 2048)
+	schema := NewSchema(Field{"s", Utf8Type()})
+	write := func(w io.Writer, rows int, bound uint64) {
+		wr := NewWriter(w, schema, WriteOptions{})
+		var m runtime.MemStats
+		peak := uint64(0)
+		for i := range rows {
+			if err := wr.Write(OfStrings([]string{fmt.Sprintf("%08d", i) + wide})); err != nil {
+				t.Fatal(err)
+			}
+			if i%4096 == 4095 {
+				runtime.GC()
+				runtime.ReadMemStats(&m)
+				peak = max(peak, m.HeapAlloc)
+			}
+		}
+		if err := wr.Close(); err != nil {
+			t.Fatal(err)
+		}
+		// A block is 16 MB; what is buffered is a block plus the copy that makes a chunk.
+		if peak > bound {
+			t.Fatalf("the heap peaks at %d MB", peak>>20)
+		}
+	}
+	var buf bytes.Buffer
+	write(&buf, 20_000, 1<<40) // the file is in the heap
+	f, err := Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := chunkRows(f, 0); !slices.Equal(got, []uint64{8192, 8192, 20_000 - 2*8192}) {
+		t.Fatalf("chunks of %v rows", got)
+	}
+	write(io.Discard, 60_000, 96<<20)
 }

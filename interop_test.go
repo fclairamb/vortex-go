@@ -37,6 +37,12 @@ func TestInterop(t *testing.T) {
 		writeInterop(t, dir, file, fields[len(fields)-1:], []int{200})
 		writeInterop(t, dir, file+"_chunks", fields[len(fields)-1:], []int{1, 130, 0, 17})
 	}
+	// Times within their day get a min and a max in the array and file statistics, which the
+	// reference reader validates as time scalars.
+	for _, name := range []string{"time_s", "time_ms", "time_us", "time_ns"} {
+		writeInterop(t, dir, "inday_"+name, []Field{{Name: name, Type: types[name]}}, []int{200, 1, 90})
+		writeInterop(t, dir, "inday_"+name+"_null", []Field{{Name: name, Type: types[name].AsNullable()}}, []int{200, 1, 90})
+	}
 	writeInterop(t, dir, "wide", fields, []int{500, 1, 77})
 	writeInterop(t, dir, "wide_one_row", fields, []int{1})
 	// The reference's Python package cannot make an empty arrow array of a list of structs with
@@ -49,7 +55,7 @@ func TestInterop(t *testing.T) {
 // writeInterop writes a file with one Write per size, and its hashes.
 func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 	t.Helper()
-	g := &gen{r: rand.New(rand.NewPCG(11, uint64(len(file))))}
+	g := &gen{r: rand.New(rand.NewPCG(11, uint64(len(file)))), inDay: strings.HasPrefix(file, "inday_")}
 	var buf bytes.Buffer
 	w := NewWriter(&buf, NewSchema(fields...), WriteOptions{})
 	all := make([][]val, len(fields))
