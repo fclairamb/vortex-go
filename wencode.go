@@ -81,7 +81,7 @@ func (w *Writer) encode(t Type, d Data, n int) flatbuf.Off {
 }
 
 func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
-	if w.depth == 1 && (w.hasPre || w.comp != nil) {
+	if w.depth == 1 && w.hasPre || w.comp != nil {
 		if off, ok := w.encodeCompressed(t, d); ok {
 			return off
 		}
@@ -303,8 +303,8 @@ func (w *Writer) encodeList(t Type, d Data, n int) flatbuf.Off {
 		binary.LittleEndian.PutUint32(offsets[4*i:], uint32(d.offs[i]))
 		binary.LittleEndian.PutUint32(sizes[4*i:], uint32(d.offs[i+1]-d.offs[i]))
 	}
-	w.push(w.leaf("vortex.primitive", offsets, 4))
-	w.push(w.leaf("vortex.primitive", sizes, 4))
+	w.push(w.encodeU32s(offsets))
+	w.push(w.encodeU32s(sizes))
 	w.validity(d, n)
 	meta := protowire.AppendUint(w.meta[:0], 1, uint64(elems.n))
 	meta = protowire.AppendUint(meta, 2, pU32)

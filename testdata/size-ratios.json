@@ -1,6 +1,6 @@
 {
   "clickbench_hits_5k.compact": 1.060,
-  "clickbench_hits_5k.regular": 1.076,
+  "clickbench_hits_5k.regular": 1.077,
   "tpch_lineitem.compact": 1.085,
   "tpch_lineitem.regular": 0.997,
   "tpch_orders.compact": 1.157,

@@ -128,9 +128,12 @@ func writeWith(t testing.TB, c Compression, s *Schema, cols []Data, sizes ...int
 	w := NewWriter(&buf, s, WriteOptions{Compression: c})
 	lo := 0
 	for _, n := range sizes {
-		part := make([]Data, len(cols))
-		for i, f := range s.Fields() {
-			part[i] = sliceOf(cols[i], f.Type, lo, lo+n)
+		part := cols // one write of every row: a list, which sliceOf does not cut, can be written
+		if len(sizes) > 1 {
+			part = make([]Data, len(cols))
+			for i, f := range s.Fields() {
+				part[i] = sliceOf(cols[i], f.Type, lo, lo+n)
+			}
 		}
 		if err := w.Write(part...); err != nil {
 			t.Fatal(err)
@@ -327,5 +330,34 @@ func TestDictionaryProbe(t *testing.T) {
 	}
 	if !slices.Contains(f.arrayEncodings, encode.IDBitPacked) {
 		t.Errorf("the codes are not bit-packed: %v", f.arrayEncodings)
+	}
+}
+
+// TestNestedChildrenCompressed: the elements, the offsets and the sizes of a list are
+// compressed as the reference does, in a file of one column and in one of two (whose chunks
+// wait to be compressed together).
+func TestNestedChildrenCompressed(t *testing.T) {
+	offsets := make([]int, 1001)
+	elems := make([]int32, 3000)
+	for i := range offsets {
+		offsets[i] = 3 * i
+	}
+	for i := range elems {
+		elems[i] = int32(i % 5)
+	}
+	list := OfList(offsets, Of(elems))
+	ty := ListOf(Int32Type())
+	for _, s := range []*Schema{NewSchema(Field{"l", ty}), NewSchema(Field{"l", ty}, Field{"n", Int8Type()})} {
+		cols := []Data{list, Of(make([]int8, 1000))}[:len(s.Fields())]
+		f := openBytes(t, writeWith(t, Default, s, cols, 1000))
+		for _, id := range []string{encode.IDBitPacked, encode.IDSequence, encode.IDConstant} {
+			if !slices.Contains(f.arrayEncodings, id) {
+				t.Errorf("%d columns: no %s in %v", len(cols), id, f.arrayEncodings)
+			}
+		}
+		got, err := readBack(f, ty)
+		if err != nil || len(got) != 1000 || len(got[999].kids) != 3 {
+			t.Fatalf("%d rows, %v", len(got), err)
+		}
 	}
 }

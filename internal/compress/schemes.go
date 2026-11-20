@@ -128,14 +128,15 @@ func ints[T encode.Int](c *Compressor, e *encode.Encoder, trial bool, p PType, v
 	st := statsOfInts(v, nulls)
 	runs := st.valid > 0 && len(v) >= runThreshold*st.runs && parent != sRunEnd && parent != sRLE
 	cascade := depth < maxDepth
+	// the order of the reference (vortex-btrblocks/src/session.rs), which wins the ties
 	var l cands
-	l.add(sBitPack, !st.negative && st.packW < 8*p.Width())
 	l.add(sFoR, cascade && st.valid > 0 && !st.minZero && (st.negative || st.forW < st.packW))
 	l.add(sZigZag, cascade && zigzag != nil && st.negative && parent != sZigZag)
+	l.add(sBitPack, !st.negative && st.packW < 8*p.Width())
+	l.add(sSparse, parent != sSparse && st.valid > 0)
+	l.add(sDict, cascade && parent != sDict && st.valid > 0)
 	l.add(sRunEnd, cascade && runs)
 	l.add(sRLE, cascade && runs)
-	l.add(sDict, cascade && parent != sDict && st.valid > 0)
-	l.add(sSparse, parent != sSparse && st.valid > 0)
 	l.add(sZstd, c.mode == Compact)
 	return pick(c, e, trial, v, nulls, &l, numberCost[T], sampleNumbers[T], func(e *encode.Encoder, trial bool, s scheme, v []T, nulls []bool) *encode.Node {
 		var n *encode.Node
@@ -183,9 +184,10 @@ func floats[T encode.Float](c *Compressor, e *encode.Encoder, trial bool, p PTyp
 	cascade := depth < maxDepth
 	var l cands
 	l.add(sALP, cascade && valid > 0)
-	l.add(sALPRD, cascade && valid > 0)
+	l.add(sALPRD, valid > 0)
 	l.add(sDict, cascade && parent != sDict && valid > 0)
-	l.add(sRunEnd, cascade && valid > 0 && len(v) >= runThreshold*runs && parent != sRunEnd)
+	l.add(sSparse, parent != sSparse && valid > 0 && 10*(len(v)-valid) > 9*len(v)) // dominated by nulls
+	l.add(sRLE, cascade && valid > 0 && len(v) >= runThreshold*runs && parent != sRLE)
 	l.add(sZstd, c.mode == Compact)
 	return pick(c, e, trial, v, nulls, &l, numberCost[T], sampleNumbers[T], func(e *encode.Encoder, trial bool, s scheme, v []T, nulls []bool) *encode.Node {
 		var n *encode.Node
@@ -196,8 +198,10 @@ func floats[T encode.Float](c *Compressor, e *encode.Encoder, trial bool, p PTyp
 			n, _ = encode.ALPRD(e, v, nulls)
 		case sDict:
 			n = encode.Dict(e, v, nulls)
-		case sRunEnd:
-			n = encode.RunEnd(e, v, nulls)
+		case sSparse:
+			n, _ = encode.Sparse(e, v, nulls) // there is a valid value
+		case sRLE:
+			n = encode.RLE(e, v, nulls)
 		default:
 			n = encode.Zstd(e, v, nulls)
 		}

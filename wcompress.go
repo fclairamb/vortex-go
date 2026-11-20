@@ -104,7 +104,7 @@ func (w *Writer) encodeCompressed(t Type, d Data) (flatbuf.Off, bool) {
 		return 0, false
 	}
 	ext := (t.kind == Date || t.kind == Time || t.kind == Timestamp) && node.ID != encode.IDDateTimeParts
-	if !ext {
+	if !ext && w.depth == 1 {
 		w.statsID = node.ID // the statistics go on the root, whatever its encoding
 	}
 	off := w.emit(node)
@@ -112,6 +112,28 @@ func (w *Writer) encodeCompressed(t Type, d Data) (flatbuf.Off, bool) {
 		off = w.arrayExtension(off)
 	}
 	return off, true
+}
+
+// encodeU32s writes the offsets or the sizes of a list, compressed when the chunk is, as the
+// reference does.
+func (w *Writer) encodeU32s(raw []byte) flatbuf.Off {
+	w.depth++ // a child, whatever its encoding
+	var off flatbuf.Off
+	if node := w.compressU32s(raw); node != nil {
+		off = w.emit(node)
+	} else {
+		off = w.leaf("vortex.primitive", raw, 4)
+	}
+	w.depth--
+	return off
+}
+
+// compressU32s is the compressed array of the u32 values raw, nil for the plain one.
+func (w *Writer) compressU32s(raw []byte) *encode.Node {
+	if w.comp == nil {
+		return nil
+	}
+	return w.comp.Numbers(compress.U32, raw, nil)
 }
 
 // queueChunk makes the rows of the buffer of the column a chunk that waits to be compressed.
@@ -153,8 +175,11 @@ func (w *Writer) drain() {
 	}
 	for _, c := range q {
 		w.pre, w.hasPre = c.node, true
+		if c.node == nil { // the children of a nested column are compressed as they are written
+			w.comp = c.comp
+		}
 		w.writeChunk(c, c.spare)
-		w.pre, w.hasPre, c.node = nil, false, nil
+		w.pre, w.hasPre, w.comp, c.node = nil, false, nil, nil
 		resetBody(c.spare)
 		c.spareArena = c.spareArena[:0]
 		c.pending = false

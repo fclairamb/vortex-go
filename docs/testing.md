@@ -213,6 +213,12 @@ integers), `patched` (patches applied on top of an inner array) and `decimal_byt
 - **Edition conformance.** Every identifier found in a file we wrote is in the target edition.
 - **Size.** On the TPC-H and ClickBench datasets, our file is at most 1.10 times the size
   of the reference writer's. The measured ratio is committed and can only go down.
+  `TestSizeRatios` (in `make interop`) reads the rows of the reference's `tpch_lineitem`,
+  `tpch_orders` and `clickbench_hits_5k` files from `.cache/fixtures/`, writes them in
+  `Default` and `Compact`, and compares the sizes with the reference's files of the same
+  mode. The six ratios are in `testdata/size-ratios.json`; `SIZE_RATIOS_UPDATE=1` rewrites
+  it after an improvement. The files go to the oracle too, with the hashes of the
+  reference's own files: the reference reader must read back the same rows.
 - **Write faults.** An `io.Writer` that fails at call N, for every N. `Write` or `Close`
   returns the error.
 
@@ -301,7 +307,7 @@ encoding choice to the writer, and upstream's own compatibility check
 | Allocation | `go test ./...` | yes | in place |
 | Examples, API snapshot, README | `go test ./...`, `make api` | yes | planned |
 | Reference reads our files, and filters on our zone statistics | `make interop` | yes | in place |
-| File size ratio | `make interop` | yes | planned |
+| File size ratio | `make interop` | yes | in place |
 | Fuzzing, 30 seconds | `make fuzz` | yes | in place |
 | All published releases | `make compat` | nightly | in place |
 | Long fuzzing | `make fuzz FUZZTIME=30m` | nightly | in place |

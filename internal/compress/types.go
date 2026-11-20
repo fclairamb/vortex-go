@@ -43,9 +43,10 @@ func (c *Compressor) strings(e *encode.Encoder, trial bool, v [][]byte, nulls []
 			valid++
 		}
 	}
+	// FSST is for strings: the reference has no scheme of it for binary
 	var l cands
 	l.add(sDict, depth < maxDepth && parent != sDict && valid > 0)
-	l.add(sFSST, valid > 0)
+	l.add(sFSST, utf8 && valid > 0)
 	l.add(sZstd, c.mode == Compact)
 	return pick(c, e, trial, v, nulls, &l, binsCost, sampleBins, func(e *encode.Encoder, trial bool, s scheme, v [][]byte, nulls []bool) *encode.Node {
 		var n *encode.Node
