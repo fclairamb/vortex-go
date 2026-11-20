@@ -3,8 +3,12 @@ package vortex
 import (
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
+	"sync"
 
 	"github.com/fclairamb/vortex-go/internal/array"
+	"github.com/fclairamb/vortex-go/internal/edition"
 )
 
 // reader yields the rows of a layout, in order.
@@ -22,21 +26,44 @@ func (f *File) newReader(l *layoutNode, t array.DType, opt array.Options, path s
 	if lo < 0 || hi < lo || uint64(hi) > l.rowCount {
 		return nil, badLayout("rows %d to %d of a layout of %d rows", lo, hi, l.rowCount)
 	}
-	switch id := f.layoutEncodings[l.encoding]; id {
-	case "vortex.flat":
-		return f.newFlat(l, t, opt, lo, hi)
-	case "vortex.struct":
-		return f.newStruct(l, t, opt, path, lo, hi)
-	case "vortex.chunked":
-		return f.newChunked(l, t, opt, path, lo, hi)
-	case "vortex.zoned", "vortex.stats":
-		return f.newZoned(l, id == "vortex.stats", t, opt, path, lo, hi)
-	case "vortex.dict":
-		return f.newDict(l, t, opt, path, lo, hi)
-	default:
-		return nil, fmt.Errorf("vortex: unsupported layout %q: %w", id, errors.ErrUnsupported)
+	id := f.layoutEncodings[l.encoding]
+	edition.Met(edition.KindLayout, id)
+	mk, ok := f.readers[id]
+	if !ok {
+		return nil, fmt.Errorf("vortex: unsupported layout %q at column %q: %w", id, path, errors.ErrUnsupported)
 	}
+	return mk(f, l, t, opt, path, lo, hi)
 }
+
+// layoutMaker builds the reader of one kind of layout.
+type layoutMaker func(f *File, l *layoutNode, t array.DType, opt array.Options, path string, lo, hi int) (reader, error)
+
+// layoutReaders is the table of the layout readers, by identifier. A function, so that the
+// readers can call newReader without an initialization cycle.
+var layoutReaders = sync.OnceValue(func() map[string]layoutMaker {
+	zoned := func(legacy bool) layoutMaker {
+		return func(f *File, l *layoutNode, t array.DType, opt array.Options, path string, lo, hi int) (reader, error) {
+			return f.newZoned(l, legacy, t, opt, path, lo, hi)
+		}
+	}
+	return map[string]layoutMaker{
+		"vortex.flat": func(f *File, l *layoutNode, t array.DType, opt array.Options, _ string, lo, hi int) (reader, error) {
+			return f.newFlat(l, t, opt, lo, hi)
+		},
+		"vortex.struct":  (*File).newStruct,
+		"vortex.chunked": (*File).newChunked,
+		"vortex.zoned":   zoned(false),
+		"vortex.stats":   zoned(true),
+		"vortex.dict":    (*File).newDict,
+	}
+})
+
+// readerLayoutIDs lists the layouts that have a reader.
+func readerLayoutIDs() []string {
+	return slices.Sorted(maps.Keys(layoutReaders()))
+}
+
+var _ = edition.Register(edition.KindLayout, readerLayoutIDs)
 
 // flat is vortex.flat: one segment, no child. Its metadata is ignored.
 type flat struct {

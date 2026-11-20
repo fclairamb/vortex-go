@@ -4,7 +4,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 
+	"github.com/fclairamb/vortex-go/internal/edition"
 	"github.com/fclairamb/vortex-go/internal/fbs"
 )
 
@@ -135,26 +138,46 @@ func extensionType(d fbs.DType) (Type, error) {
 	if t.nullable, err = storage.Nullable(); err != nil {
 		return Type{}, err
 	}
-	switch id {
-	case "vortex.date":
-		t.kind = Date
-		t.unit, err = unitOf(meta, Millisecond, Day)
-	case "vortex.time":
-		t.kind = Time
-		t.unit, err = unitOf(meta, Nanosecond, Second)
-	case "vortex.timestamp":
-		t.kind = Timestamp
-		t.unit, t.zone, err = timestampMeta(meta)
-	case "vortex.uuid":
-		t.kind = UUID
-		if len(meta) > 1 {
-			err = fmt.Errorf("uuid metadata of %d bytes", len(meta))
-		}
-	default:
-		err = fmt.Errorf("unknown extension type %q", id)
+	edition.Met(edition.KindDType, id)
+	parse, ok := extensionTypes[id]
+	if !ok {
+		return Type{}, fmt.Errorf("unsupported extension type %q: %w", id, errors.ErrUnsupported)
 	}
+	err = parse(&t, meta)
 	return t, err
 }
+
+// extensionTypes are the extension types of the format, by identifier: each sets the kind
+// and the parameters of the type from the metadata.
+var extensionTypes = map[string]func(t *Type, meta []byte) error{
+	"vortex.date": func(t *Type, meta []byte) (err error) {
+		t.kind = Date
+		t.unit, err = unitOf(meta, Millisecond, Day)
+		return err
+	},
+	"vortex.time": func(t *Type, meta []byte) (err error) {
+		t.kind = Time
+		t.unit, err = unitOf(meta, Nanosecond, Second)
+		return err
+	},
+	"vortex.timestamp": func(t *Type, meta []byte) (err error) {
+		t.kind = Timestamp
+		t.unit, t.zone, err = timestampMeta(meta)
+		return err
+	},
+	"vortex.uuid": func(t *Type, meta []byte) error {
+		t.kind = UUID
+		if len(meta) > 1 {
+			return fmt.Errorf("uuid metadata of %d bytes", len(meta))
+		}
+		return nil
+	},
+}
+
+// extensionIDs lists the extension types that are read.
+func extensionIDs() []string { return slices.Sorted(maps.Keys(extensionTypes)) }
+
+var _ = edition.Register(edition.KindDType, extensionIDs)
 
 func unitOf(meta []byte, lo, hi Unit) (Unit, error) {
 	if len(meta) != 1 {

@@ -3,8 +3,11 @@ package vortex
 import (
 	"encoding/binary"
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/fclairamb/vortex-go/internal/array"
+	"github.com/fclairamb/vortex-go/internal/edition"
 	"github.com/fclairamb/vortex-go/internal/protowire"
 )
 
@@ -27,6 +30,23 @@ type zoneMap struct {
 	zoneLen    uint32
 	legacy     bool
 }
+
+// statistics are the aggregates a zone map can hold, by identifier. They are recognized in
+// the metadata of a zoned layout; a statistic is a hint, so one that is not in this table
+// is kept in aggregateSpec and otherwise ignored.
+var statistics = map[string]string{
+	"vortex.min":         "smallest value of the zone",
+	"vortex.max":         "largest value of the zone",
+	"vortex.bounded_min": "lower bound of the zone, possibly truncated",
+	"vortex.bounded_max": "upper bound of the zone, possibly truncated",
+	"vortex.null_count":  "number of nulls of the zone",
+	"vortex.nan_count":   "number of NaNs of the zone",
+}
+
+// statisticIDs lists the statistics that are recognized.
+func statisticIDs() []string { return slices.Sorted(maps.Keys(statistics)) }
+
+var _ = edition.Register(edition.KindAggregate, statisticIDs)
 
 // parseZoned reads the metadata of a vortex.zoned layout: a version byte, then a protobuf
 // {zone_len: uint32, aggregate_specs: [{id: string, options: bytes}]}.
@@ -54,6 +74,7 @@ func parseZoned(meta []byte) (zoneMap, error) {
 			if err != nil {
 				return z, err
 			}
+			edition.Met(edition.KindAggregate, spec.id)
 			z.aggregates = append(z.aggregates, spec)
 		}
 	}

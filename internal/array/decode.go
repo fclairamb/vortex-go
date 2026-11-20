@@ -4,8 +4,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"slices"
 	"sync"
 
+	"github.com/fclairamb/vortex-go/internal/edition"
 	"github.com/fclairamb/vortex-go/internal/fbs"
 )
 
@@ -84,6 +86,19 @@ func registry() map[string]Decoder {
 	}
 }
 
+// Encodings lists the identifiers of the encodings that have a decoder.
+func Encodings() []string {
+	t := decoders()
+	out := make([]string, 0, len(t))
+	for id := range t {
+		out = append(out, id)
+	}
+	slices.Sort(out)
+	return out
+}
+
+var _ = edition.Register(edition.KindArray, Encodings)
+
 // Decode decodes the serialized array of seg: its buffers, the flatbuffer of the tree, then
 // the length of the flatbuffer. specs are the array specs of the footer, rows the number of
 // rows and t the type the array must have.
@@ -156,9 +171,10 @@ func (c *context) decode(fb fbs.ArrayNode, path string, t DType, rows int) (*Arr
 	if err != nil {
 		return nil, err
 	}
+	edition.Met(edition.KindArray, id)
 	dec, ok := c.table[id]
 	if !ok {
-		return nil, fmt.Errorf("unsupported encoding %q: %w", id, errors.ErrUnsupported)
+		return nil, fmt.Errorf("unsupported encoding %q at column %q: %w", id, path, errors.ErrUnsupported)
 	}
 	n := &Node{ctx: c, path: path}
 	if n.metadata, err = fb.Metadata(); err != nil {

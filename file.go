@@ -39,6 +39,7 @@ type File struct {
 	// The dictionaries of the footer, which the layout and the arrays index.
 	arrayEncodings  []string
 	layoutEncodings []string
+	readers         map[string]layoutMaker // the layout readers, by identifier
 	segments        []fbs.SegmentSpec
 	size            int64
 	numRows         int64
@@ -213,7 +214,7 @@ func (b blob) at(s segment) []byte {
 }
 
 func load(b blob, segs segments, size int64) (*File, error) {
-	f := &File{size: size}
+	f := &File{size: size, readers: layoutReaders()}
 	foot, err := fbs.ReadFooter(b.at(segs.footer))
 	if err != nil {
 		return nil, wrapCorrupt("footer", segs.footer.offset, err)

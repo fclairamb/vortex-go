@@ -215,6 +215,7 @@ func compare(exp *testutil.Expected, accs map[string]*acc, rows int64) error {
 func corpus(t *testing.T) []string {
 	t.Helper()
 	paths := append(fixtures(t), mustGlob(t, "testdata/fixtures/*/extra/*.vortex")...)
+	paths = append(paths, mustGlob(t, "testdata/fixtures/compat/*/*.vortex")...)
 	slices.Sort(paths)
 	return paths
 }
