@@ -23,7 +23,7 @@ Upstream publishes test files for every release in a public bucket,
 
 - `versions.json` lists 28 releases, from 0.64.0 to 0.93.0.
 - `v0.93.0/arrays/manifest.json` lists 43 files with their SHA-256.
-- 37 are synthetic, one per type or encoding (`primitives`, `list`, `map`, `alp`, `fsst`,
+- 37 are synthetic, each a struct of columns aimed at one type or encoding (`primitives`, `list`, `map`, `alp`, `fsst`,
   `pco`, `zstd`, `sparse`...). They weigh 1 MB in total.
 - 6 are datasets: TPC-H `lineitem` and `orders`, ClickBench `hits`, each written in
   "regular" and "compact" mode. They weigh 4.9 MB in total.
@@ -53,10 +53,92 @@ of a column: one validity byte, then the value if it is valid.
 |---|---|
 | Integers, floats | Little-endian, raw bits (NaN payloads and `-0` are kept) |
 | Bool | One byte |
-| Decimal | Little-endian two's complement, 16 or 32 bytes |
+| Decimal | Little-endian two's complement, 16 bytes up to precision 38, 32 bytes above, whatever the storage width |
 | Utf8, binary | `uint32` length, then the bytes |
 | Struct | Each field in order |
 | List | `uint32` length, then each element |
+| Fixed-size list | Each element in order, no length |
+| Map | A list of structs `{key, value}` |
+| Date, time, timestamp | The storage integer (no timezone, no unit) |
+| UUID | The 16 bytes, no length |
+| Null type | The validity byte only |
+| Variant | The canonical JSON of the value (below), hashed like a string: `uint32` length, then the bytes |
+
+Every element of a list, every field of a struct and every entry of a map is a row of its
+own type, so it has its validity byte too. A null struct, list or map has no more bytes
+after its validity byte. The hash of a nested struct field (`inner.a`) is taken over the
+field as flattened: it is null where the parent is null.
+
+**Canonical JSON of a Variant.** A Variant row is rendered as JSON text, then hashed like a
+string. Nothing is left to a printer: no space; the keys of an object sorted by their bytes;
+an integer is its digits; a float is `%.17g` (17 significant digits), with `.0` added when
+that looks like an integer, and `NaN`, `Infinity` and `-Infinity` bare; a string escapes the
+quote, the backslash and the control characters (`\u00XX`), nothing else; a null is `null`.
+What JSON has no type for is an object with one key: a binary is `{"$binary":"<hex>"}`, a
+date, a time of day or a timestamp is `{"$time":"<UTC>"}` (`2006-01-02T15:04:05.999999999Z`,
+no trailing zero in the fraction), a decimal is `{"$decimal":"<digits with the point>"}`.
+`testutil.CanonicalJSON` is the Go side. The Python side in `tools/oracle/oracle.py` has not
+been run: the reference's Python package cannot read a Variant column (`extra/MISSING.md`).
+
+**The oracle.** `make oracle` runs `tools/oracle/genfixtures.py` (the fixtures upstream
+lacks, into `testdata/fixtures/<version>/extra/`) then `tools/oracle/oracle.py expected`
+on every fixture. `<file>.expected.json` holds `rows`, `schema` (the DType tree, parsed
+from the reference's text form of the DType, since its Python API hides map, extension and
+element types), `columns` (per column and per nested struct field as a dotted path:
+`nulls`, `sha256`, `first` and `last` 5 values as text) and `encodings` (the identifiers
+the reference reader met). There is no `layouts`: the reference Python API does not expose
+them. Keys are sorted and nothing is time-dependent, so a second run is byte-identical.
+Never edit these files by hand. What the reference writer cannot produce is listed in
+`testdata/fixtures/<version>/extra/MISSING.md`.
+
+**What the synthetic fixtures hold.** Read from `vortex-test/compat-gen/src/fixtures/arrays/synthetic/`
+at tag 0.93.0. A fixture is not "one encoding, one column": each file is a struct of several
+columns, built as one flat-layout array (no compressor), and upstream's `expected_encodings`
+check asserts the encoding it targets is in the tree. The second group below is named after
+an encoding, the first after a canonical type.
+
+| File | Content (upstream description) |
+|---|---|
+| `booleans` | Mixed true/false, including a nullable column |
+| `chunked` | Chunks of variable size with nullable data |
+| `datetime` | Timestamps, dates and times in several units |
+| `decimal` | Several precisions and scales, nullable variants included |
+| `decimal_canonical_widths` | The canonical width of each precision, with the bounds of each |
+| `decimal_narrow_storage` | Stored narrower than the canonical width of the precision |
+| `decimal_wide_storage` | Stored wider than the canonical width of the precision |
+| `decimal_gap_values` | Narrow storage, with values that need the canonical width |
+| `decimal_high_scale` | Narrow storage, with a scale near the precision |
+| `decimal_null_slots` | Nullable, with nonzero values in the null slots |
+| `fixed_size_list` | Fixed-size lists (3-element vectors) |
+| `list`, `listview` | Variable-length lists of integers and strings, in both layouts |
+| `map` | Sorted and unsorted keys, nullable values, null maps |
+| `null` | An all-null `NullArray` next to an integer column |
+| `primitives` | u8 to u64, i32, i64, f32, f64, plus a nullable i32 |
+| `struct_nested` | A struct holding a struct with primitive and string fields |
+| `varbin`, `varbinview` | Strings: empty, unicode, emoji, a nullable column; `varbinview` adds strings over 12 bytes |
+| `alp`, `alprd` | Near-integer floats and decimal-like prices (f32, f64); real-valued doubles with small deltas |
+| `bitpacked` | Unsigned integers that fit in fewer bits than their type |
+| `bytebool` | Booleans for the ByteBool encoding |
+| `constant` | Constant int, float, string, bool and null columns |
+| `datetimeparts` | Timestamps for the DateTimeParts encoding |
+| `decimal_byte_parts` | Fixed-precision decimals for DecimalByteParts |
+| `decimal_byte_parts_narrow_msp` | DecimalByteParts whose MSP is narrower or wider than the canonical width |
+| `dict` | Low-cardinality strings and integers |
+| `for` | Integers clustered around a base (Frame of Reference) |
+| `fsst` | Strings with common substrings and prefixes |
+| `pco` | Various numeric patterns |
+| `rle` | Primitives with long runs |
+| `runend` | Variable-length runs |
+| `sequence` | Arithmetic sequences (0,1,2... and stepped), nullable included |
+| `sparse` | Mostly-null or mostly-default arrays with a few other values |
+| `zigzag` | Signed integers of small absolute value |
+| `zstd` | Primitive and string arrays compressed with Zstd |
+
+Upstream's source at 0.93.0 defines three more files that the published `v0.93.0` manifest
+does not list, so they are not in our corpus: `delta` (monotonically increasing unsigned
+integers), `patched` (patches applied on top of an inner array) and `decimal_byte_parts_v2`
+(wide decimals split into a most significant part plus 64-bit lower parts). Upstream's
+`check` compares decoded arrays, never bytes.
 
 ## 2. Completeness
 
@@ -67,7 +149,12 @@ of a column: one validity byte, then the value if it is valid.
   when an identifier of the edition is never met across the corpus. So every decoder has
   run on a file written by the reference writer, and a missing fixture is detected.
 - **Types.** One test per logical type, nullable and not nullable, alone and nested.
-- **Releases.** `make compat` runs the whole corpus of every published release.
+- **Releases.** `make compat` runs the whole corpus of every published release: it fetches
+  them into `.cache/fixtures/<version>/` (`scripts/fixtures.sh --all`), writes the expected
+  values with the `vortex-data` of that release (`scripts/oracle-all.sh`, the pinned one when
+  it cannot be installed, noted in `ORACLE`), then runs `compat_test.go` (build tag `compat`).
+  The nightly job runs it. A file that fails is copied, the smallest one, into
+  `testdata/fixtures/compat/<version>/`.
 - **Writer.** The same table says which encodings the writer emits.
 - **The matrix.** `go generate` writes the support matrix of the README from the table.
   CI fails when it is stale.
@@ -86,15 +173,26 @@ of a column: one validity byte, then the value if it is valid.
   corpus. The result must equal a plain Go loop over the fully decoded data. The seed is
   printed on failure.
 - **Batch boundaries.** Batch sizes of 1, 7, 1024, and larger than a chunk.
-- **Corrupt files.** Native Go fuzzing (`testing.F`) on open plus full scan, seeded with
-  the whole corpus. Three properties: no panic, no hang, no allocation above a limit
-  derived from the file size. Every crasher found is committed. 30 seconds on each PR,
-  longer every night.
-- **Systematic damage.** Each file is truncated at many offsets, and each byte of its
-  footer is flipped. Same three properties.
+- **Corrupt files.** Native Go fuzzing (`FuzzOpenScan`) on open plus scan, seeded with
+  the fixtures of at most 32 KiB. Three properties: no panic, done within a deadline, no
+  allocation above a limit derived from the file size and its rows. A small file may hold
+  any number of rows (a constant does), so the fuzzer scans the first 65,536 rows, and
+  takes flats of that many rows at most. Every crasher found is committed under
+  `testdata/fuzz/`. 30 seconds on each PR, longer every night.
+- **Systematic damage.** Each file is truncated at 200 offsets, and each byte of its
+  footer, postscript and trailer is flipped. Same three properties, the allocation one on
+  every 16th copy (the others run in parallel, which a global allocation count cannot
+  measure).
 - **I/O faults.** A reader that fails at call N, for every N, and a reader that returns
-  short reads. The scan must return an error that wraps the cause.
-- **Concurrency.** Everything runs with `-race`. One test runs many scans on one `File`.
+  short reads. The scan must return an error that wraps the cause. The readers are in
+  `internal/testutil`, with one that returns `io.EOF` with the last bytes and one that
+  blocks until a context is cancelled.
+- **Concurrency.** Everything runs with `-race`. 16 scans at once on one `File` give the
+  sequential results; `GOMAXPROCS` of 1, 2 and 8 give the same batches; a cancelled
+  context, a `break` or a panic in the loop leave no goroutine; `Close` during a scan is an
+  error.
+- **Memory.** The peak heap of a scan stays under a fixed bound, on a committed file and on
+  2 million rows written by `make bigfile` into `.cache/` (skipped when absent).
 
 ## 4. Writer validity
 
@@ -164,6 +262,8 @@ encoding choice to the writer, and upstream's own compatibility check
   statement block was never executed. It prints the blocks.
 - **No exclusion list.**
 - **Offline.** The gate only uses committed files.
+- **Codecov shows it on the PR.** CI uploads `coverage.txt` after the gate. The upload
+  never fails the build: `make cover` stays the blocking gate.
 - **How error paths get covered.** By the corrupt files and the I/O faults of section 3
   and the write faults of section 4. An error branch that no file and no I/O fault can
   trigger is dead code: delete it.
@@ -191,14 +291,15 @@ encoding choice to the writer, and upstream's own compatibility check
 | 100% coverage | `make cover` | yes | in place |
 | Race detector | `make race` | yes | in place |
 | Lint | `make lint` | yes | in place |
-| Fixtures and edition table of the pinned release | `go test ./...` | yes | planned, first |
-| Corpus against the oracle | `go test ./...` | yes | planned |
-| Edition table complete and seen | `go test ./...` | yes | planned |
-| Allocation | `go test ./...` | yes | planned |
+| Fixtures and edition table of the pinned release | `go test ./...` | yes | in place |
+| Expected values of every fixture exist and parse | `go test ./...` | yes | in place |
+| Corpus against the oracle | `go test ./...` | yes | in place |
+| Edition table complete and seen | `go test ./...` | yes | in place |
+| Allocation | `go test ./...` | yes | in place |
 | Examples, API snapshot, README | `go test ./...`, `make api` | yes | planned |
 | Reference reads our files | `make interop` | yes | planned |
 | File size ratio | `make interop` | yes | planned |
-| Fuzzing, 30 seconds | `make fuzz` | yes | planned |
-| All published releases | `make compat` | nightly | planned |
-| Long fuzzing | `make fuzz FUZZTIME=30m` | nightly | planned |
+| Fuzzing, 30 seconds | `make fuzz` | yes | in place |
+| All published releases | `make compat` | nightly | in place |
+| Long fuzzing | `make fuzz FUZZTIME=30m` | nightly | in place |
 | Benchmarks against main | `make bench` | no, posted on the PR | planned |

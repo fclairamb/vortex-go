@@ -1,0 +1,118 @@
+{
+  "columns": {
+    "attrs": {
+      "first": [
+        "[(1, 'one'), (2, None)]",
+        "[]",
+        "[(1, 'dup-old'), (1, 'dup-new')]",
+        "[(5, 'five')]"
+      ],
+      "last": [
+        "[(1, 'one'), (2, None)]",
+        "[]",
+        "[(1, 'dup-old'), (1, 'dup-new')]",
+        "[(5, 'five')]"
+      ],
+      "nulls": 0,
+      "sha256": "a7cb92d5e1d653fe215c8666c0920f11bf4e4561b6c1846143234dd023f4acef"
+    },
+    "nullable_attrs": {
+      "first": [
+        "None",
+        "[]",
+        "[(7, 'seven')]",
+        "[(8, None)]"
+      ],
+      "last": [
+        "None",
+        "[]",
+        "[(7, 'seven')]",
+        "[(8, None)]"
+      ],
+      "nulls": 1,
+      "sha256": "ec636207565b615302c123a037eebc46acbe2d227ccb141fb2329ec8624f5cf5"
+    },
+    "sorted_attrs": {
+      "first": [
+        "[('a', 1), ('b', 2)]",
+        "[('z', 26)]",
+        "[]",
+        "[('k', 11), ('m', 13), ('n', 14)]"
+      ],
+      "last": [
+        "[('a', 1), ('b', 2)]",
+        "[('z', 26)]",
+        "[]",
+        "[('k', 11), ('m', 13), ('n', 14)]"
+      ],
+      "nulls": 0,
+      "sha256": "5a7331c0651b6fb0a883acb52b5732ca72be62cb52bcd2f0dc211e3c677e3fad"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.listview",
+    "vortex.map",
+    "vortex.primitive",
+    "vortex.struct",
+    "vortex.varbin"
+  ],
+  "rows": 4,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "key": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i32"
+          },
+          "keys_sorted": false,
+          "kind": "map",
+          "nullable": false,
+          "value": {
+            "kind": "utf8",
+            "nullable": true
+          }
+        },
+        "name": "attrs"
+      },
+      {
+        "dtype": {
+          "key": {
+            "kind": "utf8",
+            "nullable": false
+          },
+          "keys_sorted": true,
+          "kind": "map",
+          "nullable": false,
+          "value": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "sorted_attrs"
+      },
+      {
+        "dtype": {
+          "key": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i32"
+          },
+          "keys_sorted": false,
+          "kind": "map",
+          "nullable": true,
+          "value": {
+            "kind": "utf8",
+            "nullable": true
+          }
+        },
+        "name": "nullable_attrs"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

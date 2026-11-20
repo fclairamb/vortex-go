@@ -1,0 +1,101 @@
+{
+  "columns": {
+    "int_list": {
+      "first": [
+        "[1, 2, 3]",
+        "[4, 5]",
+        "[6]",
+        "[7, 8, 9, 10]"
+      ],
+      "last": [
+        "[1, 2, 3]",
+        "[4, 5]",
+        "[6]",
+        "[7, 8, 9, 10]"
+      ],
+      "nulls": 0,
+      "sha256": "eb2f21e9b8f13ce602c21d00930cf64fcd64b06fa72d84516a6ae32ab178f87a"
+    },
+    "nullable_int_list": {
+      "first": [
+        "[100, 200]",
+        "None",
+        "[]",
+        "[300]"
+      ],
+      "last": [
+        "[100, 200]",
+        "None",
+        "[]",
+        "[300]"
+      ],
+      "nulls": 1,
+      "sha256": "88c7ee0c4258a919b8f7ea65901d6ff4d57f53245da40bc935dd48f46b685aff"
+    },
+    "str_list": {
+      "first": [
+        "['a', 'b']",
+        "['hello']",
+        "[]",
+        "['x', 'y', 'z']"
+      ],
+      "last": [
+        "['a', 'b']",
+        "['hello']",
+        "[]",
+        "['x', 'y', 'z']"
+      ],
+      "nulls": 0,
+      "sha256": "56ddf78aeb88dedc4cf0c0070b8203674d341d041f6423c6aecb2c23ad9163ac"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.list",
+    "vortex.primitive",
+    "vortex.struct",
+    "vortex.varbin"
+  ],
+  "rows": 4,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "element": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i32"
+          },
+          "kind": "list",
+          "nullable": false
+        },
+        "name": "int_list"
+      },
+      {
+        "dtype": {
+          "element": {
+            "kind": "utf8",
+            "nullable": false
+          },
+          "kind": "list",
+          "nullable": false
+        },
+        "name": "str_list"
+      },
+      {
+        "dtype": {
+          "element": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i32"
+          },
+          "kind": "list",
+          "nullable": true
+        },
+        "name": "nullable_int_list"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

@@ -1,0 +1,233 @@
+{
+  "columns": {
+    "dec_10_2": {
+      "first": [
+        "0.00",
+        "1.01",
+        "2.02",
+        "3.03",
+        "4.04"
+      ],
+      "last": [
+        "1019.19",
+        "1020.20",
+        "1021.21",
+        "1022.22",
+        "1023.23"
+      ],
+      "nulls": 0,
+      "sha256": "272284714f6dfd47b06dda5ed2bc59c739c7af38503fe04fa5017a1cc8d3d877"
+    },
+    "dec_18_6": {
+      "first": [
+        "0.000000",
+        "1.000007",
+        "2.000014",
+        "3.000021",
+        "4.000028"
+      ],
+      "last": [
+        "1019.007133",
+        "1020.007140",
+        "1021.007147",
+        "1022.007154",
+        "1023.007161"
+      ],
+      "nulls": 0,
+      "sha256": "cb7adb54ce1fe3b056cc5477c205ff72292a99501fcc20db9553cf2edc342eba"
+    },
+    "dec_crossing": {
+      "first": [
+        "-0.100",
+        "-0.099",
+        "-0.098",
+        "-0.097",
+        "-0.096"
+      ],
+      "last": [
+        "-0.081",
+        "-0.080",
+        "-0.079",
+        "-0.078",
+        "-0.077"
+      ],
+      "nulls": 0,
+      "sha256": "1d0e1321a0932e4ed6ae18df93bba82c14d9bc2719b99bcddd22b30ada99cd7b"
+    },
+    "dec_near_limit": {
+      "first": [
+        "900000000000000000",
+        "899999999999999999",
+        "899999999999999998",
+        "899999999999999997",
+        "899999999999999996"
+      ],
+      "last": [
+        "899999999999998981",
+        "899999999999998980",
+        "899999999999998979",
+        "899999999999998978",
+        "899999999999998977"
+      ],
+      "nulls": 0,
+      "sha256": "2405e9bc9dfd651dd48885a46cc6b5ae05b702f74284706d1fb6396938f9f63c"
+    },
+    "dec_negative": {
+      "first": [
+        "-50.00",
+        "-49.97",
+        "-49.94",
+        "-49.91",
+        "-49.88"
+      ],
+      "last": [
+        "-19.43",
+        "-19.40",
+        "-19.37",
+        "-19.34",
+        "-19.31"
+      ],
+      "nulls": 0,
+      "sha256": "51f96ffd42c039b8e388ae1d7245c98c5103dd069333160db56bd5fa2ffbfaed"
+    },
+    "dec_nullable": {
+      "first": [
+        "None",
+        "-499.0000",
+        "-498.0000",
+        "-497.0000",
+        "-496.0000"
+      ],
+      "last": [
+        "519.0000",
+        "520.0000",
+        "521.0000",
+        "522.0000",
+        "None"
+      ],
+      "nulls": 94,
+      "sha256": "f8d98e9cc90d82762f1aafa6918deebad3b267e2da5da064055a61f84134955a"
+    },
+    "dec_trailing_zero": {
+      "first": [
+        "0.0000",
+        "1.0000",
+        "2.0000",
+        "3.0000",
+        "4.0000"
+      ],
+      "last": [
+        "19.0000",
+        "20.0000",
+        "21.0000",
+        "22.0000",
+        "23.0000"
+      ],
+      "nulls": 0,
+      "sha256": "c4bf6383d8a86a5637654dabc8a3eb78f75924445585ca6ce2b601512e3d22e4"
+    },
+    "dec_zero": {
+      "first": [
+        "0.00",
+        "0.00",
+        "0.00",
+        "0.00",
+        "0.00"
+      ],
+      "last": [
+        "0.00",
+        "0.00",
+        "0.00",
+        "0.00",
+        "0.00"
+      ],
+      "nulls": 0,
+      "sha256": "dd8c2545a5b0bf610c313e6af59028d0802bd74f8ad6e7745347a957d07cabc5"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.decimal_byte_parts.v2",
+    "vortex.primitive",
+    "vortex.struct"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 10,
+          "scale": 2
+        },
+        "name": "dec_10_2"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 18,
+          "scale": 6
+        },
+        "name": "dec_18_6"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 10,
+          "scale": 2
+        },
+        "name": "dec_negative"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": true,
+          "precision": 12,
+          "scale": 4
+        },
+        "name": "dec_nullable"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 10,
+          "scale": 2
+        },
+        "name": "dec_zero"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 12,
+          "scale": 3
+        },
+        "name": "dec_crossing"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 18,
+          "scale": 4
+        },
+        "name": "dec_trailing_zero"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 18,
+          "scale": 0
+        },
+        "name": "dec_near_limit"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

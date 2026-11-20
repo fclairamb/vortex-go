@@ -1,6 +1,10 @@
 # Interface
 
-This is the planned public API. Nothing is implemented yet.
+This is the planned public API. Implemented so far: `Open`, `OpenFile`, `Schema`,
+`NumRows`, `Close`, `Type`, `Kind`, `Field`, the errors, and `Scan` with `Query` (empty, and
+`columns` must be empty), `Batch`, `Column` (`Type`, `Null`, `Bool`, `Field`), `Values` and
+`Number`, for numbers, booleans, structs and the storage of dates, times and timestamps, and
+`Rows`, which reads a file into Go structs.
 
 Once the code exists, the source of truth becomes `api.txt` (the output of `go doc -all`,
 checked by CI) and this file only keeps the reasons.
@@ -64,7 +68,7 @@ func (f *File) Close() error
 // Select rows
 type Query struct {
     Filter Expr  // exact, zero value keeps every row
-    Rows   Range // zero value is the whole file
+    Rows   Range // half-open {Start, End}; zero value is the whole file, End == 0 is the end
 }
 func Col(path ...string) Ref // .Eq .Ne .Lt .Le .Gt .Ge .In .IsNull
 func And(e ...Expr) Expr     // also Or, Not
@@ -110,6 +114,44 @@ func (d Decimal) Big() *big.Int
 func (d Decimal) Text(scale int) string
 ```
 
+## Opening, schema and errors
+
+```go
+type Kind uint8 // Null, Bool, Int8...Int64, Uint8...Uint64, Float16...Float64, KindDecimal, Utf8,
+                // Binary, List, FixedSizeList, Map, Struct, Date, Time, Timestamp, UUID, Variant
+type Unit uint8 // Nanosecond, Microsecond, Millisecond, Second, Day
+
+type Type struct{ /* unexported */ }
+func (t Type) Kind() Kind
+func (t Type) Nullable() bool
+func (t Type) Precision() int; func (t Type) Scale() int // Decimal
+func (t Type) Elem() Type; func (t Type) Size() int      // List, FixedSizeList
+func (t Type) Key() Type; func (t Type) Value() Type     // Map
+func (t Type) Fields() []Field                           // Struct
+func (t Type) Unit() Unit; func (t Type) Zone() string   // Date, Time, Timestamp
+func (t Type) Equal(o Type) bool
+func (t Type) String() string
+
+type Field struct{ Name string; Type Type }
+type Schema struct{ /* unexported */ }
+func (s *Schema) Fields() []Field
+func (s *Schema) Field(name string) (Field, bool)
+func (s *Schema) String() string
+
+var ErrNotVortex, ErrUnsupportedVersion, ErrCorrupt error // test with errors.Is
+```
+
+- **`Type` is a value with unexported fields**, compared with `Equal`, not `==`: it holds
+  nested types. An accessor of another kind returns the zero value. The writer spec adds
+  the constructors.
+- **`Null` types are always nullable.** The oracle reports them so.
+- **Errors carry the byte offset.** `ErrNotVortex`: bad magic at either end, or fewer
+  than 12 bytes. `ErrUnsupportedVersion`: a version other than 1. `ErrCorrupt`: anything
+  out of bounds or malformed, an unknown extension type and `Union` included.
+- **Reads.** `Open` reads the last 64 KiB in one call, and one more range when the footer
+  reaches further back. A file larger than 64 KiB costs one more read for its first four
+  bytes, so a typical open is two reads.
+
 ## Types
 
 The target edition has 12 logical types. `Union` exists upstream but is in no edition, so
@@ -133,7 +175,7 @@ it is out of scope.
 | Time | `time.Duration` since midnight | the storage, `Values[int32]` or `Values[int64]` |
 | Timestamp | `time.Time` | the storage, `Values[int64]` |
 | UUID | `[16]byte` | `Bytes(i)`, 16 bytes |
-| Variant | open, see below | open |
+| Variant | `any` (`nil`, `bool`, `int64`, `float64`, `string`, `[]byte`, `time.Time`, `VariantDecimal`, `[]any`, `map[string]any`) | `Variant(i)`, allocates |
 
 - **Exact match.** An `int32` column does not go into an `int64` field. The error names
   both types. `int` and `uint` count as 64 bits. Widening can come later, it is additive.
@@ -141,17 +183,19 @@ it is out of scope.
   one it is, with its unit and time zone. The row level converts to the Go type, and also
   accepts the storage type (an `int64` field for a timestamp). A UUID is stored as a list
   of 16 `u8`, and is read and written as 16 bytes.
+- **The decimal kind is `KindDecimal`**, since `Decimal` is the value type. A
+  `DecimalFromBig` error (`ErrDecimalRange`) means the value is outside -2^255 to 2^255-1.
 - **Decimals keep their scale in the schema**, not in each value. A `vortex.Decimal` is the
   unscaled value on 256 bits: 32 bytes, no allocation. `Text(scale)` prints it, `Big()`
   allocates.
 - **The writer mirrors the table.** `Data` has the physical shape and the `*Schema` gives
   the logical type: `Of[int64]` for a timestamp, `OfBytes` for a UUID,
   `OfList(offsets, OfStruct(keys, values))` for a map.
-
-Open, Florent's call:
-
-- **Variant.** Proposal: `any` in a row struct, and nothing at the column level in the
-  first version.
+- **Variant is `any`.** A field of a row struct of type `any` takes a Variant column;
+  `Column.Variant(i) (any, error)` decodes one value at the column level. It allocates, and
+  the error is a damaged value: the bytes of a Variant are only parsed when a row is asked
+  for. A decimal inside a Variant is `VariantDecimal{Value Decimal; Scale int}`: a Variant
+  gives each decimal its own scale.
 
 ## Rules that go with it
 
@@ -163,6 +207,16 @@ Open, Florent's call:
   - `[]byte` is a view, valid in the loop body.
   - `sql.Null[T]` or a pointer for nullable columns. The pointer allocates.
   - Nested structs, slices and maps are supported. Slices and maps allocate per row.
+  - A field that is a number, a bool, a decimal, a time, a UUID, a `string` or a `[]byte`,
+    plain or in `sql.Null`, is filled for a whole batch at once with no allocation per row
+    (`internal/unsafex`, offsets and sizes from `reflect`). A plain nested struct of such
+    fields is filled in place. Pointers, slices, maps, `any` and nullable structs go through
+    `reflect`.
+  - A date or a timestamp is a `time.Time` in UTC, or in the zone of its type when it has
+    one (a zone the system does not know is an error of the first iteration). A time is a
+    `time.Duration` since midnight. A named type of the right kind is accepted, except for
+    the time types, which must be `time.Time` and `time.Duration` themselves.
+  - Two fields may read the same column. A column that no field reads is not read.
 - **Missing column.** An error, unless the tag says `vortex:"city,optional"`, which gives
   the zero value.
 - **Errors.** A bad column name, a filter that does not fit the column type, or a struct
@@ -174,10 +228,14 @@ Open, Florent's call:
 - **Nested fields.** `Col("address", "city")` filters on a field of a struct. `Scan` only
   takes top-level columns, the children come with `Field(i)`.
 - **Filters are exact.** The caller never has to filter again.
-- **Parallelism.** Decoding runs ahead on internal goroutines. Breaking out of the loop
-  stops them.
+- **Parallelism.** Decoding runs ahead on `GOMAXPROCS` internal goroutines, a bounded
+  number of segments ahead of the loop. Batches come in file order. Leaving the loop
+  (`break`, `return`, a panic) or cancelling the context stops them before the iterator
+  returns. `Close` during a scan makes it return an error that wraps `os.ErrClosed`.
 - **I/O.** Reads are merged and issued in parallel. The gap is chosen from the reader:
-  small for `*os.File` and memory, large for anything else.
+  small for `*os.File` and memory (4 KiB, reads of 1 MiB at most), large for anything else
+  (1 MiB, reads of 16 MiB at most). A reader that returns fewer bytes without an error is
+  called again for the rest.
 
 ## Why this shape
 

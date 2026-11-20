@@ -1,0 +1,92 @@
+{
+  "columns": {
+    "id": {
+      "first": [
+        "0x62f746b484e64ceb95bd447e7184d454",
+        "0xb61e6ba536824dd6b80469b84b2d451c",
+        "0xec7ac8ad1b2b406baae12c972399d29d",
+        "0xdc36fc9022484d70aca4a1a9f5b19f71",
+        "0xe500bddf37b043078f0f4c3c2052e52b"
+      ],
+      "last": [
+        "0x50d00787862a43db851bec1ede27387c",
+        "0x7a8d9ccd7582429fbac526d3d4381551",
+        "0x670c589145d24c06a20602e0fc80fa6f",
+        "0xbce1cb3400e247d79eda7e46a386c4a7",
+        "0x7592b89ff910468abaeebb48936b7ac2"
+      ],
+      "nulls": 0,
+      "sha256": "1d1a2720183f32e50dd8719539d04a7bb366302dbc0f34c18132e8a9abf218c7"
+    },
+    "nullable_id": {
+      "first": [
+        "None",
+        "0xb61e6ba536824dd6b80469b84b2d451c",
+        "0xec7ac8ad1b2b406baae12c972399d29d",
+        "None",
+        "0xe500bddf37b043078f0f4c3c2052e52b"
+      ],
+      "last": [
+        "None",
+        "0x7a8d9ccd7582429fbac526d3d4381551",
+        "0x670c589145d24c06a20602e0fc80fa6f",
+        "None",
+        "0x7592b89ff910468abaeebb48936b7ac2"
+      ],
+      "nulls": 7,
+      "sha256": "952e8ba2b2b32aa110ae5ab65b75a408241214e4f0d69031a9d65ada232dce6d"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.ext",
+    "vortex.fixed_size_list",
+    "vortex.primitive",
+    "vortex.struct"
+  ],
+  "rows": 20,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "ext_id": "vortex.uuid",
+          "ext_metadata": "",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "element": {
+              "kind": "primitive",
+              "nullable": false,
+              "ptype": "u8"
+            },
+            "kind": "fixed_size_list",
+            "nullable": true,
+            "size": 16
+          }
+        },
+        "name": "id"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.uuid",
+          "ext_metadata": "",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "element": {
+              "kind": "primitive",
+              "nullable": false,
+              "ptype": "u8"
+            },
+            "kind": "fixed_size_list",
+            "nullable": true,
+            "size": 16
+          }
+        },
+        "name": "nullable_id"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

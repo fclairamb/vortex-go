@@ -1,0 +1,320 @@
+{
+  "columns": {
+    "all_null": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 1024,
+      "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+    },
+    "bool_cat": {
+      "first": [
+        "yes",
+        "no",
+        "no",
+        "yes",
+        "no"
+      ],
+      "last": [
+        "no",
+        "yes",
+        "no",
+        "no",
+        "yes"
+      ],
+      "nulls": 0,
+      "sha256": "8ac252dd7eed23aeb0f4f055a36a462efa25e43ceaa84b4828ea30bc05334c5c"
+    },
+    "insertion_ordered": {
+      "first": [
+        "early",
+        "late",
+        "middle",
+        "last",
+        "first"
+      ],
+      "last": [
+        "first",
+        "early",
+        "late",
+        "middle",
+        "last"
+      ],
+      "nulls": 0,
+      "sha256": "fed8631d2bedf88a4759f406540f478f316be3b38eff3bf87c125b29905fcaf4"
+    },
+    "int_cat": {
+      "first": [
+        "0",
+        "100",
+        "200",
+        "300",
+        "400"
+      ],
+      "last": [
+        "900",
+        "0",
+        "100",
+        "200",
+        "300"
+      ],
+      "nulls": 0,
+      "sha256": "426f6f71810890c6817f8d491ad7e359577cbd4a9a95f9ff53af0fcbb53e9150"
+    },
+    "long_values": {
+      "first": [
+        "long-dict-value-0000-00000000-suffix",
+        "long-dict-value-0001-00000011-suffix",
+        "long-dict-value-0002-00000022-suffix",
+        "long-dict-value-0003-00000033-suffix",
+        "long-dict-value-0004-00000044-suffix"
+      ],
+      "last": [
+        "long-dict-value-1019-000043ab-suffix",
+        "long-dict-value-1020-000043bc-suffix",
+        "long-dict-value-1021-000043cd-suffix",
+        "long-dict-value-1022-000043de-suffix",
+        "long-dict-value-1023-000043ef-suffix"
+      ],
+      "nulls": 0,
+      "sha256": "3e88824ff40f7cb1650563634f80a0dccee8650e38c5a9c668aa2e6214fa1762"
+    },
+    "nullable_cat": {
+      "first": [
+        "None",
+        "green",
+        "blue",
+        "yellow",
+        "purple"
+      ],
+      "last": [
+        "purple",
+        "red",
+        "green",
+        "None",
+        "yellow"
+      ],
+      "nulls": 147,
+      "sha256": "f77c7c9fc99d9e514bf7701cceef94f61e04c11ee838dc6a64507bbdc3b9d914"
+    },
+    "single_cat": {
+      "first": [
+        "only_value",
+        "only_value",
+        "only_value",
+        "only_value",
+        "only_value"
+      ],
+      "last": [
+        "only_value",
+        "only_value",
+        "only_value",
+        "only_value",
+        "only_value"
+      ],
+      "nulls": 0,
+      "sha256": "c6d715a2856a7f7056588f471a24166aadf4de170a347c960773ef57351b6c10"
+    },
+    "single_non_null": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 1023,
+      "sha256": "816a75e983b51f6726384ca8c728334632a073ab499c05df4f695d780ffa4209"
+    },
+    "str_cat": {
+      "first": [
+        "red",
+        "green",
+        "blue",
+        "yellow",
+        "purple"
+      ],
+      "last": [
+        "purple",
+        "red",
+        "green",
+        "blue",
+        "yellow"
+      ],
+      "nulls": 0,
+      "sha256": "061815aa1f70dc534bac4d0f77f1fc118542c913826686e755a7e52dae5a4ae5"
+    },
+    "threshold_255": {
+      "first": [
+        "u255-0",
+        "u255-1",
+        "u255-2",
+        "u255-3",
+        "u255-4"
+      ],
+      "last": [
+        "u255-254",
+        "u255-0",
+        "u255-1",
+        "u255-2",
+        "u255-3"
+      ],
+      "nulls": 0,
+      "sha256": "d2d094358b0cbe5d2f1a7a8fd66105fa29c7e8b379967920a767742ed0af9b7d"
+    },
+    "threshold_256": {
+      "first": [
+        "u256-0",
+        "u256-1",
+        "u256-2",
+        "u256-3",
+        "u256-4"
+      ],
+      "last": [
+        "u256-251",
+        "u256-252",
+        "u256-253",
+        "u256-254",
+        "u256-255"
+      ],
+      "nulls": 0,
+      "sha256": "4f94a00e23bef8192b4e3a29af6b5185ed806fffe62606fa2632bf30f9e557bb"
+    },
+    "threshold_257": {
+      "first": [
+        "u257-0",
+        "u257-1",
+        "u257-2",
+        "u257-3",
+        "u257-4"
+      ],
+      "last": [
+        "u257-248",
+        "u257-249",
+        "u257-250",
+        "u257-251",
+        "u257-252"
+      ],
+      "nulls": 0,
+      "sha256": "264c9f9faa5ff4cc9708919014a5dbad88508fca910ec2e5b4ab608308c75767"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.constant",
+    "vortex.dict",
+    "vortex.primitive",
+    "vortex.struct",
+    "vortex.varbinview"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "str_cat"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "int_cat"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "nullable_cat"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "single_cat"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "bool_cat"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "all_null"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "single_non_null"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "threshold_255"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "threshold_256"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "threshold_257"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "long_values"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "insertion_ordered"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

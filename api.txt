@@ -1,0 +1,422 @@
+package vortex // import "github.com/fclairamb/vortex-go"
+
+Package vortex reads and writes files in the Vortex columnar format.
+
+Open and OpenFile read the trailer, the footer and the schema of a file.
+Scan reads columns of numbers, booleans, strings, binaries, decimals, lists,
+maps and structs, batch by batch, for the columns, the row range and the filter
+of a Query, and skips what the statistics of the file rule out. Rows reads the
+same rows into Go structs. Writing files is not implemented yet. The goals are
+in docs/goals.md, the planned interface in docs/interface.md and the test plan
+in docs/testing.md.
+
+VARIABLES
+
+var (
+	// ErrNotVortex means the file does not start and end with the Vortex magic, or is too short.
+	ErrNotVortex = errors.New("vortex: not a Vortex file")
+	// ErrUnsupportedVersion means the file has a format version this package does not read.
+	ErrUnsupportedVersion = errors.New("vortex: unsupported format version")
+	// ErrCorrupt means a part of the file is out of bounds or malformed.
+	ErrCorrupt = errors.New("vortex: corrupt file")
+)
+    The errors Open returns, to test with errors.Is. Their messages carry the
+    byte offset.
+
+var ErrDecimalRange = errors.New("vortex: decimal out of the range of 256 bits")
+    ErrDecimalRange reports a value that does not fit in 256 bits.
+
+
+FUNCTIONS
+
+func Rows[T any](ctx context.Context, f *File, q Query) iter.Seq2[T, error]
+    Rows reads the rows of the file that meet the query into values of T,
+    a struct, batch by batch, and yields them one by one. The columns it reads
+    come from the fields of T, so the query only selects rows: the scan is the
+    one of File.Scan.
+
+    A field takes the column named by its tag, vortex:"name", else its own name.
+    The tag vortex:"-" skips the field, vortex:"name,optional" leaves the field
+    at its zero value when the file has no such column. Unexported fields are
+    skipped and embedded structs are flattened. The Go type of a field must be
+    the one the column type calls for, with no widening:
+
+      - bool, the numbers (int and uint are 64 bits), and float32 for a f16
+        column;
+      - vortex.Decimal for a decimal, or int64 when its precision is 18 or less;
+      - string (a copy) or []byte (a view, valid in the loop body) for utf8,
+        []byte for binary;
+      - time.Time for a date and a timestamp (UTC unless the type has a zone),
+        time.Duration since midnight for a time, or their storage integer;
+      - [16]byte for a uuid;
+      - a struct for a struct, []X for a list, [N]X or []X for a fixed-size
+        list, map[K]V for a map, and any for a variant (see Column.Variant).
+
+    A nullable column needs sql.Null[X] or *X; a column that is not nullable
+    takes those and the plain type. A column of type null has no Go type:
+    leave its field out.
+
+    A field whose type is a number, a bool, a decimal, a time, a uuid, a string
+    or a []byte, plain or in sql.Null, is filled without allocating for the row
+    (a string allocates its copy). Pointers, slices, maps and variants allocate
+    for each row.
+
+    A field that does not fit its column, a missing column, a T that is not a
+    struct, and every error of Scan, come back as the error of the iteration,
+    and the loop ends. A field problem is found before any data is read.
+
+func Values[T Number](c *Column) ([]T, error)
+    Values returns the values of a numeric column as a slice of T, null rows
+    included (their value is unspecified: check Null). It returns an error,
+    naming both types, when the column is not a T. A f16 column is read as
+    float32. The slice is a view, valid for the iteration.
+
+
+TYPES
+
+type Batch struct {
+	// Has unexported fields.
+}
+    Batch is a group of rows of the columns of a scan. It and its columns are
+    valid for one iteration of the loop.
+
+func (b *Batch) Col(i int) *Column
+    Col returns the column i of the batch, in the order the columns were asked
+    for. It panics when i is out of range.
+
+func (b *Batch) Len() int
+    Len is the number of rows of the batch.
+
+type Column struct {
+	// Has unexported fields.
+}
+    Column is a view of the values of one column in a batch.
+
+func (c *Column) Bool(i int) bool
+    Bool returns the value of row i of a Bool column. It panics when the column
+    is of another type, and when i is out of range.
+
+func (c *Column) Bytes(i int) []byte
+    Bytes returns the bytes of row i of a Utf8, Binary or UUID column: a view,
+    valid until the next batch. It panics when the column is of another type,
+    and when i is out of range.
+
+func (c *Column) Decimal(i int) Decimal
+    Decimal returns the unscaled value of row i of a Decimal column, whatever
+    its precision and the width it is stored at. It panics when the column is of
+    another type, and when i is out of range.
+
+func (c *Column) Elems() *Column
+    Elems returns the elements of a List, FixedSizeList or Map column,
+    all the rows' together. For a map, they are structs of two fields, the key
+    and the value. List gives the range of a row. It panics when the column is
+    of another type.
+
+func (c *Column) Field(i int) *Column
+    Field returns the field i of a Struct column. It panics when the column is
+    of another type, and when i is out of range.
+
+func (c *Column) List(i int) (start, end int)
+    List returns the range of Elems that holds row i of a List, FixedSizeList
+    or Map column: the elements from start to end, end excluded. Ranges of
+    different rows may overlap. It panics when the column is of another type,
+    and when i is out of range.
+
+func (c *Column) Null(i int) bool
+    Null reports whether row i is null. It panics when i is out of range.
+
+func (c *Column) Type() Type
+    Type is the logical type of the column.
+
+func (c *Column) Variant(i int) (any, error)
+    Variant decodes row i of a Variant column, a null row being nil.
+    The value is nil, a bool, an int64, a float64, a string, a []byte,
+    a time.Time (a date, a time of day on 1970-01-01, or a timestamp, in UTC),
+    a VariantDecimal, a []any or a map[string]any. Every call allocates:
+    the result is a copy, valid after the batch. An error means the value of the
+    file is damaged. It panics when the column is not a Variant, and when i is
+    out of range.
+
+type Decimal struct {
+	// Has unexported fields.
+}
+    Decimal is the unscaled value of a decimal of any precision, on 256 bits
+    in two's complement: 32 bytes, no pointer. The scale is in the Type of the
+    column, not in each value: Text takes it. The representation is unique,
+    so == and Cmp agree on equality; Cmp also orders.
+
+func DecimalFromBig(v *big.Int) (Decimal, error)
+    DecimalFromBig returns the decimal whose unscaled value is v. It returns an
+    error when v does not fit in 256 bits, that is when it is outside -2^255 to
+    2^255-1.
+
+func DecimalFromInt64(v int64) Decimal
+    DecimalFromInt64 returns the decimal whose unscaled value is v.
+
+func (d Decimal) Big() *big.Int
+    Big returns the value as a new big.Int.
+
+func (d Decimal) Cmp(o Decimal) int
+    Cmp compares the values: -1 when d is less than o, 0 when equal, +1 when
+    greater.
+
+func (d Decimal) Int64() (int64, bool)
+    Int64 returns the value as an int64, and false when it does not fit.
+
+func (d Decimal) Text(scale int) string
+    Text prints the value with the point scale digits from the right: the
+    sign when negative, the digits, no exponent. A negative scale adds zeros:
+    the value is multiplied by 10^-scale.
+
+type Expr struct {
+	// Has unexported fields.
+}
+    Expr is a filter: a small tree of comparisons of columns with Go values,
+    and of And, Or and Not. The zero Expr keeps every row. Build one with Col
+    and the methods of Ref.
+
+    A comparison with a null is unknown, like in SQL, and And, Or and Not are
+    three-valued: a row is kept only when the filter is true for it. IsNull
+    is never unknown. For the floats, NaN equals nothing (not even itself), is
+    neither less nor greater than anything, and so is different from everything,
+    like in Go.
+
+    The literals are Go values: any integer or float type, bool, string (for a
+    Utf8 column), []byte (Binary, UUID), Decimal, time.Time (date and timestamp)
+    and time.Duration (time), compared exactly even when finer than the unit
+    of the column (Eq never matches then). An integer can be compared with a
+    float column. The filter is checked against the schema before any read:
+    a literal that does not fit the column, and for Eq, Ne and In an integer out
+    of the range of the column, are errors.
+
+func And(e ...Expr) Expr
+    And is true when every expression is. With none, it keeps every row.
+
+func Not(e Expr) Expr
+    Not is true when e is false, false when e is true and unknown when e is.
+
+func Or(e ...Expr) Expr
+    Or is true when one of the expressions is. With none, it keeps no row.
+
+type Field struct {
+	Name string
+	Type Type
+}
+    Field is a named field of a struct.
+
+type File struct {
+	// Has unexported fields.
+}
+    File is an open Vortex file. It is safe for concurrent use.
+
+func Open(r io.ReaderAt, size int64) (*File, error)
+    Open reads the trailer, the footer and the schema of the Vortex file in r,
+    which holds size bytes. It reads the last 64 KiB in one call, and one more
+    range when the footer reaches further back. A file larger than 64 KiB costs
+    one more read, for its first bytes. The caller keeps r open for as long as
+    the File is used.
+
+func OpenFile(path string) (*File, error)
+    OpenFile opens the Vortex file at path. Close it when done.
+
+func (f *File) Close() error
+    Close closes the file that OpenFile opened: a scan still running returns
+    an error that wraps os.ErrClosed. It does nothing for a File made by Open.
+    A second call returns nil.
+
+func (f *File) NumRows() int64
+    NumRows returns the number of rows of the file.
+
+func (f *File) Scan(ctx context.Context, q Query, columns ...string) iter.Seq2[*Batch, error]
+    Scan reads the columns of the file that meet the query, batch by batch,
+    in order, on the calling goroutine. A batch has at most 8,192 rows and is
+    dense: its Len is the number of rows kept, and a batch without any is not
+    returned. The batch has the columns that are named, in that order, and
+    every column in the order of the schema when none is. A name is a top-level
+    column; the fields of a struct come with Column.Field. A column that only
+    the filter needs is read and not returned.
+
+    An unknown column, an invalid range, or a filter that does not fit the
+    schema is the error of the first iteration, before any read.
+
+func (f *File) Schema() *Schema
+    Schema returns the schema of the file.
+
+type Kind uint8
+    Kind is the logical type of a column.
+
+const (
+	Null Kind = iota
+	Bool
+	Int8
+	Int16
+	Int32
+	Int64
+	Uint8
+	Uint16
+	Uint32
+	Uint64
+	Float16
+	Float32
+	Float64
+	KindDecimal
+	Utf8
+	Binary
+	List
+	FixedSizeList
+	Map
+	Struct
+	Date
+	Time
+	Timestamp
+	UUID
+	Variant
+)
+    The logical types of a Vortex file. Union exists upstream but is in no
+    edition.
+
+func (k Kind) String() string
+    String returns the name of the kind, like "i32" or "fixed_size_list".
+
+type Number interface {
+	~int8 | ~int16 | ~int32 | ~int64 | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~float32 | ~float64
+}
+    Number is the set of the Go types a numeric column can be read as.
+
+type Query struct {
+	// Filter is exact: a row is returned when it is true, and the caller never has to filter
+	// again. The statistics of the file are used to skip what it rules out.
+	Filter Expr
+	// Rows limits the scan to a range of rows.
+	Rows Range
+}
+    Query selects the rows of a scan: the rows of Rows for which Filter is true.
+    The zero value selects every row.
+
+type Range struct{ Start, End int64 }
+    Range is a half-open range of rows of a file: Start is the first row,
+    End the one after the last. The zero value is the whole file, so an End of 0
+    means the end of the file. A range outside the file is clamped to it.
+
+type Ref struct {
+	// Has unexported fields.
+}
+    Ref is a column, or a field of a struct column, to compare.
+
+func Col(path ...string) Ref
+    Col is the column called path[0], or its field path[1], and so on for nested
+    structs.
+
+func (r Ref) Eq(v any) Expr
+    Eq is true for the rows whose value equals v.
+
+func (r Ref) Ge(v any) Expr
+    Ge is true for the rows whose value is at least v.
+
+func (r Ref) Gt(v any) Expr
+    Gt is true for the rows whose value is greater than v.
+
+func (r Ref) In(vs ...any) Expr
+    In is true for the rows whose value equals one of vs.
+
+func (r Ref) IsNull() Expr
+    IsNull is true for the rows that are null, and false for the others.
+
+func (r Ref) Le(v any) Expr
+    Le is true for the rows whose value is at most v.
+
+func (r Ref) Lt(v any) Expr
+    Lt is true for the rows whose value is less than v.
+
+func (r Ref) Ne(v any) Expr
+    Ne is true for the rows whose non-null value differs from v.
+
+type Schema struct {
+	// Has unexported fields.
+}
+    Schema is the schema of a file: the fields of its root struct.
+
+func (s *Schema) Field(name string) (Field, bool)
+    Field returns the first field with this name.
+
+func (s *Schema) Fields() []Field
+    Fields returns a copy of the fields, in file order.
+
+func (s *Schema) String() string
+    String returns the root struct, like Type.String.
+
+type Type struct {
+	// Has unexported fields.
+}
+    Type is a logical type. It is a value: compare two of them with Equal,
+    not with ==. An accessor that does not apply to the kind of the type returns
+    the zero value.
+
+func (t Type) Elem() Type
+    Elem is the element type of a list or a fixed-size list.
+
+func (t Type) Equal(o Type) bool
+    Equal reports whether the two types are the same, nullability included.
+
+func (t Type) Fields() []Field
+    Fields returns a copy of the fields of a struct.
+
+func (t Type) Key() Type
+    Key is the key type of a map.
+
+func (t Type) Kind() Kind
+    Kind returns the logical type.
+
+func (t Type) Nullable() bool
+    Nullable reports whether the values may be null. It is always true for Null.
+
+func (t Type) Precision() int
+    Precision is the number of digits of a decimal.
+
+func (t Type) Scale() int
+    Scale is the number of digits of a decimal after the point. It can be
+    negative.
+
+func (t Type) Size() int
+    Size is the number of elements of every value of a fixed-size list.
+
+func (t Type) String() string
+    String returns the type in a short form: "i32", "utf8?" (nullable),
+    "decimal(10,2)", "list<i32>", "map<utf8, i64>", "timestamp[ms, tz=UTC]",
+    "struct{a: i32, b: utf8?}".
+
+func (t Type) Unit() Unit
+    Unit is the time unit of a date, a time or a timestamp.
+
+func (t Type) Value() Type
+    Value is the value type of a map.
+
+func (t Type) Zone() string
+    Zone is the time zone of a timestamp, empty when it has none.
+
+type Unit uint8
+    Unit is the time unit of a date, a time or a timestamp.
+
+const (
+	Nanosecond Unit = iota
+	Microsecond
+	Millisecond
+	Second
+	Day
+)
+    The time units, with the values of the file format.
+
+func (u Unit) String() string
+    String returns "ns", "us", "ms", "s" or "days".
+
+type VariantDecimal struct {
+	Value Decimal
+	Scale int
+}
+    VariantDecimal is a decimal inside a Variant value. A Variant carries the
+    scale of each decimal, which Decimal does not: the value is Value divided by
+    10 to the power Scale.
+
+func (d VariantDecimal) String() string
+    String prints the decimal, like Decimal.Text with the scale of the value.
+

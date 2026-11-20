@@ -1,0 +1,67 @@
+{
+  "columns": {
+    "ids": {
+      "first": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "last": [
+        "5",
+        "6",
+        "7",
+        "8",
+        "9"
+      ],
+      "nulls": 0,
+      "sha256": "7854d9324bd9894423c74b3cfd142d6853fbb26eab4b0611f040b8b052cb5ab3"
+    },
+    "nulls": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 10,
+      "sha256": "01d448afd928065458cf670b60f5a594d735af0172c8d67f22a81680132681ca"
+    }
+  },
+  "encodings": [
+    "vortex.null",
+    "vortex.primitive",
+    "vortex.struct"
+  ],
+  "rows": 10,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "null",
+          "nullable": true
+        },
+        "name": "nulls"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "ids"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}
