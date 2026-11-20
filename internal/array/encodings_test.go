@@ -178,7 +178,7 @@ func TestChunkedConcatsEveryShape(t *testing.T) {
 
 func TestChunkedKeepsSkippedFields(t *testing.T) {
 	inner := func(b uint16) fbtest.Tab {
-		return node(eStruct, nil, nil, node(eVariant, nil, nil), node(ePrim, nil, []uint16{b}))
+		return node(eStruct, nil, nil, node(eUnsupported, nil, nil), node(ePrim, nil, []uint16{b}))
 	}
 	seg := segment(node(eStruct, nil, nil, node(eChunked, nil, nil, node(ePrim, nil, []uint16{0}), inner(1), inner(2))),
 		buf{data: le64(0, 1, 2)}, buf{data: le32(1)}, buf{data: le32(2)})

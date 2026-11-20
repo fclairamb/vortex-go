@@ -102,6 +102,8 @@ func arrayType(t Type) array.DType {
 		d.Elem = &array.DType{Kind: array.Struct, Fields: []array.Field{
 			{Name: "key", Type: arrayType(*t.elem)}, {Name: "value", Type: arrayType(*t.value)},
 		}}
+	case Variant:
+		d.Kind = array.Variant
 	case UUID:
 		d.Kind = array.Ext
 		d.Storage = &array.DType{Kind: array.FixedSizeList, Size: uuidSize, Nullable: t.nullable,
@@ -113,11 +115,7 @@ func arrayType(t Type) array.DType {
 			d.Storage.Ticks = ticksPerSecond[t.unit]
 		}
 	default:
-		if p, ok := primOfKind[t.kind]; ok {
-			d.Kind, d.PType = array.Prim, p
-		} else {
-			d.Kind, d.Label = array.Other, t.kind.String()
-		}
+		d.Kind, d.PType = array.Prim, primOfKind[t.kind]
 	}
 	return d
 }

@@ -77,6 +77,8 @@ func registry() map[string]Decoder {
 		"vortex.onpair":          decodeOnPair,
 		"vortex.zstd":            decodeZstd,
 		"vortex.pco":             decodePco,
+		"vortex.variant":         decodeVariant,
+		"vortex.parquet.variant": decodeParquetVariant,
 
 		"vortex.decimal_byte_parts": decodeDecimalBytePartsV1,
 	}

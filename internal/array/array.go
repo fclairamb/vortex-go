@@ -28,6 +28,8 @@ type Array struct {
 	Validity *Bitmap
 	// Elems is the elements of a List, a FixedSizeList and a Map (a struct of key and value).
 	Elems *Array
+	// Var is the content of a Variant array.
+	Var *VariantData
 	// Data is, for Prim, the values, little-endian; for Decimal, the values at Width bytes
 	// each, little-endian two's complement; for Utf8 and Binary, the bytes Starts and Ends
 	// point into.
@@ -40,6 +42,8 @@ type Array struct {
 	Type         DType
 	Width        int // Decimal: the bytes of a stored value
 	Len          int
+	// VOff is, for a Variant array, the row of Var that row 0 is.
+	VOff int
 }
 
 // Null reports whether row i is null.
@@ -71,6 +75,8 @@ func (a *Array) Slice(off, n int) *Array {
 		out.Data = a.Data[off*a.Width : (off+n)*a.Width]
 	case Utf8, Binary, List, Map:
 		out.Starts, out.Ends = a.Starts[off:off+n], a.Ends[off:off+n]
+	case Variant:
+		out.VOff += off
 	case FixedSizeList:
 		out.Elems = a.Elems.Slice(off*a.Type.Size, n*a.Type.Size)
 	case Struct:
@@ -162,6 +168,8 @@ func concatValues(out *Array, t DType, parts []*Array) {
 		out.Elems = concatElems(*t.Elem, parts)
 	case Struct:
 		out.Fields = concatFields(t, parts)
+	case Variant:
+		out.Var = &VariantData{Parts: parts}
 	}
 }
 

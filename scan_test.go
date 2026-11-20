@@ -17,7 +17,7 @@ import (
 
 // The footer lists of the hand-built files.
 var (
-	testArraySpecs  = []string{"vortex.primitive", "vortex.bool", "vortex.struct", "vortex.chunked", "vortex.variant"}
+	testArraySpecs  = []string{"vortex.primitive", "vortex.bool", "vortex.struct", "vortex.chunked", "vortex.unsupported", "vortex.variant", "vortex.parquet.variant", "vortex.varbinview"}
 	testLayoutSpecs = []string{"vortex.flat", "vortex.struct", "vortex.chunked", "vortex.zoned", "vortex.list", "vortex.stats", "vortex.dict"}
 )
 
@@ -27,6 +27,9 @@ const (
 	aStruct
 	aChunked
 	aAlp
+	aVariant
+	aParquetVariant
+	aVarBinView
 )
 
 const (
@@ -397,7 +400,7 @@ func TestScanSegmentErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = scanAll(t, f, 8)
-	if !errors.Is(err, errors.ErrUnsupported) || errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "vortex.variant") {
+	if !errors.Is(err, errors.ErrUnsupported) || errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "vortex.unsupported") {
 		t.Fatalf("err = %v", err)
 	}
 	// A segment that is no array is corrupt.
@@ -519,7 +522,7 @@ func TestArrayTypeOfDatesAndOthers(t *testing.T) {
 			t.Errorf("%s: %+v", c.t, d)
 		}
 	}
-	if d := arrayType(Type{kind: Variant, nullable: true}); d.Kind != array.Other || d.Label != "variant" || !d.Nullable {
+	if d := arrayType(Type{kind: Variant, nullable: true}); d.Kind != array.Variant || !d.Nullable {
 		t.Fatalf("variant: %+v", d)
 	}
 }

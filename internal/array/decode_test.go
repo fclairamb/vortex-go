@@ -23,8 +23,8 @@ func TestDecodeSegmentErrors(t *testing.T) {
 		{"no root", noRoot, "no root node"},
 		{"compressed buffer", segment(node(ePrim, nil, []uint16{0}), buf{data: le32(1, 2), comp: 1}), "compressed"},
 		{"buffer past the data", truncatedBuffer(t), "past the"},
-		{"encoding out of range", segment(node(42, nil, nil)), "the footer has 33 array specs"},
-		{"unsupported encoding", segment(node(eVariant, nil, nil)), `unsupported encoding "vortex.variant"`},
+		{"encoding out of range", segment(node(42, nil, nil)), "the footer has 35 array specs"},
+		{"unsupported encoding", segment(node(eUnsupported, nil, nil)), `unsupported encoding "vortex.unsupported"`},
 		{"missing buffer", segment(node(ePrim, nil, nil)), "buffer 0 is missing"},
 		{"buffer index out of range", segment(node(ePrim, nil, []uint16{3}), buf{data: le32(1, 2)}), "which has 1"},
 	}
@@ -42,7 +42,7 @@ func truncatedBuffer(t *testing.T) []byte {
 }
 
 func TestUnsupportedWrapsErrUnsupported(t *testing.T) {
-	_, err := Decode(segment(node(eVariant, nil, nil)), specs, i32, 1, Options{})
+	_, err := Decode(segment(node(eUnsupported, nil, nil)), specs, i32, 1, Options{})
 	if !errors.Is(err, errors.ErrUnsupported) {
 		t.Fatalf("err = %v", err)
 	}
@@ -62,7 +62,7 @@ func TestTolerate(t *testing.T) {
 	root := structOf(false, inner, i32)
 	seg := segment(
 		node(eStruct, nil, nil,
-			node(eStruct, nil, nil, node(eVariant, nil, nil), node(ePrim, nil, []uint16{0})),
+			node(eStruct, nil, nil, node(eUnsupported, nil, nil), node(ePrim, nil, []uint16{0})),
 			node(ePrim, nil, []uint16{0})),
 		buf{data: le32(7)})
 	var paths []string
@@ -104,7 +104,7 @@ func TestDTypeString(t *testing.T) {
 		"i32?":                     i32n,
 		"struct{a: i32, b: bool?}": structOf(false, i32, DType{Kind: Bool, Nullable: true}),
 		"ext(i64)":                 {Kind: Ext, Storage: &DType{Kind: Prim, PType: I64}},
-		"utf8":                     {Kind: Other, Label: "utf8"},
+		"variant?":                 variantT,
 	}
 	for want, dt := range cases {
 		if got := dt.String(); got != want {

@@ -129,6 +129,34 @@ func (c *Column) List(i int) (start, end int) {
 	panic(fmt.Sprintf("vortex: List on a column of type %s", c.typ))
 }
 
+// VariantDecimal is a decimal inside a Variant value. A Variant carries the scale of each
+// decimal, which Decimal does not: the value is Value divided by 10 to the power Scale.
+type VariantDecimal struct {
+	Value Decimal
+	Scale int
+}
+
+// String prints the decimal, like Decimal.Text with the scale of the value.
+func (d VariantDecimal) String() string { return d.Value.Text(d.Scale) }
+
+// variantDecimal builds the VariantDecimal of unscaled little-endian bytes.
+func variantDecimal(unscaled []byte, scale int) any {
+	return VariantDecimal{Value: decimalFromLE(unscaled), Scale: scale}
+}
+
+// Variant decodes row i of a Variant column, a null row being nil. The value is nil, a bool, an
+// int64, a float64, a string, a []byte, a time.Time (a date, a time of day on 1970-01-01, or a
+// timestamp, in UTC), a VariantDecimal, a []any or a map[string]any. Every call allocates: the
+// result is a copy, valid after the batch. An error means the value of the file is damaged. It
+// panics when the column is not a Variant, and when i is out of range.
+func (c *Column) Variant(i int) (any, error) {
+	if c.typ.kind != Variant {
+		panic(fmt.Sprintf("vortex: Variant on a column of type %s", c.typ))
+	}
+	c.checkRow(i)
+	return c.arr.VariantValue(i, variantDecimal)
+}
+
 var ptypeOfGo = map[reflect.Kind]array.PType{
 	reflect.Int8: array.I8, reflect.Int16: array.I16, reflect.Int32: array.I32, reflect.Int64: array.I64,
 	reflect.Uint8: array.U8, reflect.Uint16: array.U16, reflect.Uint32: array.U32, reflect.Uint64: array.U64,

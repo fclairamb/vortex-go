@@ -166,6 +166,8 @@ func zeroArray(t DType, n int) (*Array, error) {
 		return withElems(a, n*t.Size)
 	case Ext:
 		return zeroArray(*t.Storage, n)
+	case Variant:
+		a.Var = &VariantData{}
 	default:
 		return nil, fmt.Errorf("a constant of type %s: %w", t, errors.ErrUnsupported)
 	}

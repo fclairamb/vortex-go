@@ -90,6 +90,15 @@ func (c *Column) Null(i int) bool
 func (c *Column) Type() Type
     Type is the logical type of the column.
 
+func (c *Column) Variant(i int) (any, error)
+    Variant decodes row i of a Variant column, a null row being nil.
+    The value is nil, a bool, an int64, a float64, a string, a []byte,
+    a time.Time (a date, a time of day on 1970-01-01, or a timestamp, in UTC),
+    a VariantDecimal, a []any or a map[string]any. Every call allocates:
+    the result is a copy, valid after the batch. An error means the value of the
+    file is damaged. It panics when the column is not a Variant, and when i is
+    out of range.
+
 type Decimal struct {
 	// Has unexported fields.
 }
@@ -278,4 +287,15 @@ const (
 
 func (u Unit) String() string
     String returns "ns", "us", "ms", "s" or "days".
+
+type VariantDecimal struct {
+	Value Decimal
+	Scale int
+}
+    VariantDecimal is a decimal inside a Variant value. A Variant carries the
+    scale of each decimal, which Decimal does not: the value is Value divided by
+    10 to the power Scale.
+
+func (d VariantDecimal) String() string
+    String prints the decimal, like Decimal.Text with the scale of the value.
 

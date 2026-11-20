@@ -76,6 +76,6 @@ func TestConstantErrors(t *testing.T) {
 		{"int for a bool", constSeg(sInt(1)), bl, 1, "cannot be a bool"},
 		{"null for a non-nullable", constSeg(sNull()), i32, 1, "cannot be a i32"},
 		{"null for a struct", constSeg(sNull()), structOf(true), 1, "unsupported operation"},
-		{"value for a string", constSeg(sInt(1)), DType{Kind: Other, Label: "utf8"}, 1, "constant of type utf8"},
+		{"value for a variant", constSeg(sInt(1)), DType{Kind: Variant}, 1, "constant of type variant"},
 	})
 }
