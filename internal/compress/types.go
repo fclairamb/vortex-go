@@ -34,7 +34,7 @@ func binsCost(v [][]byte, nulls []bool) int {
 }
 
 func (c *Compressor) strings(e *encode.Encoder, trial bool, v [][]byte, nulls []bool, utf8 bool, depth int, parent scheme) *encode.Node {
-	if n, ok := encode.ConstantBytes(e, v, nulls, utf8); ok {
+	if n, ok := encode.ConstantBytes(e, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
 		return n
 	}
 	valid := 0

@@ -38,9 +38,6 @@ func pick[T any](c *Compressor, e *encode.Encoder, trial bool, v []T, nulls []bo
 		}
 		return best
 	}
-	if l.n == 0 {
-		return nil
-	}
 	raw, bools, bins := c.raw.mark(), c.nulls.mark(), c.bins.mark()
 	sv, sn := sample(c, v), c.sampleNulls(nulls, sampleRuns(len(v), func(int, int) {}))
 	best, bestCost := sPlain, plainCost(sv, sn)
@@ -122,10 +119,10 @@ func statsOfInts[T encode.Int](v []T, nulls []bool) intStats {
 func ints[T encode.Int](c *Compressor, e *encode.Encoder, trial bool, p PType, v []T, nulls []bool, depth int,
 	parent scheme, zigzag func(*encode.Encoder, []T, []bool) *encode.Node,
 ) *encode.Node {
-	if n, ok := encode.Sequence(e, v, nulls); ok {
+	if n, ok := encode.Sequence(e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
-	if n, ok := encode.Constant(e, v, nulls); ok {
+	if n, ok := encode.Constant(e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
 	st := statsOfInts(v, nulls)
@@ -171,7 +168,7 @@ func ints[T encode.Int](c *Compressor, e *encode.Encoder, trial bool, p PType, v
 func floats[T encode.Float](c *Compressor, e *encode.Encoder, trial bool, p PType, v []T, nulls []bool, depth int,
 	parent scheme,
 ) *encode.Node {
-	if n, ok := encode.Constant(e, v, nulls); ok {
+	if n, ok := encode.Constant(e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
 	runs, valid := 0, 0

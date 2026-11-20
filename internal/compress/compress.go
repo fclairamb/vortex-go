@@ -136,12 +136,14 @@ func (c *Compressor) Reset() {
 type arena[T any] struct {
 	buf  []T
 	off  int
-	need int // what was asked since the last reset
+	need int // what is given out
+	peak int // the most that was given out at once since the last reset
 }
 
 func (a *arena[T]) get(n int) []T {
 	a.off = (a.off + 7) &^ 7 // the numbers of a sample are aligned
 	a.need += (n + 7) &^ 7
+	a.peak = max(a.peak, a.need)
 	if a.off+n > len(a.buf) {
 		a.buf = make([]T, max(n, 4<<10))
 		a.off = 0
@@ -160,10 +162,10 @@ func (a *arena[T]) restore(m [2]int) { a.off, a.need = m[0], m[1] }
 
 // reset frees the slices, and makes the buffer hold what was asked of it, in one block.
 func (a *arena[T]) reset() {
-	if a.need > len(a.buf) {
-		a.buf = make([]T, a.need)
+	if a.peak > len(a.buf) {
+		a.buf = make([]T, a.peak)
 	}
-	a.off, a.need = 0, 0
+	a.off, a.need, a.peak = 0, 0, 0
 }
 
 // cost is the bytes of the tree of n in a file.

@@ -209,6 +209,7 @@ func TestSmallBuffers(t *testing.T) {
 	lowered(t, &maxViewBuffer, 40)
 	lowered(t, &smallWrites, 64)
 	lowered(t, &arenaBlock, 16)
+	lowered(t, &testOptions, WriteOptions{Compression: None}) // plain strings
 	strs := make([]string, 50)
 	for i := range strs {
 		strs[i] = strings.Repeat(string(rune('a'+i%26)), 13+i)
