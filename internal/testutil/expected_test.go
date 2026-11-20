@@ -12,7 +12,7 @@ const validJSON = `{
     "a": {"first": ["1"], "last": ["1"], "nulls": 0, "sha256": "00"},
     "s": {"first": [], "last": [], "nulls": 0, "sha256": "01"},
     "s.x": {"first": [], "last": [], "nulls": 0, "sha256": "02"},
-    "v": {"first": [], "last": [], "nulls": 0, "sha256": null}
+    "v": {"first": [], "last": [], "nulls": 0, "sha256": "03"}
   },
   "encodings": ["vortex.primitive"],
   "rows": 1,
@@ -76,11 +76,12 @@ func TestCheckFailures(t *testing.T) {
 		return e
 	}
 	cases := map[string]struct{ from, to, want string }{
-		"not a struct": {`"schema": {"kind": "struct"`, `"schema": {"kind": "bool"`, "want a struct"},
-		"negative":     {`"rows": 1`, `"rows": -1`, "rows is -1"},
-		"no column":    {`"a": {"first": ["1"], "last": ["1"], "nulls": 0, "sha256": "00"},`, ``, `"a" has no expected`},
-		"no nested":    {`"s.x": {"first": [], "last": [], "nulls": 0, "sha256": "02"},`, ``, `"s.x" has no expected`},
-		"no hash":      {`"sha256": "01"`, `"sha256": null`, `"s" has no hash`},
+		"not a struct":    {`"schema": {"kind": "struct"`, `"schema": {"kind": "bool"`, "want a struct"},
+		"negative":        {`"rows": 1`, `"rows": -1`, "rows is -1"},
+		"no column":       {`"a": {"first": ["1"], "last": ["1"], "nulls": 0, "sha256": "00"},`, ``, `"a" has no expected`},
+		"no nested":       {`"s.x": {"first": [], "last": [], "nulls": 0, "sha256": "02"},`, ``, `"s.x" has no expected`},
+		"no hash":         {`"sha256": "01"`, `"sha256": null`, `"s" has no hash`},
+		"no variant hash": {`"sha256": "03"`, `"sha256": null`, `"v" has no hash`},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -62,12 +62,23 @@ of a column: one validity byte, then the value if it is valid.
 | Date, time, timestamp | The storage integer (no timezone, no unit) |
 | UUID | The 16 bytes, no length |
 | Null type | The validity byte only |
-| Variant | Left for the variant spec: the oracle writes `"sha256": null` |
+| Variant | The canonical JSON of the value (below), hashed like a string: `uint32` length, then the bytes |
 
 Every element of a list, every field of a struct and every entry of a map is a row of its
 own type, so it has its validity byte too. A null struct, list or map has no more bytes
 after its validity byte. The hash of a nested struct field (`inner.a`) is taken over the
 field as flattened: it is null where the parent is null.
+
+**Canonical JSON of a Variant.** A Variant row is rendered as JSON text, then hashed like a
+string. Nothing is left to a printer: no space; the keys of an object sorted by their bytes;
+an integer is its digits; a float is `%.17g` (17 significant digits), with `.0` added when
+that looks like an integer, and `NaN`, `Infinity` and `-Infinity` bare; a string escapes the
+quote, the backslash and the control characters (`\u00XX`), nothing else; a null is `null`.
+What JSON has no type for is an object with one key: a binary is `{"$binary":"<hex>"}`, a
+date, a time of day or a timestamp is `{"$time":"<UTC>"}` (`2006-01-02T15:04:05.999999999Z`,
+no trailing zero in the fraction), a decimal is `{"$decimal":"<digits with the point>"}`.
+`testutil.CanonicalJSON` is the Go side. The Python side in `tools/oracle/oracle.py` has not
+been run: the reference's Python package cannot read a Variant column (`extra/MISSING.md`).
 
 **The oracle.** `make oracle` runs `tools/oracle/genfixtures.py` (the fixtures upstream
 lacks, into `testdata/fixtures/<version>/extra/`) then `tools/oracle/oracle.py expected`

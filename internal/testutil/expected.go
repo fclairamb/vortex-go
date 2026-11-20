@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 )
 
 const kindStruct = "struct"
@@ -37,7 +36,7 @@ type Field struct {
 
 // Column is what the oracle read for one column, or one nested struct field (dotted path).
 type Column struct {
-	// SHA256 is the canonical hash, nil for the types the oracle does not hash (variant).
+	// SHA256 is the canonical hash.
 	SHA256      *string  `json:"sha256"`
 	SampleError string   `json:"sample_error,omitempty"`
 	First       []string `json:"first"`
@@ -83,13 +82,8 @@ func (d *DType) Paths(prefix string) []string {
 	return out
 }
 
-// isVariant reports whether the oracle leaves the hash of this DType to the variant spec.
-func (d *DType) isVariant() bool {
-	return d.Kind == "extension" && strings.Contains(d.ExtID, "variant")
-}
-
 // Check returns what is wrong with the expected values: no column of the schema may lack
-// an entry, and every entry has a hash, except the variant ones.
+// an entry, and every entry has a hash.
 func (e *Expected) Check() error {
 	if e.Schema.Kind != kindStruct {
 		return fmt.Errorf("schema is a %q, want a struct", e.Schema.Kind)
@@ -107,7 +101,7 @@ func (d *DType) checkColumns(prefix string, columns map[string]Column) error {
 		if !ok {
 			return fmt.Errorf("column %q has no expected values", p)
 		}
-		if c.SHA256 == nil && !f.DType.isVariant() {
+		if c.SHA256 == nil {
 			return fmt.Errorf("column %q has no hash", p)
 		}
 		if f.DType.Kind == kindStruct {

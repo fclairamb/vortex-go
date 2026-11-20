@@ -68,8 +68,25 @@ func hashRow(h *testutil.Hasher, c *Column, i int) bool {
 		h.Raw(b[:decimalHashBytes(c.typ.Precision())])
 	case array.List, array.Map:
 		return hashList(h, c, i)
+	case array.Variant:
+		hashVariant(h, c, i)
 	}
 	return true
+}
+
+// hashVariant hashes the canonical JSON of row i of a Variant column like a string. A value
+// that cannot be decoded hashes its error, which the oracle's hash will not match.
+func hashVariant(h *testutil.Hasher, c *Column, i int) {
+	v, err := c.Variant(i)
+	text := ""
+	if err == nil {
+		text, err = testutil.CanonicalJSON(v)
+	}
+	if err != nil {
+		text = "error: " + err.Error()
+	}
+	h.Len(len(text))
+	h.Raw([]byte(text))
 }
 
 // decimalHashBytes is the size of a decimal in the hash: 16 bytes up to precision 38.

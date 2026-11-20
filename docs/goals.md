@@ -118,10 +118,14 @@ Coverage does not prove correctness. Goal 2 does. Coverage proves there is no co
 1. **Name.** The module is `github.com/fclairamb/vortex-go` and the package is `vortex`.
    `mprammer/vortex-go` already exists (a scalar-only reader, one commit).
 2. **Minimum Go version.** 1.26, with CI on 1.26 and 1.27.
-3. **Variant.** No Go mapping yet. The proposal is in [interface.md](interface.md#types).
 
 ## Decisions taken
 
+- **Variant** (autopilot, recommended answer of the variant spec). A Variant column is read at
+  the row level into `any` (`nil`, `bool`, `int64`, `float64`, `string`, `[]byte`,
+  `time.Time`, `[]any`, `map[string]any`), and at the column level with `Column.Variant(i)`,
+  which returns an error too, since a damaged value is found when it is decoded. A decimal
+  inside a Variant is `VariantDecimal{Value Decimal; Scale int}`, so its scale is kept.
 - **Zstd uses `github.com/klauspost/compress`** (Florent, 2026-11-19). The target edition
   includes `vortex.zstd`. The alternative was our own decoder: Go's internal, decode-only
   one is 2,277 lines, ours would have had to be covered to 100%, and the "compact" writer

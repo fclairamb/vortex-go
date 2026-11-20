@@ -213,9 +213,69 @@ def row_bytes(arr):
     raise ValueError("canonical hash: unsupported arrow type %s" % t)
 
 
-def canonical_sha256(arr):
+def _json_quote(s):
+    out = []
+    for ch in s:
+        if ch in '"\\':
+            out.append("\\" + ch)
+        elif ord(ch) < 0x20:
+            out.append("\\u%04x" % ord(ch))
+        else:
+            out.append(ch)
+    return '"' + "".join(out) + '"'
+
+
+def canonical_json(v):
+    """The canonical JSON of a Variant value (docs/testing.md). Not run: the reference's
+    Python package cannot read a Variant column, see extra/MISSING.md."""
+    import datetime
+    import decimal
+    if v is None:
+        return "null"
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        if v != v:
+            return "NaN"
+        if v in (float("inf"), float("-inf")):
+            return "Infinity" if v > 0 else "-Infinity"
+        s = "%.17g" % v
+        return s if any(c in s for c in ".e") else s + ".0"
+    if isinstance(v, str):
+        return _json_quote(v)
+    if isinstance(v, (bytes, bytearray)):
+        return '{"$binary":"%s"}' % bytes(v).hex()
+    if isinstance(v, decimal.Decimal):
+        return '{"$decimal":"%s"}' % format(v, "f")
+    if isinstance(v, (datetime.datetime, datetime.date)):
+        t = v if isinstance(v, datetime.datetime) else datetime.datetime(v.year, v.month, v.day)
+        t = t.astimezone(datetime.timezone.utc) if t.tzinfo else t
+        frac = ("%06d" % t.microsecond).rstrip("0")
+        return '{"$time":"%s%sZ"}' % (t.strftime("%Y-%m-%dT%H:%M:%S"), "." + frac if frac else "")
+    if isinstance(v, (list, tuple)):
+        return "[" + ",".join(canonical_json(e) for e in v) + "]"
+    if isinstance(v, dict):
+        keys = sorted(v, key=lambda k: k.encode("utf-8"))
+        return "{" + ",".join(_json_quote(k) + ":" + canonical_json(v[k]) for k in keys) + "}"
+    raise ValueError("canonical json: unsupported value %r" % (v,))
+
+
+def variant_row_bytes(arr):
+    out = []
+    for v, ok in zip(arr.to_pylist(), arr.is_valid().to_pylist()):
+        if not ok:
+            out.append(NULL)
+            continue
+        b = canonical_json(v).encode("utf-8")
+        out.append(VALID + u32(len(b)) + b)
+    return out
+
+
+def canonical_sha256(arr, variant=False):
     h = hashlib.sha256()
-    for b in row_bytes(arr):
+    for b in (variant_row_bytes(arr) if variant else row_bytes(arr)):
         h.update(b)
     return h.hexdigest()
 
@@ -247,10 +307,8 @@ def sample(arr):
 
 
 def column_entry(arr, dtype):
-    if dtype["kind"] == "extension" and "variant" in dtype["ext_id"]:
-        digest = None  # left for the variant spec
-    else:
-        digest = canonical_sha256(arr)
+    variant = dtype["kind"] == "extension" and "variant" in dtype["ext_id"]
+    digest = canonical_sha256(arr, variant)
     entry = {"nulls": arr.null_count, "sha256": digest}
     try:
         entry.update(sample(arr))

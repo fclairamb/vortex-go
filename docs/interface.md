@@ -174,7 +174,7 @@ it is out of scope.
 | Time | `time.Duration` since midnight | the storage, `Values[int32]` or `Values[int64]` |
 | Timestamp | `time.Time` | the storage, `Values[int64]` |
 | UUID | `[16]byte` | `Bytes(i)`, 16 bytes |
-| Variant | open, see below | open |
+| Variant | `any` (`nil`, `bool`, `int64`, `float64`, `string`, `[]byte`, `time.Time`, `VariantDecimal`, `[]any`, `map[string]any`) | `Variant(i)`, allocates |
 
 - **Exact match.** An `int32` column does not go into an `int64` field. The error names
   both types. `int` and `uint` count as 64 bits. Widening can come later, it is additive.
@@ -190,11 +190,11 @@ it is out of scope.
 - **The writer mirrors the table.** `Data` has the physical shape and the `*Schema` gives
   the logical type: `Of[int64]` for a timestamp, `OfBytes` for a UUID,
   `OfList(offsets, OfStruct(keys, values))` for a map.
-
-Open, Florent's call:
-
-- **Variant.** Proposal: `any` in a row struct, and nothing at the column level in the
-  first version.
+- **Variant is `any`.** A field of a row struct of type `any` takes a Variant column;
+  `Column.Variant(i) (any, error)` decodes one value at the column level. It allocates, and
+  the error is a damaged value: the bytes of a Variant are only parsed when a row is asked
+  for. A decimal inside a Variant is `VariantDecimal{Value Decimal; Scale int}`: a Variant
+  gives each decimal its own scale.
 
 ## Rules that go with it
 
