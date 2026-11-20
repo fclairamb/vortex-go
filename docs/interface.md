@@ -8,7 +8,8 @@ This is the planned public API. Implemented so far: `Open`, `OpenFile`, `Schema`
 `OfBools`, `OfStrings`, `OfBytes`, `OfDecimals`, `OfNulls`, `OfStruct`, `OfList`,
 `WriteOptions` and the schema constructors (chunks, zone statistics, dictionaries, and the
 compressor, which picks the encodings of each chunk for `Default` and `Compact`; `None` writes
-plain arrays). `NewRowWriter` is not there yet.
+plain arrays), and `NewRowWriter` with `RowWriter`, which writes a slice of structs with the
+tags of `Rows`.
 
 Once the code exists, the source of truth becomes `api.txt` (the output of `go doc -all`,
 checked by CI) and this file only keeps the reasons.

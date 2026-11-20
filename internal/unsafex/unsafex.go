@@ -104,3 +104,34 @@ func Size[T Number]() int {
 func StringBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
+
+// Gather stores in dst[i] the field of rows[i] that sits off bytes into the row: the reverse
+// of Put. V must be the exact type of the field, or have its layout, and off and the size of
+// V come from reflect, which the caller checks. It reads min(len(rows), len(dst)) rows, and
+// the values it copies are typed, so the collector sees the pointers of the copies.
+func Gather[T, V any](rows []T, off uintptr, dst []V) {
+	base := unsafe.Pointer(unsafe.SliceData(rows))
+	var zero T
+	size := unsafe.Sizeof(zero)
+	for i := range min(len(rows), len(dst)) {
+		dst[i] = *(*V)(unsafe.Add(base, uintptr(i)*size+off))
+	}
+}
+
+// GatherNull is Gather for a field of a type like sql.Null[V]: the value is at off, and a bool
+// at offValid says whether the row is not null. A null row gets the zero value in dst and true
+// in null.
+func GatherNull[T, V any](rows []T, off, offValid uintptr, dst []V, null []bool) {
+	base := unsafe.Pointer(unsafe.SliceData(rows))
+	var zero T
+	size := unsafe.Sizeof(zero)
+	for i := range min(len(rows), len(dst), len(null)) {
+		row := unsafe.Add(base, uintptr(i)*size)
+		null[i] = !*(*bool)(unsafe.Add(row, offValid))
+		if null[i] {
+			dst[i] = *new(V)
+		} else {
+			dst[i] = *(*V)(unsafe.Add(row, off))
+		}
+	}
+}

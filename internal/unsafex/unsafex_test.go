@@ -167,3 +167,41 @@ func TestStringBytes(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// TestGather reads the fields back, strings and slices included, over a collection, and a
+// null row gets the zero value.
+func TestGather(t *testing.T) {
+	rows := make([]putRow, 50)
+	for i := range rows {
+		rows[i] = putRow{N: int64(i), S: strings.Repeat("s", i), B: []byte{byte(i)}, V: "v", Valid: i%3 != 0}
+	}
+	ns, ss, bs := make([]int64, 50), make([]string, 50), make([][]byte, 50)
+	Gather(rows, offsetOf("N"), ns)
+	Gather(rows, offsetOf("S"), ss)
+	Gather(rows, offsetOf("B"), bs)
+	vs, null := make([]string, 50), make([]bool, 50)
+	GatherNull(rows, offsetOf("V"), offsetOf("Valid"), vs, null)
+	for range 3 {
+		runtime.GC()
+	}
+	for i := range rows {
+		if ns[i] != int64(i) || ss[i] != strings.Repeat("s", i) || bs[i][0] != byte(i) {
+			t.Fatalf("row %d: %d %q %v", i, ns[i], ss[i], bs[i])
+		}
+		if null[i] != (i%3 == 0) || (null[i] && vs[i] != "") || (!null[i] && vs[i] != "v") {
+			t.Fatalf("row %d: null %v, value %q", i, null[i], vs[i])
+		}
+	}
+	// A short destination bounds the rows read.
+	short := make([]int64, 2)
+	Gather(rows, offsetOf("N"), short)
+	if short[1] != 1 {
+		t.Fatal(short)
+	}
+	// A null row over a value a previous batch left.
+	vs[0] = "old"
+	GatherNull(rows, offsetOf("V"), offsetOf("Valid"), vs, null)
+	if vs[0] != "" {
+		t.Fatal(vs[0])
+	}
+}
