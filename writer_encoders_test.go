@@ -18,7 +18,7 @@ import (
 var encodingIDs = map[string]string{
 	"bitpacked": "fastlanes.bitpacked", "for": "fastlanes.for", "zigzag": "vortex.zigzag",
 	"rle": "fastlanes.rle", "runend": "vortex.runend", "dict": "vortex.dict",
-	"sequence": "vortex.sequence", "constant": "vortex.constant", "sparse": "vortex.sparse",
+	"sequence": "vortex.sequence", "constant": "vortex.constant", "masked": "vortex.masked", "sparse": "vortex.sparse",
 	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "fsst": "vortex.fsst",
 	"decimal_byte_parts": "vortex.decimal_byte_parts", "datetimeparts": "vortex.datetimeparts",
 }
@@ -108,6 +108,7 @@ func forcedColumn(enc string, k Kind, n int, withNulls bool) (Type, Data, []val)
 		"alp":      func(i int) int64 { return int64(i) },
 		"alprd":    func(i int) int64 { return int64(i) },
 		"constant": func(int) int64 { return 42 },
+		"masked":   func(int) int64 { return 42 },
 		"sparse": func(i int) int64 {
 			if i%17 == 5 {
 				return int64(i % 100)
@@ -225,6 +226,9 @@ func TestForcedEncodings(t *testing.T) {
 					if enc == "sequence" && withNulls {
 						return // a sequence has no null
 					}
+					if enc == "masked" && !withNulls {
+						return // without a null it is a constant
+					}
 					n := 100
 					if enc == "sequence" && numberWidth(k) == 1 {
 						n = 20 // 3*i+5 stays in a byte, twice
@@ -263,6 +267,27 @@ func TestForcedStrings(t *testing.T) {
 		checkForced(t, enc, Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 300)
 		checkForced(t, enc, BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
 	}
+}
+
+// TestForcedMaskedStringsAndBools: strings and booleans of one value among nulls, as a constant
+// under a validity, and the other arrays are an error.
+func TestForcedMaskedStringsAndBools(t *testing.T) {
+	nulls := make([]bool, 300)
+	strs := make([]string, 300)
+	bins := make([][]byte, 300)
+	bools := make([]bool, 300)
+	vals := make([]val, 300)
+	bvals := make([]val, 300)
+	for i := range strs {
+		nulls[i] = i%3 != 1
+		strs[i], bools[i] = "a string that is longer than twelve bytes", true
+		bins[i] = []byte(strs[i])
+		vals[i] = val{b: bins[i], null: nulls[i]}
+		bvals[i] = val{b: []byte{1}, null: nulls[i]}
+	}
+	checkForced(t, "masked", Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 300)
+	checkForced(t, "masked", BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
+	checkForced(t, "masked", BoolType().AsNullable(), OfBools(bools).Nulls(nulls), bvals, 300)
 }
 
 // TestForcedDecimalsAndTimestamps writes decimals that fit an i64, and timestamps of every unit,

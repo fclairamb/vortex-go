@@ -34,7 +34,7 @@ func binsCost(v [][]byte, nulls []bool) int {
 }
 
 func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.Node {
-	if n, ok := encode.ConstantBytes(x.e, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
+	if n, ok := encode.ConstantBytesMasked(x.e, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
 		return n
 	}
 	valid := 0
@@ -133,7 +133,7 @@ func (c *Compressor) Timestamps(v []int64, nulls []bool, ticks int64) *encode.No
 
 // Bools is the compressed array of booleans, or nil for the plain array: a constant, or nothing.
 func (c *Compressor) Bools(v, nulls []bool) *encode.Node {
-	n, _ := encode.ConstantBools(c.e, v, nulls)
+	n, _ := encode.ConstantBoolsMasked(c.e, v, nulls)
 	if n != nil && cost(n) >= nodeOverhead+bufferOverhead+(len(v)+7)/8+validityCost(nulls, len(v)) {
 		return nil
 	}

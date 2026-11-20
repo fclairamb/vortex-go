@@ -69,6 +69,9 @@ func writeInteropEncoders(t *testing.T, dir string) {
 				if enc == "sequence" && withNulls {
 					continue // a sequence has no null
 				}
+				if enc == "masked" && !withNulls {
+					continue // without a null it is a constant
+				}
 				ty, d, vals := forcedColumn(enc, k, n, withNulls)
 				name := fmt.Sprintf("%s_%v", k, withNulls)
 				fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
@@ -76,6 +79,8 @@ func writeInteropEncoders(t *testing.T, dir string) {
 			}
 		}
 		switch enc {
+		case "masked":
+			fields, data = addInteropMasked(fields, data, hashes, n)
 		case "dict", "fsst", "zstd":
 			fields, data = addInteropStrings(fields, data, hashes, n)
 		case "decimal_byte_parts", "datetimeparts":
@@ -131,6 +136,28 @@ func addInteropParts(enc string, fields []Field, data []Data, hashes map[string]
 		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
 		hashColumn(hashes, name, ty, vals)
 	}
+	return fields, data
+}
+
+// addInteropMasked adds the columns of one value among nulls, as a constant under a validity:
+// utf8, binary and bool.
+func addInteropMasked(fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
+	bins := make([][]byte, n)
+	bools := make([]bool, n)
+	nulls := make([]bool, n)
+	svals, bvals := make([]val, n), make([]val, n)
+	for i := range bins {
+		bins[i], bools[i], nulls[i] = []byte("a string that is longer than twelve bytes"), true, i%4 != 1
+		svals[i], bvals[i] = val{b: bins[i], null: nulls[i]}, val{b: []byte{1}, null: nulls[i]}
+	}
+	for _, ty := range []Type{Utf8Type().AsNullable(), BinaryType().AsNullable()} {
+		name := "masked_" + ty.String()
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins).Nulls(nulls))
+		hashColumn(hashes, name, ty, svals)
+	}
+	ty := BoolType().AsNullable()
+	fields, data = append(fields, Field{Name: "masked_bool", Type: ty}), append(data, OfBools(bools).Nulls(nulls))
+	hashColumn(hashes, "masked_bool", ty, bvals)
 	return fields, data
 }
 

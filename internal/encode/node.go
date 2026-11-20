@@ -23,6 +23,7 @@ const (
 	IDDict       = "vortex.dict"
 	IDSequence   = "vortex.sequence"
 	IDConstant   = "vortex.constant"
+	IDMasked     = "vortex.masked"
 	IDSparse     = "vortex.sparse"
 	IDVarBinView = "vortex.varbinview"
 
@@ -325,7 +326,7 @@ func (e *Encoder) leafPadded(raw []byte, width int, nulls []bool, rows, padded i
 func Encodings() []string {
 	return []string{
 		IDPrimitive, IDBool, IDBitPacked, IDFoR, IDRLE, IDZigZag, IDRunEnd, IDDict, IDSequence,
-		IDConstant, IDSparse, IDVarBinView, IDALP, IDALPRD, IDFSST, IDDecimalBytes,
+		IDConstant, IDMasked, IDSparse, IDVarBinView, IDALP, IDALPRD, IDFSST, IDDecimalBytes,
 		IDDateTimeParts, IDZstd,
 	}
 }

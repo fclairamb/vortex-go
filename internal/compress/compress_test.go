@@ -455,3 +455,48 @@ func TestNoAllocation(t *testing.T) {
 		t.Errorf("%v allocations", n)
 	}
 }
+
+// TestMaskedConstant: a chunk of one value among nulls is a constant under a validity, smaller
+// than the plain array, and the cases around it are not masked.
+func TestMaskedConstant(t *testing.T) {
+	const rows = 8192
+	nulls := make([]bool, rows)
+	for i := range nulls {
+		nulls[i] = i%10 < 3
+	}
+	c := New(Default)
+	want := "vortex.masked(vortex.constant vortex.bool)"
+	n := c.Numbers(I64, ints64(rows, func(int) int64 { return 7 }), nulls)
+	if got := tree(n); got != want {
+		t.Fatalf("numbers: %s", got)
+	}
+	if plain := numberCost(make([]int64, rows), nulls); cost(n) >= plain/10 {
+		t.Fatalf("masked costs %d, plain %d", cost(n), plain)
+	}
+	bins := make([][]byte, rows)
+	for i := range bins {
+		bins[i] = []byte("a string that is longer than twelve bytes")
+	}
+	if got := tree(c.Strings(bins, nulls, true)); got != want {
+		t.Fatalf("strings: %s", got)
+	}
+	bools := make([]bool, rows)
+	for i := range bools {
+		bools[i] = true
+	}
+	if got := tree(c.Bools(bools, nulls)); got != want {
+		t.Fatalf("bools: %s", got)
+	}
+	// no null: the constant alone; all null: the null constant; two values: not masked
+	if got := tree(c.Numbers(I64, ints64(rows, func(int) int64 { return 7 }), nil)); got != "vortex.constant" {
+		t.Fatalf("no null: %s", got)
+	}
+	all := slices.Repeat([]bool{true}, rows)
+	if got := tree(c.Numbers(I64, ints64(rows, func(int) int64 { return 7 }), all)); got != "vortex.constant" {
+		t.Fatalf("all null: %s", got)
+	}
+	two := ints64(rows, func(i int) int64 { return int64(i % 2) })
+	if got := tree(c.Numbers(I64, two, nulls)); strings.HasPrefix(got, "vortex.masked") {
+		t.Fatalf("two values: %s", got)
+	}
+}

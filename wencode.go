@@ -90,7 +90,7 @@ func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
 	case Bool:
 		return w.encodeBool(d, n)
 	case Utf8, Binary:
-		return w.encodeStrings(d)
+		return w.encodeStrings(t, d)
 	case KindDecimal:
 		return w.encodeDecimals(t, d, n)
 	case Struct:
@@ -177,6 +177,9 @@ func numberWidth(k Kind) int {
 }
 
 func (w *Writer) encodeBool(d Data, n int) flatbuf.Off {
+	if off, ok := w.encodeForcedBools(d); ok {
+		return off
+	}
 	bits := w.alloc((n + 7) / 8)
 	for i, v := range d.bools {
 		if v {
@@ -193,8 +196,8 @@ func (w *Writer) encodeBool(d Data, n int) flatbuf.Off {
 // encodeStrings writes a varbinview: the data buffers, then the views, 16 bytes per row. A
 // string of up to 12 bytes is in its view, a longer one is in a data buffer that its view
 // points to.
-func (w *Writer) encodeStrings(d Data) flatbuf.Off {
-	if off, ok := w.encodeForcedStrings(d); ok {
+func (w *Writer) encodeStrings(t Type, d Data) flatbuf.Off {
+	if off, ok := w.encodeForcedStrings(t, d); ok {
 		return off
 	}
 	first := len(w.bufs)

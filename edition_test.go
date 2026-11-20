@@ -288,7 +288,7 @@ func writtenFiles(t *testing.T) map[string]map[string]string {
 			d, _ = (&gen{r: rand.New(rand.NewPCG(1, 1))}).make(ty, 200)
 		default:
 			ks := forcedTypes(enc)
-			ty, d, _ = forcedColumn(enc, ks[len(ks)-1], 100, false)
+			ty, d, _ = forcedColumn(enc, ks[len(ks)-1], 100, enc == "masked")
 		}
 		f, err := writeForced(t, enc, NewSchema(Field{"c", ty}), []Data{d})
 		if err != nil {

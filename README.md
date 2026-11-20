@@ -99,7 +99,7 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.list` | yes | no |
 | array | `vortex.listview` | yes | yes |
 | array | `vortex.map` | yes | yes |
-| array | `vortex.masked` | yes | no |
+| array | `vortex.masked` | yes | yes |
 | array | `vortex.null` | yes | yes |
 | array | `vortex.onpair` | yes | no |
 | array | `vortex.parquet.variant` | yes | no |

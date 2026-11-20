@@ -51,7 +51,7 @@ func (w *Writer) encodeForced(d Data, n int) flatbuf.Off {
 // encodeForcedStrings is the array of strings d (the buffer of a column holds them as byte
 // slices) as a dictionary, FSST or zstd, when that is the encoding forced, and false when it
 // is not.
-func (w *Writer) encodeForcedStrings(d Data) (flatbuf.Off, bool) {
+func (w *Writer) encodeForcedStrings(t Type, d Data) (flatbuf.Off, bool) {
 	if w.depth != 1 {
 		return 0, false
 	}
@@ -65,6 +65,25 @@ func (w *Writer) encodeForcedStrings(d Data) (flatbuf.Off, bool) {
 		return w.emit(encode.FSSTBytes(w.enc, d.bins, d.nulls)), true
 	case "zstd":
 		return w.emit(encode.ZstdBytes(w.enc, d.bins, d.nulls)), true
+	case forceMasked:
+		if n, ok := encode.ConstantBytesMasked(w.enc, d.bins, d.nulls, t.kind == Utf8); ok {
+			return w.emit(n), true
+		}
+	}
+	return 0, false
+}
+
+// encodeForcedBools is the array of the booleans d as a constant under a validity, when that is
+// the encoding forced and the values fit.
+func (w *Writer) encodeForcedBools(d Data) (flatbuf.Off, bool) {
+	if w.force != forceMasked || w.depth != 1 {
+		return 0, false
+	}
+	if w.enc == nil {
+		w.enc = encode.New()
+	}
+	if n, ok := encode.ConstantBoolsMasked(w.enc, d.bools, d.nulls); ok {
+		return w.emit(n), true
 	}
 	return 0, false
 }
@@ -174,6 +193,12 @@ func forceNumber[T encode.Number](e *encode.Encoder, name string, v []T, nulls [
 	case "constant":
 		n, _ := encode.Constant(e, v, nulls)
 		return n
+	case forceMasked:
+		n, _ := encode.ConstantMasked(e, v, nulls)
+		return n
 	}
 	return nil
 }
+
+// forceMasked forces a constant under a validity.
+const forceMasked = "masked"

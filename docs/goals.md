@@ -85,13 +85,11 @@ are decoded and never written, each for a reason:
   compressor can add OnPair if it saves bytes on the benchmarks against the reference.
 - `vortex.variant`, `vortex.parquet.variant`: the arrays of the Variant type, which the writer
   has no column for yet. They are read for the files that other writers make.
-- `vortex.masked`: puts a validity over an array of another encoding. The encoders put the
-  validity on the array itself, so a column never needs it.
 - `vortex.bytebool`: bools one byte each, a wider form of `vortex.bool`, which holds the same
   values in a bit each.
 
 What the writer does emit, with the encoders of `internal/encode`: bit-packing, frame of
-reference, zigzag, run-length, run-end, dictionary, sequence, constant, sparse, ALP, ALP-RD,
+reference, zigzag, run-length, run-end, dictionary, sequence, constant, masked (a constant under a validity), sparse, ALP, ALP-RD,
 FSST, decimal byte parts, datetime parts and zstd.
 
 The support matrix in the README is generated from the code, never written by hand.

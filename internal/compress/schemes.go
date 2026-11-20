@@ -132,7 +132,7 @@ func ints[T encode.Int](c *Compressor, x at, p PType, v []T, nulls []bool, zigza
 	if n, ok := encode.Sequence(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
-	if n, ok := encode.Constant(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
+	if n, ok := encode.ConstantMasked(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
 	l := intCands(statsOfInts(v, nulls), x, p, len(v), zigzag != nil, c.mode)
@@ -189,7 +189,7 @@ func applyInt[T encode.Int](c *Compressor, x at, p PType, s scheme, v []T, nulls
 
 // floats is the compressed array of floats.
 func floats[T encode.Float](c *Compressor, x at, p PType, v []T, nulls []bool) *encode.Node {
-	if n, ok := encode.Constant(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
+	if n, ok := encode.ConstantMasked(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
 	runs, valid := runsOf(v, nulls)
