@@ -85,10 +85,14 @@ func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8
 	case sOnPair:
 		n = encode.OnPairBytes(x.e, v, nulls)
 		if x.cascades() {
-			c.kid(x.child(s), n, 0, U32)
-			c.kid(x.child(s), n, 1, U16)
-			c.kid(x.child(s), n, 2, uintOf(n.Kids[2].Bufs[0].Align))
-			c.kid(x.child(s), n, 3, U32)
+			kid := c.kid
+			if x.trial {
+				kid = c.packedKid // a trial does not try every scheme on the four children
+			}
+			kid(x.child(s), n, 0, U32)
+			kid(x.child(s), n, 1, U16)
+			kid(x.child(s), n, 2, uintOf(n.Kids[2].Bufs[0].Align))
+			kid(x.child(s), n, 3, U32)
 		}
 	case sVarBin:
 		n = encode.VarBinBytes(x.e, v, nulls)
@@ -99,6 +103,23 @@ func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8
 		n = encode.ZstdBytes(x.e, v, nulls)
 	}
 	return n
+}
+
+// packedKid is kid with the one scheme that always pays for integers of a known width,
+// bit-packing, for the sample trial of OnPair, whose four children would cost more to try
+// scheme by scheme than the whole of the trial of FSST. The chosen array is compressed with kid.
+func (c *Compressor) packedKid(x at, n *encode.Node, i int, p PType) {
+	var out *encode.Node
+	switch raw := n.Kids[i].Bufs[0].Data; p {
+	case U16:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[uint16](raw), nil)
+	case U32:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[uint32](raw), nil)
+	}
+	// the offsets of more than 2^32 codes, in u64, stay as they are in a trial
+	if out != nil {
+		n.Kids[i] = out
+	}
 }
 
 // dictValues compresses the values of a dictionary of strings, a varbinview, in place.

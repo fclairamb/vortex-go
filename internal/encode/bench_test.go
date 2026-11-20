@@ -26,6 +26,10 @@ func BenchmarkEncode(b *testing.B) {
 	for i := range strs {
 		strs[i] = "customer#" + string(rune('a'+rng.IntN(26))) + string(rune('a'+rng.IntN(26)))
 	}
+	bins := make([][]byte, n)
+	for i, s := range strs {
+		bins[i] = []byte(s)
+	}
 	e := New()
 	cases := []struct {
 		name  string
@@ -44,6 +48,7 @@ func BenchmarkEncode(b *testing.B) {
 		{"alp", 8 * n, func() { ALP(e, floats, nil) }},
 		{"alprd", 8 * n, func() { _, _ = ALPRD(e, floats, nil) }},
 		{"fsst", 14 * n, func() { FSSTStrings(e, strs, nil) }},
+		{"onpair", 14 * n, func() { OnPairBytes(e, bins, nil) }},
 		{"zstd", 8 * n, func() { Zstd(e, small, nil) }},
 	}
 	for _, c := range cases {

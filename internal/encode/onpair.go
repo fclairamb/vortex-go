@@ -3,6 +3,7 @@ package encode
 import (
 	"bytes"
 	"math"
+	"math/bits"
 	"slices"
 )
 
@@ -36,26 +37,24 @@ type onPairPair struct {
 
 // onPairState is what the training and the encoding of OnPair need, in the memory of an Encoder.
 type onPairState struct {
-	// the tokens by id: their bytes (end to end), their ends, and the words of their bytes
-	bytes  []byte
-	ends   [onPairMaxTokens + 1]uint32
-	w0, w1 [onPairMaxTokens]uint64
-	tlen   [onPairMaxTokens]uint8
-	n      int
-	lens   uint32 // bit l is set when there is a token of l bytes
-	single [256]uint16
-	slots  [onPairSlots]uint16 // the id + 1 of the token of each slot of a hash of its words
-	rank   [onPairMaxTokens]uint16
-	perm   [onPairMaxTokens]uint16
-
-	pairs     []onPairPair
-	pairCount int
-
-	order  []uint32
+	bytes  []byte       // the bytes of the tokens by id, end to end
+	pairs  []onPairPair // the counts of the pairs of tokens the training sees
+	order  []uint32     // the rows of the sample
 	rows   [][]byte
-	codes  []uint16
+	codes  []uint16 // the codes of the strings, and where the codes of each end
 	ends32 []int
-	rng    uint64
+
+	pairCount int
+	n         int
+	rng       uint64
+	w0, w1    [onPairMaxTokens]uint64 // the words of the bytes of each token
+	ends      [onPairMaxTokens + 1]uint32
+	lens      [256]uint32 // bit l of the entry of a byte is set when a token of l bytes starts with it
+	single    [256]uint16
+	slots     [onPairSlots]uint16 // the id + 1 of the token of each slot of a hash of its words
+	rank      [onPairMaxTokens]uint16
+	perm      [onPairMaxTokens]uint16
+	tlen      [onPairMaxTokens]uint8
 }
 
 func (e *Encoder) onPairState() *onPairState {
@@ -93,7 +92,7 @@ func lowBytes(n int) uint64 {
 // reset empties the dictionary and makes it the 256 bytes, in the order of their values.
 func (s *onPairState) reset() {
 	s.bytes = s.bytes[:0]
-	s.n, s.lens = 0, 0
+	s.n, s.lens = 0, [256]uint32{}
 	clear(s.slots[:])
 	s.ends[0] = 0
 	for b := range 256 {
@@ -110,7 +109,7 @@ func (s *onPairState) add(tok []byte) int {
 	s.ends[id+1] = uint32(len(s.bytes))
 	s.tlen[id] = uint8(l)
 	s.w0[id], s.w1[id] = onPairWords(tok, l)
-	s.lens |= 1 << l
+	s.lens[tok[0]] |= 1 << l
 	i := onPairHash(s.w0[id], s.w1[id], l) & (onPairSlots - 1)
 	for s.slots[i] != 0 {
 		i = (i + 1) & (onPairSlots - 1)
@@ -127,10 +126,10 @@ func (s *onPairState) match(b []byte) (id, l int) {
 	if len(b) > 8 {
 		w1 = wordAt(b, 8)
 	}
-	for l = min(len(b), onPairMaxToken); l >= 2; l-- {
-		if s.lens&(1<<l) == 0 {
-			continue
-		}
+	// the lengths of the tokens that start with this byte, up to the bytes left
+	for cand := s.lens[b[0]] & (1<<(min(len(b), onPairMaxToken)+1) - 1) &^ 3; cand != 0; {
+		l = bits.Len32(cand) - 1
+		cand &^= 1 << l
 		a, c := w0, w1
 		if l > 8 {
 			c &= lowBytes(l - 8)
@@ -209,7 +208,10 @@ type onPairController struct {
 
 func newOnPairController(capacity, total int) onPairController {
 	interval := max(capacity/128, 64)
-	return onPairController{capacity: capacity, budget: int(float64(total) * onPairFraction), interval: interval, threshold: 2, nextCheck: interval}
+	return onPairController{
+		capacity: capacity, budget: int(float64(total) * onPairFraction), interval: interval,
+		threshold: 2, nextCheck: interval,
+	}
 }
 
 func (c *onPairController) onEntry() {
@@ -363,7 +365,7 @@ func (s *onPairState) load(dict []byte, ends []uint32) bool {
 		return false
 	}
 	s.bytes = s.bytes[:0]
-	s.n, s.lens = 0, 0
+	s.n, s.lens = 0, [256]uint32{}
 	clear(s.slots[:])
 	s.ends[0] = 0
 	var seen [256]bool

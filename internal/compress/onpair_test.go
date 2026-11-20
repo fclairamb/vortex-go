@@ -58,3 +58,23 @@ func TestOnPairLimit(t *testing.T) {
 		t.Fatalf("limited: %v", got)
 	}
 }
+
+// BenchmarkOnPairCandidate is the cost of trying OnPair next to FSST on a column that ends as
+// FSST (the log lines): the same chunk with and without the candidate.
+func BenchmarkOnPairCandidate(b *testing.B) {
+	_, logs := onPairColumns()
+	for _, tc := range []struct {
+		name  string
+		limit Limits
+	}{{"with", Limits{}}, {"without", Limits{NoOnPair: true}}} {
+		b.Run(tc.name, func(b *testing.B) {
+			c := NewLimited(Default, tc.limit)
+			c.Strings(logs, nil, true)
+			b.ReportAllocs()
+			for b.Loop() {
+				c.Reset()
+				c.Strings(logs, nil, true)
+			}
+		})
+	}
+}
