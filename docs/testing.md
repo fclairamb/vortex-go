@@ -277,8 +277,8 @@ encoding choice to the writer, and upstream's own compatibility check
 | Lint | `make lint` | yes | in place |
 | Fixtures and edition table of the pinned release | `go test ./...` | yes | in place |
 | Expected values of every fixture exist and parse | `go test ./...` | yes | in place |
-| Corpus against the oracle | `go test ./...` | yes | planned |
-| Edition table complete and seen | `go test ./...` | yes | planned |
+| Corpus against the oracle | `go test ./...` | yes | in place |
+| Edition table complete and seen | `go test ./...` | yes | in place |
 | Allocation | `go test ./...` | yes | planned |
 | Examples, API snapshot, README | `go test ./...`, `make api` | yes | planned |
 | Reference reads our files | `make interop` | yes | planned |
