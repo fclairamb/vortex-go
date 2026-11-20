@@ -285,9 +285,9 @@ type scanner struct {
 	p         *scanPlan
 	arrs      []*array.Array
 	sel       []int
-	batch     Batch
 	store     []Column
 	picked    []picked
+	batch     Batch
 	batchRows int
 }
 
@@ -368,20 +368,16 @@ func (s *scanner) fill(n int, pick bool) *Batch {
 	return b
 }
 
-// gather returns the rows sel (ascending) of a, as a new array. The bytes and the elements
-// that rows point to are shared.
-func gather(a *array.Array, sel []int) *array.Array { return new(picked).gather(a, sel) }
-
 // picked is the rows a filter keeps of an array, in buffers that the next batch reuses.
 type picked struct {
-	arr            array.Array
-	valid          array.Bitmap
 	kids           []picked // the fields of a struct, the elements of a fixed-size list
 	fields         []*array.Array
 	vbytes, bbytes []byte
 	data           []byte
 	starts, ends   []int
 	elems          []int // the elements of the rows kept of a fixed-size list
+	valid          array.Bitmap
+	arr            array.Array
 }
 
 // gather returns the rows sel (ascending) of a. The bytes and the elements that rows point to
@@ -414,23 +410,8 @@ func (p *picked) gather(a *array.Array, sel []int) *array.Array {
 			p.starts, p.ends = append(p.starts, a.Starts[r]), append(p.ends, a.Ends[r])
 		}
 		out.Starts, out.Ends = p.starts, p.ends
-	case array.FixedSizeList:
-		size := a.Type.Size
-		p.elems = p.elems[:0]
-		for _, r := range sel {
-			for j := range size {
-				p.elems = append(p.elems, r*size+j)
-			}
-		}
-		p.grow(1)
-		out.Elems = p.kids[0].gather(a.Elems, p.elems)
-	case array.Struct:
-		p.grow(len(a.Fields))
-		p.fields = append(p.fields[:0], a.Fields...)
-		for i, fld := range a.Fields {
-			p.fields[i] = p.kids[i].gather(fld, sel)
-		}
-		out.Fields = p.fields
+	case array.FixedSizeList, array.Struct:
+		p.gatherNested(a, sel)
 	case array.Variant:
 		var parts []*array.Array
 		for _, r := range sel {
@@ -439,6 +420,28 @@ func (p *picked) gather(a *array.Array, sel []int) *array.Array {
 		return array.Concat(a.Type, parts)
 	}
 	return out
+}
+
+// gatherNested gathers the children of a fixed-size list or of a struct into p.arr.
+func (p *picked) gatherNested(a *array.Array, sel []int) {
+	if a.Type.Kind == array.FixedSizeList {
+		size := a.Type.Size
+		p.elems = p.elems[:0]
+		for _, r := range sel {
+			for j := range size {
+				p.elems = append(p.elems, r*size+j)
+			}
+		}
+		p.grow(1)
+		p.arr.Elems = p.kids[0].gather(a.Elems, p.elems)
+		return
+	}
+	p.grow(len(a.Fields))
+	p.fields = append(p.fields[:0], a.Fields...)
+	for i, fld := range a.Fields {
+		p.fields[i] = p.kids[i].gather(fld, sel)
+	}
+	p.arr.Fields = p.fields
 }
 
 // grow makes sure p has n children.

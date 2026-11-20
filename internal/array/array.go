@@ -39,13 +39,12 @@ type Array struct {
 	Starts, Ends []int
 	Fields       []*Array
 	Bits         Bitmap // Bool: the values
+	vbits        Bitmap // the Validity of an array made by SliceInto
 	Type         DType
 	Width        int // Decimal: the bytes of a stored value
 	Len          int
 	// VOff is, for a Variant array, the row of Var that row 0 is.
 	VOff int
-	// vbits holds the Validity of an array made by SliceInto.
-	vbits Bitmap
 }
 
 // Null reports whether row i is null.

@@ -165,11 +165,11 @@ type dict struct {
 	values *layoutNode
 	vals   *array.Array
 	cur    *array.Array // the rows of the current chunk of codes
-	slot   array.Array  // the rows take returns
-	off    int          // the next row of cur
-	opt    array.Options
 	path   string
 	t      array.DType
+	opt    array.Options
+	slot   array.Array // the rows take returns
+	off    int         // the next row of cur
 	ptype  array.PType
 }
 

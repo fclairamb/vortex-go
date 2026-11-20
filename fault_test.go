@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -337,5 +338,41 @@ func TestScanPeakHeap(t *testing.T) {
 			t.Logf("%s: %d rows, %d MiB of heap at most", path, f.NumRows(), peak>>20)
 		}
 		_ = f.Close()
+	}
+}
+
+// The loader reads ahead a bounded number of units, then waits for the consumer; the end of
+// the scan stops it there.
+func TestLoaderWaitsForTheConsumer(t *testing.T) {
+	f, err := open(sortedFile(100, 100, false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p, err := f.plan(scanOptions{batchRows: maxBatchRows})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ld := newLoader(context.Background(), f, p, 1)
+	if ld.ahead >= len(ld.units) {
+		t.Fatalf("%d units ahead of %d", ld.ahead, len(ld.units))
+	}
+	for _, u := range ld.units[:ld.ahead] {
+		<-u.ready
+	}
+	if u := ld.units[ld.ahead]; !u.claim() {
+		t.Fatal("a unit past the read-ahead is read")
+	}
+	ld.close()
+}
+
+// A flat of more rows than maxFlatRows is corruption.
+func TestFlatRowsLimit(t *testing.T) {
+	f := reopen(t, extraFixture(t, "default_ints.vortex"), plain)
+	defer func(n uint64) { maxFlatRows = n }(maxFlatRows)
+	maxFlatRows = 100
+	for _, err := range f.Scan(context.Background(), Query{}) {
+		if !errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "at most 100") {
+			t.Fatalf("err = %v", err)
+		}
 	}
 }

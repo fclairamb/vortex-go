@@ -84,9 +84,9 @@ type flat struct {
 	arr  *array.Array
 	u    *unit // the unit of the scan, nil when the flat is read on its own
 	path string
-	slot array.Array // the rows take returns
-	opt  array.Options
 	t    array.DType
+	opt  array.Options
+	slot array.Array // the rows take returns
 	seg  uint32
 	rows int // the rows of the segment
 	pos  int
@@ -179,9 +179,9 @@ func (r *flat) ioErr(err error) error { return fmt.Errorf("vortex: column %q: %w
 type structLayout struct {
 	valid  reader
 	fields []reader
-	slot   array.Array // the rows take returns
-	vbits  array.Bitmap
 	t      array.DType
+	vbits  array.Bitmap
+	slot   array.Array // the rows take returns
 	left   int
 }
 
