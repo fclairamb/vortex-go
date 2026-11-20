@@ -1,11 +1,14 @@
 package unsafex
 
 import (
+	"bytes"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -89,4 +92,51 @@ func TestWalkSeesTheModule(t *testing.T) {
 	if _, err := os.Stat(filepath.Join("..", "..", "go.mod")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+type putRow struct {
+	N     int64
+	S     string
+	B     []byte
+	Valid bool
+	V     string
+}
+
+func offsetOf(name string) uintptr {
+	f, _ := reflect.TypeFor[putRow]().FieldByName(name)
+	return f.Offset
+}
+
+// TestPutKeepsPointersAlive writes strings and slices through Put and runs the collector in
+// between: the values must survive, as the destination is typed memory the collector scans.
+func TestPutKeepsPointersAlive(t *testing.T) {
+	rows := make([]putRow, 50)
+	rv := reflect.ValueOf(rows)
+	Put(rv, offsetOf("N"), []int64{1, 2, 3})
+	PutFunc(rv, offsetOf("S"), func(i int) string { return strings.Repeat("s", i+1) })
+	PutFunc(rv, offsetOf("B"), func(i int) []byte { return bytes.Repeat([]byte{byte(i)}, i+1) })
+	null := func(i int) bool { return i%2 == 1 }
+	PutNull(rv, offsetOf("V"), offsetOf("Valid"), []string{"a", "b", "c"}, null)
+	for range 3 {
+		runtime.GC()
+		_ = make([]byte, 1<<20)
+	}
+	for i, r := range rows {
+		if r.S != strings.Repeat("s", i+1) || !bytes.Equal(r.B, bytes.Repeat([]byte{byte(i)}, i+1)) {
+			t.Fatalf("row %d: %+v", i, r)
+		}
+		if i < 3 && r.N != int64(i+1) || i >= 3 && r.N != 0 {
+			t.Fatalf("row %d: N = %d, only 3 values were put", i, r.N)
+		}
+		if want := i < 3 && i%2 == 0; r.Valid != want || (want && r.V != string(rune('a'+i))) || (!want && r.V != "") {
+			t.Fatalf("row %d: %+v", i, r)
+		}
+	}
+	// A null row gets the zero value, also over what a previous batch left.
+	rows[1].V, rows[1].Valid = "old", true
+	PutNullFunc(rv, offsetOf("V"), offsetOf("Valid"), func(i int) string { return "new" }, null)
+	if rows[0].V != "new" || !rows[0].Valid || rows[1].V != "" || rows[1].Valid {
+		t.Fatalf("%+v %+v", rows[0], rows[1])
+	}
+	Put(reflect.ValueOf([]putRow(nil)), 0, []int64{1})
 }

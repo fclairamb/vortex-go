@@ -5,9 +5,10 @@ Package vortex reads and writes files in the Vortex columnar format.
 Open and OpenFile read the trailer, the footer and the schema of a file.
 Scan reads columns of numbers, booleans, strings, binaries, decimals, lists,
 maps and structs, batch by batch, for the columns, the row range and the filter
-of a Query, and skips what the statistics of the file rule out. Writing files
-is not implemented yet. The goals are in docs/goals.md, the planned interface in
-docs/interface.md and the test plan in docs/testing.md.
+of a Query, and skips what the statistics of the file rule out. Rows reads the
+same rows into Go structs. Writing files is not implemented yet. The goals are
+in docs/goals.md, the planned interface in docs/interface.md and the test plan
+in docs/testing.md.
 
 VARIABLES
 
@@ -27,6 +28,42 @@ var ErrDecimalRange = errors.New("vortex: decimal out of the range of 256 bits")
 
 
 FUNCTIONS
+
+func Rows[T any](ctx context.Context, f *File, q Query) iter.Seq2[T, error]
+    Rows reads the rows of the file that meet the query into values of T,
+    a struct, batch by batch, and yields them one by one. The columns it reads
+    come from the fields of T, so the query only selects rows: the scan is the
+    one of File.Scan.
+
+    A field takes the column named by its tag, vortex:"name", else its own name.
+    The tag vortex:"-" skips the field, vortex:"name,optional" leaves the field
+    at its zero value when the file has no such column. Unexported fields are
+    skipped and embedded structs are flattened. The Go type of a field must be
+    the one the column type calls for, with no widening:
+
+      - bool, the numbers (int and uint are 64 bits), and float32 for a f16
+        column;
+      - vortex.Decimal for a decimal, or int64 when its precision is 18 or less;
+      - string (a copy) or []byte (a view, valid in the loop body) for utf8,
+        []byte for binary;
+      - time.Time for a date and a timestamp (UTC unless the type has a zone),
+        time.Duration since midnight for a time, or their storage integer;
+      - [16]byte for a uuid;
+      - a struct for a struct, []X for a list, [N]X or []X for a fixed-size
+        list, map[K]V for a map, and any for a variant (see Column.Variant).
+
+    A nullable column needs sql.Null[X] or *X; a column that is not nullable
+    takes those and the plain type. A column of type null has no Go type:
+    leave its field out.
+
+    A field whose type is a number, a bool, a decimal, a time, a uuid, a string
+    or a []byte, plain or in sql.Null, is filled without allocating for the row
+    (a string allocates its copy). Pointers, slices, maps and variants allocate
+    for each row.
+
+    A field that does not fit its column, a missing column, a T that is not a
+    struct, and every error of Scan, come back as the error of the iteration,
+    and the loop ends. A field problem is found before any data is read.
 
 func Values[T Number](c *Column) ([]T, error)
     Values returns the values of a numeric column as a slice of T, null rows
@@ -145,11 +182,12 @@ type Expr struct {
     like in Go.
 
     The literals are Go values: any integer or float type, bool, string (for a
-    Utf8 column), []byte (Binary, UUID), Decimal, time.Time (date and timestamp,
-    truncated to the unit of the column) and time.Duration (time). An integer
-    can be compared with a float column. The filter is checked against the
-    schema before any read: a literal that does not fit the column, and for Eq,
-    Ne and In an integer out of the range of the column, are errors.
+    Utf8 column), []byte (Binary, UUID), Decimal, time.Time (date and timestamp)
+    and time.Duration (time), compared exactly even when finer than the unit
+    of the column (Eq never matches then). An integer can be compared with a
+    float column. The filter is checked against the schema before any read:
+    a literal that does not fit the column, and for Eq, Ne and In an integer out
+    of the range of the column, are errors.
 
 func And(e ...Expr) Expr
     And is true when every expression is. With none, it keeps every row.

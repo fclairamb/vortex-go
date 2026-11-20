@@ -3,7 +3,8 @@
 This is the planned public API. Implemented so far: `Open`, `OpenFile`, `Schema`,
 `NumRows`, `Close`, `Type`, `Kind`, `Field`, the errors, and `Scan` with `Query` (empty, and
 `columns` must be empty), `Batch`, `Column` (`Type`, `Null`, `Bool`, `Field`), `Values` and
-`Number`, for numbers, booleans, structs and the storage of dates, times and timestamps.
+`Number`, for numbers, booleans, structs and the storage of dates, times and timestamps, and
+`Rows`, which reads a file into Go structs.
 
 Once the code exists, the source of truth becomes `api.txt` (the output of `go doc -all`,
 checked by CI) and this file only keeps the reasons.
@@ -206,6 +207,16 @@ it is out of scope.
   - `[]byte` is a view, valid in the loop body.
   - `sql.Null[T]` or a pointer for nullable columns. The pointer allocates.
   - Nested structs, slices and maps are supported. Slices and maps allocate per row.
+  - A field that is a number, a bool, a decimal, a time, a UUID, a `string` or a `[]byte`,
+    plain or in `sql.Null`, is filled for a whole batch at once with no allocation per row
+    (`internal/unsafex`, offsets and sizes from `reflect`). A plain nested struct of such
+    fields is filled in place. Pointers, slices, maps, `any` and nullable structs go through
+    `reflect`.
+  - A date or a timestamp is a `time.Time` in UTC, or in the zone of its type when it has
+    one (a zone the system does not know is an error of the first iteration). A time is a
+    `time.Duration` since midnight. A named type of the right kind is accepted, except for
+    the time types, which must be `time.Time` and `time.Duration` themselves.
+  - Two fields may read the same column. A column that no field reads is not read.
 - **Missing column.** An error, unless the tag says `vortex:"city,optional"`, which gives
   the zero value.
 - **Errors.** A bad column name, a filter that does not fit the column type, or a struct

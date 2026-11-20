@@ -1,8 +1,12 @@
 // Package unsafex is the only package of the module that imports unsafe. It casts a byte
-// slice to a slice of numbers, without copying when it can.
+// slice to a slice of numbers, without copying when it can, and it stores values in the
+// fields of a slice of structs.
 package unsafex
 
-import "unsafe"
+import (
+	"reflect"
+	"unsafe"
+)
 
 // Number is the set of the numeric types a byte slice can be cast to.
 type Number interface {
@@ -26,4 +30,56 @@ func Slice[T Number](b []byte) []T {
 	out := make([]T, n)
 	copy(unsafe.Slice((*byte)(unsafe.Pointer(&out[0])), n*size), b)
 	return out
+}
+
+// Put stores vals[i] in the field of row i of rows, a slice of structs, that sits off bytes
+// into the row. V must be the exact type of the field, or have its layout: the destination is
+// typed memory of rows, so the garbage collector sees every pointer that a V holds, and the
+// write barrier applies. off and the size of V come from reflect, which the caller checks.
+// It writes min(rows.Len(), len(vals)) rows.
+func Put[V any](rows reflect.Value, off uintptr, vals []V) {
+	base, size := rows.UnsafePointer(), rows.Type().Elem().Size()
+	for i := range min(rows.Len(), len(vals)) {
+		*(*V)(unsafe.Add(base, uintptr(i)*size+off)) = vals[i]
+	}
+}
+
+// PutFunc is Put for values that get returns, one per row.
+func PutFunc[V any](rows reflect.Value, off uintptr, get func(i int) V) {
+	base, size := rows.UnsafePointer(), rows.Type().Elem().Size()
+	for i := range rows.Len() {
+		*(*V)(unsafe.Add(base, uintptr(i)*size+off)) = get(i)
+	}
+}
+
+// PutNull is Put for a field of a type like sql.Null[V]: the value goes at off, and a bool
+// at offValid says whether the row is not null. A null row gets the zero value.
+func PutNull[V any](rows reflect.Value, off, offValid uintptr, vals []V, null func(i int) bool) {
+	base, size := rows.UnsafePointer(), rows.Type().Elem().Size()
+	for i := range min(rows.Len(), len(vals)) {
+		row := unsafe.Add(base, uintptr(i)*size)
+		valid := !null(i)
+		*(*bool)(unsafe.Add(row, offValid)) = valid
+		if valid {
+			*(*V)(unsafe.Add(row, off)) = vals[i]
+		} else {
+			*(*V)(unsafe.Add(row, off)) = *new(V)
+		}
+	}
+}
+
+// PutNullFunc is PutNull for values that get returns, one per row. get is not called for a
+// null row.
+func PutNullFunc[V any](rows reflect.Value, off, offValid uintptr, get func(i int) V, null func(i int) bool) {
+	base, size := rows.UnsafePointer(), rows.Type().Elem().Size()
+	for i := range rows.Len() {
+		row := unsafe.Add(base, uintptr(i)*size)
+		valid := !null(i)
+		*(*bool)(unsafe.Add(row, offValid)) = valid
+		if valid {
+			*(*V)(unsafe.Add(row, off)) = get(i)
+		} else {
+			*(*V)(unsafe.Add(row, off)) = *new(V)
+		}
+	}
 }
