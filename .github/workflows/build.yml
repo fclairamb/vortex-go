@@ -46,7 +46,7 @@ jobs:
 
       # The reference reader opens the files our writer makes, with the pinned vortex-data and
       # with the latest release.
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v10.3.3
         if: matrix.lint
 
       # The size gate (TestSizeRatios) reads the TPC-H and ClickBench files of the reference,
