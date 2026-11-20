@@ -18,17 +18,11 @@ import (
 // itself fails with that identifier. An entry that no error matches makes the test fail: the
 // list can only shrink.
 var pending = map[string]string{
-	"fsst":                     "vortex.fsst",
 	"pco":                      "vortex.pco",
 	"zstd":                     "vortex.zstd",
-	"onpair":                   "vortex.onpair",
-	"wide":                     "vortex.fsst",
-	"default_mixed/str_low":    "vortex.fsst",
-	"default_mixed/str_high":   "vortex.fsst",
-	"default_mixed/rec.b":      "vortex.fsst",
+	"default_compact/rec.b":    "vortex.pco",
 	"default_compact/str_low":  "vortex.zstd",
 	"default_compact/str_high": "vortex.zstd",
-	"default_compact/rec.b":    "vortex.fsst",
 	"default_compact/float":    "vortex.pco",
 	"default_compact/low_card": "vortex.pco",
 	"default_compact/nullable": "vortex.pco",

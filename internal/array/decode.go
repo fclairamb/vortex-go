@@ -73,6 +73,8 @@ func registry() map[string]Decoder {
 		"vortex.alp":             decodeALP,
 		"vortex.alprd":           decodeALPRD,
 		"vortex.datetimeparts":   decodeDateTimeParts,
+		"vortex.fsst":            decodeFSST,
+		"vortex.onpair":          decodeOnPair,
 
 		"vortex.decimal_byte_parts": decodeDecimalBytePartsV1,
 	}

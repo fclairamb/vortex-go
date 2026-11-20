@@ -23,8 +23,8 @@ func TestDecodeSegmentErrors(t *testing.T) {
 		{"no root", noRoot, "no root node"},
 		{"compressed buffer", segment(node(ePrim, nil, []uint16{0}), buf{data: le32(1, 2), comp: 1}), "compressed"},
 		{"buffer past the data", truncatedBuffer(t), "past the"},
-		{"encoding out of range", segment(node(42, nil, nil)), "the footer has 29 array specs"},
-		{"unsupported encoding", segment(node(eFsst, nil, nil)), `unsupported encoding "vortex.fsst"`},
+		{"encoding out of range", segment(node(42, nil, nil)), "the footer has 31 array specs"},
+		{"unsupported encoding", segment(node(eZstd, nil, nil)), `unsupported encoding "vortex.zstd"`},
 		{"missing buffer", segment(node(ePrim, nil, nil)), "buffer 0 is missing"},
 		{"buffer index out of range", segment(node(ePrim, nil, []uint16{3}), buf{data: le32(1, 2)}), "which has 1"},
 	}
@@ -42,7 +42,7 @@ func truncatedBuffer(t *testing.T) []byte {
 }
 
 func TestUnsupportedWrapsErrUnsupported(t *testing.T) {
-	_, err := Decode(segment(node(eFsst, nil, nil)), specs, i32, 1, Options{})
+	_, err := Decode(segment(node(eZstd, nil, nil)), specs, i32, 1, Options{})
 	if !errors.Is(err, errors.ErrUnsupported) {
 		t.Fatalf("err = %v", err)
 	}
@@ -62,7 +62,7 @@ func TestTolerate(t *testing.T) {
 	root := structOf(false, inner, i32)
 	seg := segment(
 		node(eStruct, nil, nil,
-			node(eStruct, nil, nil, node(eFsst, nil, nil), node(ePrim, nil, []uint16{0})),
+			node(eStruct, nil, nil, node(eZstd, nil, nil), node(ePrim, nil, []uint16{0})),
 			node(ePrim, nil, []uint16{0})),
 		buf{data: le32(7)})
 	var paths []string

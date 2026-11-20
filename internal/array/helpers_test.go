@@ -16,6 +16,7 @@ var specs = []string{
 	"vortex.varbin", "vortex.varbinview", "vortex.list", "vortex.listview", "vortex.fixed_size_list", "vortex.map", "vortex.decimal",
 	"fastlanes.bitpacked", "fastlanes.for", "fastlanes.rle", "vortex.zigzag", "vortex.sequence", "vortex.runend", "vortex.dict", "vortex.sparse",
 	"vortex.alp", "vortex.alprd", "vortex.decimal_byte_parts", "vortex.datetimeparts",
+	"vortex.zstd", "vortex.onpair",
 }
 
 const (
@@ -48,6 +49,8 @@ const (
 	eAlpRD
 	eDecParts
 	eDateParts
+	eZstd
+	eOnPair
 )
 
 var (
