@@ -75,3 +75,7 @@ speed numbers. `README.md` still says "design only".
 
 - **Which parquet-go.** Recommended answer: `github.com/parquet-go/parquet-go`, the one
   `docs/goals.md` names as the familiar API. It lives in `bench/go.mod` only.
+
+## Implementation notes
+
+- "10 lines or fewer" counts code lines: blanks, comments and lone `}` are not counted (`internal/gen.CountLines`). gofmt'd Go with error handling cannot fit 10 raw lines (no one-line `if`), so `ExampleRows` is 10 counted lines and 15 displayed. (autopilot decision)
