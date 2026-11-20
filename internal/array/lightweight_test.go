@@ -2,6 +2,7 @@ package array
 
 import (
 	"bytes"
+	"encoding/binary"
 	"testing"
 
 	"github.com/fclairamb/vortex-go/internal/flatbuf/fbtest"
@@ -160,5 +161,104 @@ func TestSequence(t *testing.T) {
 		{"bad base", seq([]byte{0x18}, sInt(1)), primT(U8), 1, "base"},
 		{"float multiplier", seq(sInt(1), sF32(1)), primT(U8), 1, "multiplier of kind"},
 		{"bad multiplier", seq(sInt(1), []byte{0x18}), primT(U8), 1, "multiplier"},
+	})
+}
+
+// deltaEncode is the encoder of fastlanes.delta: the blocks of 1024 values, padded with the
+// last one, in the transposed order, with the first row of each lane as its base.
+func deltaEncode(p PType, vals []uint64) (bases, deltas []uint64) {
+	bits := 8 * p.Width()
+	lanes := blockSize / bits
+	mask := maskOf(bits)
+	for c := 0; c < len(vals); c += blockSize {
+		var block, tr [blockSize]uint64
+		for i := range block {
+			block[i] = vals[min(c+i, len(vals)-1)]
+		}
+		for q := range block {
+			tr[q] = block[untranspose(q)]
+		}
+		d := make([]uint64, blockSize)
+		for lane := range lanes {
+			prev := tr[lane]
+			bases = append(bases, prev)
+			for row := range bits {
+				q := flOrder[row/8]*16 + row%8*128 + lane
+				d[q] = (tr[q] - prev) & mask
+				prev = tr[q]
+			}
+		}
+		deltas = append(deltas, d...)
+	}
+	return bases, deltas
+}
+
+func deltaMeta(deltasLen, offset uint64) []byte {
+	m := []byte{0x08}
+	m = binary.AppendUvarint(m, deltasLen)
+	m = append(m, 0x10)
+	return binary.AppendUvarint(m, offset)
+}
+
+func TestDelta(t *testing.T) {
+	rng := newRand(9)
+	for _, p := range []PType{U8, U16, U32, U64, I8, I16, I32, I64} {
+		bits := 8 * p.Width()
+		vals := make([]uint64, 2500)
+		for i := range vals {
+			vals[i] = rng.Uint64() & maskOf(bits)
+		}
+		bases, deltas := deltaEncode(p, vals)
+		for _, offset := range []int{0, 5} {
+			rows := len(vals) - offset
+			seg := segment(node(eDelta, deltaMeta(uint64(len(deltas)), uint64(offset)), nil, pnode(0), pnode(1)),
+				buf{data: leInts(p.Width(), bases)}, buf{data: leInts(p.Width(), deltas)})
+			a := mustDecode(t, seg, primT(p), rows)
+			if !bytes.Equal(a.Data, leInts(p.Width(), vals[offset:])) {
+				t.Fatalf("%s from %d: wrong values", p, offset)
+			}
+		}
+	}
+
+	// The validity of the deltas is transposed too: row i is null when i%3 == 0.
+	vals := make([]uint64, 1500)
+	valid := make([]byte, 2*blockSize/8)
+	for i := range vals {
+		vals[i] = uint64(i)
+	}
+	for q := range 2 * blockSize {
+		if i := q&^(blockSize-1) + untranspose(q&(blockSize-1)); i < len(vals) && i%3 == 0 {
+			continue
+		}
+		valid[q/8] |= 1 << (q % 8)
+	}
+	bases, deltas := deltaEncode(U32, vals)
+	seg := segment(node(eDelta, deltaMeta(uint64(len(deltas)), 3), nil, pnode(0),
+		node(ePrim, nil, []uint16{1}, bnode(2))),
+		buf{data: leInts(4, bases)}, buf{data: leInts(4, deltas)}, buf{data: valid})
+	a := mustDecode(t, seg, DType{Kind: Prim, PType: U32, Nullable: true}, 1000)
+	for i := range 1000 {
+		if got := binary.LittleEndian.Uint32(a.Data[4*i:]); a.Null(i) != (i%3 == 0) || got != uint32(i+3) {
+			t.Fatalf("row %d: null %v, data %d", i, a.Null(i), got)
+		}
+	}
+
+	_, d8 := deltaEncode(U8, make([]uint64, 1))
+	b8 := make([]uint64, 128)
+	good := func(meta []byte, kids ...fbtest.Tab) []byte {
+		return segment(node(eDelta, meta, nil, kids...), buf{data: leInts(1, b8)}, buf{data: leInts(1, d8)})
+	}
+	two := []fbtest.Tab{pnode(0), pnode(1)}
+	runErrCases(t, []errCase{
+		{"string type", good(deltaMeta(1024, 0), two...), utf8t, 1, "cannot be a utf8"},
+		{"bad metadata", good([]byte{0x08}, two...), primT(U8), 1, "protowire"},
+		{"deltas_len too large", good(deltaMeta(1<<63, 0), two...), primT(U8), 1, "too large"},
+		{"offset too large", good(deltaMeta(1024, 1<<63), two...), primT(U8), 1, "too large"},
+		{"one child", good(deltaMeta(1024, 0), pnode(0)), primT(U8), 1, "2 children"},
+		{"partial block", good(deltaMeta(1000, 0), two...), primT(U8), 1, "blocks of 1024"},
+		{"offset past the block", good(deltaMeta(1024, 1024), two...), primT(U8), 0, "blocks of 1024"},
+		{"too many rows", good(deltaMeta(1024, 1), two...), primT(U8), 1024, "blocks of 1024"},
+		{"bad bases", good(deltaMeta(1024, 0), pnode(1), pnode(1)), primT(U8), 1, "bases"},
+		{"bad deltas", good(deltaMeta(1024, 0), pnode(0), pnode(0)), primT(U8), 1, "deltas"},
 	})
 }

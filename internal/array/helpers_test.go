@@ -17,6 +17,7 @@ var specs = []string{
 	"fastlanes.bitpacked", "fastlanes.for", "fastlanes.rle", "vortex.zigzag", "vortex.sequence", "vortex.runend", "vortex.dict", "vortex.sparse",
 	"vortex.alp", "vortex.alprd", "vortex.decimal_byte_parts", "vortex.datetimeparts",
 	"vortex.unsupported", "vortex.onpair", "vortex.zstd", "vortex.pco", "vortex.variant", "vortex.parquet.variant",
+	"fastlanes.delta",
 }
 
 const (
@@ -55,6 +56,7 @@ const (
 	ePco
 	eVariant
 	eParquetVariant
+	eDelta
 )
 
 var (

@@ -1,0 +1,267 @@
+{
+  "columns": {
+    "o_clerk": {
+      "first": [
+        "Clerk#000000951",
+        "Clerk#000000880",
+        "Clerk#000000955",
+        "Clerk#000000124",
+        "Clerk#000000925"
+      ],
+      "last": [
+        "Clerk#000000260",
+        "Clerk#000000891",
+        "Clerk#000000862",
+        "Clerk#000000193",
+        "Clerk#000000194"
+      ],
+      "nulls": 0,
+      "sha256": "5e8921c1a2cef847bb63964e4bb4fff8dacd6e38396a6e530f3f5ad32d4a0f03"
+    },
+    "o_comment": {
+      "first": [
+        "nstructions sleep furiously among ",
+        " foxes. pending accounts at the pending, silent asymptot",
+        "sly final accounts boost. carefully regular ideas cajole carefully. depos",
+        "sits. slyly regular warthogs cajole. regular, regular theodolites acro",
+        "quickly. bold deposits sleep slyly. packages use slyly"
+      ],
+      "last": [
+        "le along the deposits. blithely bol",
+        "lyly among the furiously fluffy theodolites. carefully f",
+        "counts. even, ironic packages cajole ironic ",
+        ". even packages affix fluffily against ",
+        "usual frets use alongside of the furiou"
+      ],
+      "nulls": 0,
+      "sha256": "962c2c18e57f41c1ae34cc814661660ec9d5a2f825472e70f5ee3fe5c7f0c388"
+    },
+    "o_custkey": {
+      "first": [
+        "370",
+        "781",
+        "1234",
+        "1369",
+        "445"
+      ],
+      "last": [
+        "1480",
+        "229",
+        "761",
+        "706",
+        "1426"
+      ],
+      "nulls": 0,
+      "sha256": "8076ddf40c08b264ea32c582aa1a7073f8ec3affd7f14ca0b92c2341b0218107"
+    },
+    "o_orderdate": {
+      "first": [
+        "9497",
+        "9831",
+        "8687",
+        "9414",
+        "8976"
+      ],
+      "last": [
+        "9070",
+        "9450",
+        "9469",
+        "8756",
+        "9241"
+      ],
+      "nulls": 0,
+      "sha256": "82aa41763686f007662a4cf28b86d59078aa7b68e035bcbee34d78c130d0f6a9"
+    },
+    "o_orderkey": {
+      "first": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "last": [
+        "59972",
+        "59973",
+        "59974",
+        "59975",
+        "60000"
+      ],
+      "nulls": 0,
+      "sha256": "09d6c8ec8c882edc4441286d12e057e6dfb1b2b260a57466fc64f83e9adb0fae"
+    },
+    "o_orderpriority": {
+      "first": [
+        "5-LOW",
+        "1-URGENT",
+        "5-LOW",
+        "5-LOW",
+        "5-LOW"
+      ],
+      "last": [
+        "4-NOT SPECIFIED",
+        "5-LOW",
+        "2-HIGH",
+        "5-LOW",
+        "2-HIGH"
+      ],
+      "nulls": 0,
+      "sha256": "4bf1b6dbdf617cf60bf8d699f25c8327e492d6dc8d512f269d976d5c1170a4c4"
+    },
+    "o_orderstatus": {
+      "first": [
+        "O",
+        "O",
+        "F",
+        "O",
+        "F"
+      ],
+      "last": [
+        "F",
+        "O",
+        "O",
+        "F",
+        "P"
+      ],
+      "nulls": 0,
+      "sha256": "56afe4a2c50a9c525a627df08ab0238108a945f1c7aae30f17537b017f6d39b4"
+    },
+    "o_shippriority": {
+      "first": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "nulls": 0,
+      "sha256": "583318645e9f887e1c9f85f511ffd6506275ea6e3dec14a3e5c247e956a6c2d6"
+    },
+    "o_totalprice": {
+      "first": [
+        "172799.49",
+        "38426.09",
+        "205654.30",
+        "56000.91",
+        "105367.67"
+      ],
+      "last": [
+        "98245.72",
+        "230718.14",
+        "63273.39",
+        "59995.27",
+        "299401.61"
+      ],
+      "nulls": 0,
+      "sha256": "6486458cf1223baa1ececa2b7c9af538c7d126ec12f91e8a364b86633daceee4"
+    }
+  },
+  "encodings": [
+    "fastlanes.bitpacked.v2",
+    "fastlanes.delta",
+    "fastlanes.for.v2",
+    "vortex.chunked",
+    "vortex.constant",
+    "vortex.decimal_byte_parts.v2",
+    "vortex.dict",
+    "vortex.ext",
+    "vortex.fsst",
+    "vortex.onpair",
+    "vortex.primitive",
+    "vortex.runend",
+    "vortex.sequence",
+    "vortex.shared",
+    "vortex.slice",
+    "vortex.struct",
+    "vortex.varbinview"
+  ],
+  "rows": 15000,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "o_orderkey"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "o_custkey"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "o_orderstatus"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 15,
+          "scale": 2
+        },
+        "name": "o_totalprice"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.date",
+          "ext_metadata": "days",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i32"
+          }
+        },
+        "name": "o_orderdate"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "o_orderpriority"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "o_clerk"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "o_shippriority"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "o_comment"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

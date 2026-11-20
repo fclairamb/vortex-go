@@ -71,6 +71,7 @@ func registry() map[string]Decoder {
 		"fastlanes.bitpacked":    decodeBitPacked,
 		"fastlanes.for":          decodeFoR,
 		"fastlanes.rle":          decodeRLE,
+		"fastlanes.delta":        decodeDelta,
 		"vortex.zigzag":          decodeZigZag,
 		"vortex.sequence":        decodeSequence,
 		"vortex.runend":          decodeRunEnd,

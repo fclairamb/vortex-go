@@ -23,7 +23,7 @@ func TestDecodeSegmentErrors(t *testing.T) {
 		{"no root", noRoot, "no root node"},
 		{"compressed buffer", segment(node(ePrim, nil, []uint16{0}), buf{data: le32(1, 2), comp: 1}), "compressed"},
 		{"buffer past the data", truncatedBuffer(t), "past the"},
-		{"encoding out of range", segment(node(42, nil, nil)), "the footer has 35 array specs"},
+		{"encoding out of range", segment(node(42, nil, nil)), "the footer has 36 array specs"},
 		{"unsupported encoding", segment(node(eUnsupported, nil, nil)), `unsupported encoding "vortex.unsupported"`},
 		{"missing buffer", segment(node(ePrim, nil, nil)), "buffer 0 is missing"},
 		{"buffer index out of range", segment(node(ePrim, nil, []uint16{3}), buf{data: le32(1, 2)}), "which has 1"},
