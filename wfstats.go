@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"encoding/binary"
 	"math"
+	"slices"
 
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 	"github.com/fclairamb/vortex-go/internal/scalar"
@@ -321,11 +322,25 @@ func (s colStat) legacy(r *ranger) astat {
 	return a
 }
 
+// containsVariant reports whether t is, or holds anywhere within it, a Variant.
+func containsVariant(t Type) bool {
+	if t.kind == Variant {
+		return true
+	}
+	if t.elem != nil && containsVariant(*t.elem) || t.value != nil && containsVariant(*t.value) {
+		return true
+	}
+	return slices.ContainsFunc(t.fields, func(f Field) bool { return containsVariant(f.Type) })
+}
+
 // fileEntries walks the layout in post-order, as the reference does for the file statistics:
 // an entry for each column, and one after the fields of a nullable struct for its own null
 // count. A column under a nullable struct has no statistics.
 func fileEntries(l *layoutBuild, out *[][]fstat) {
 	if !l.isStruct {
+		if containsVariant(l.col.t) {
+			return // the reference skips a variant, also a nested one: no entry
+		}
 		var set []fstat
 		if c := l.col; c.zones != nil && c.rows > 0 {
 			set = c.zones.reduce().aggregates(&c.ranger)

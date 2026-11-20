@@ -296,7 +296,7 @@ func TestVariantRowWriterErrors(t *testing.T) {
 	type nullable struct{ V *any }
 	type wrong struct{ V any }
 	for name, w := range map[string]interface{ Close() error }{
-		"pointer":   NewRowWriter[nullable](io.Discard, WriteOptions{}),
+		"pointer": NewRowWriter[nullable](io.Discard, WriteOptions{}),
 	} {
 		if err := w.Close(); err == nil {
 			t.Errorf("%s: no error", name)
@@ -326,5 +326,41 @@ func TestNoAllocationPerVariantWrite(t *testing.T) {
 		}
 	}); n != 0 {
 		t.Fatalf("%v allocations per Write", n)
+	}
+}
+
+// TestVariantStatisticsAreNullCountOnly: the reference keeps no min and max for a Variant. Its zone
+// map holds the null count, and its file statistics have no entry for a column that is or holds a
+// Variant, at any depth, while the columns around it keep theirs.
+func TestVariantStatisticsAreNullCountOnly(t *testing.T) {
+	vals := []any{int64(1), nil, "a", map[string]any{"k": 1.5}}
+	nulls := []bool{false, true, false, false}
+
+	// zones: the null count, and nothing else
+	for _, ty := range []Type{VariantType().AsNullable(), VariantType()} {
+		c := newColumn(ty, true)
+		d := OfVariants(vals)
+		if ty.nullable {
+			d = d.Nulls(nulls)
+		}
+		appendRows(c.buf, d.body, ty, 0, d.n, &c.arena)
+		c.zones.add(c.buf, 0, c.buf.n)
+		fields, _, specs := c.zones.table()
+		if len(fields) != 1 || fields[0].Name != aggNullCount || len(specs) != 1 {
+			t.Errorf("%v: zone columns %v", ty, fieldNames(fields))
+		}
+	}
+
+	// footer: one entry (the key), none for the variants
+	ty := VariantType().AsNullable()
+	schema := NewSchema(Field{"k", Int64Type()}, Field{"v", ty}, Field{"l", ListOf(ty)},
+		Field{"s", StructOf(Field{"w", ty}, Field{"x", Int32Type()})})
+	_, file := writeFile(t, schema, []Data{Of([]int64{1, 2, 3, 4}), OfVariants(vals).Nulls(nulls),
+		OfList([]int{0, 2, 4, 4, 4}, OfVariants(vals)),
+		OfStruct(OfVariants(vals), Of([]int32{1, 2, 3, 4}))})
+	got := entries(t, fileStats(t, file))
+	// k, s.x: the variants of v, l and s.w have no entry
+	if len(got) != 2 || got[0][aggMax].Int != 4 || got[1][aggMax].Int != 4 {
+		t.Fatalf("%d entries: %v", len(got), got)
 	}
 }
