@@ -39,6 +39,20 @@ func numberEsts[T Number]() map[string]est {
 		"constant": func(_ *Encoder, s []byte, nulls []bool, _, _ int) int {
 			return EstimateConstant(unsafex.Slice[T](s), nulls)
 		},
+		"zstd": func(e *Encoder, s []byte, nulls []bool, rows, _ int) int {
+			return EstimateZstd(e, unsafex.Slice[T](s), nulls, rows)
+		},
+	}
+}
+
+func floatEsts[T Float]() map[string]est {
+	return map[string]est{
+		"alp": func(e *Encoder, s []byte, nulls []bool, rows, _ int) int {
+			return EstimateALP(e, unsafex.Slice[T](s), nulls, rows)
+		},
+		"alprd": func(e *Encoder, s []byte, nulls []bool, rows, _ int) int {
+			return EstimateALPRD(e, unsafex.Slice[T](s), nulls, rows)
+		},
 	}
 }
 
@@ -57,8 +71,8 @@ var ests = map[string]map[string]est{
 	"u16": merge2(intEsts[uint16](), numberEsts[uint16]()),
 	"u32": merge2(intEsts[uint32](), numberEsts[uint32]()),
 	"u64": merge2(intEsts[uint64](), numberEsts[uint64]()),
-	"f32": numberEsts[float32](),
-	"f64": numberEsts[float64](),
+	"f32": merge2(numberEsts[float32](), floatEsts[float32]()),
+	"f64": merge2(numberEsts[float64](), floatEsts[float64]()),
 }
 
 func merge2(ms ...map[string]est) map[string]est {
@@ -95,11 +109,37 @@ func widthFor(name string, p string, par vparams) int {
 // TestEstimate checks that the estimate of every encoder is within 5% of the size it makes, on
 // the whole data and on a quarter of it.
 func TestEstimate(t *testing.T) {
-	rng := rand.New(rand.NewPCG(8, 9))
+	estimateEncoders(t, rand.New(rand.NewPCG(8, 9)), func(name string) bool { return !floatOnly(name) && name != "zstd" }, within)
+}
+
+// TestEstimateFloatsAndZstd is the same for the encoders of floats and zstd, which have a
+// tolerance of 10%.
+func TestEstimateFloatsAndZstd(t *testing.T) {
+	estimateEncoders(t, rand.New(rand.NewPCG(10, 11)), func(name string) bool { return floatOnly(name) || name == "zstd" },
+		// 10%, or a frame header when the whole is a few bytes
+		func(got, want int) bool { return 10*abs(got-want) <= want || abs(got-want) <= 32 })
+}
+
+func countTrue(b []bool) int {
+	n := 0
+	for _, x := range b {
+		if x {
+			n++
+		}
+	}
+	return n
+}
+
+func floatOnly(name string) bool { return name == "alp" || name == "alprd" }
+
+func estimateEncoders(t *testing.T, rng *rand.Rand, take func(name string) bool, close func(got, want int) bool) {
 	e, c := New(), New()
 	for _, p := range slices.Sorted(mapsKeys(ests)) {
 		w := ptypes[p].Width()
 		for _, name := range slices.Sorted(mapsKeys(ests[p])) {
+			if !take(name) {
+				continue
+			}
 			for _, kind := range kinds {
 				for _, n := range []int{1, 100, 1025, 20480} {
 					for _, nl := range nullNames {
@@ -113,7 +153,7 @@ func TestEstimate(t *testing.T) {
 						nulls := nullPattern(nl, n)
 						for _, par := range []vparams{{BitWidth: 3}, {BitWidth: 8*w - 1}} {
 							t.Run(fmt.Sprintf("%s/%s/%s/%d/%s/%d", name, p, kind, n, nl, par.BitWidth), func(t *testing.T) {
-								checkEstimate(t, e, c, p, name, kind, raw, nulls, par)
+								checkEstimate(t, e, c, p, name, kind, raw, nulls, par, close)
 							})
 							if name != "bitpacked" {
 								break
@@ -126,7 +166,7 @@ func TestEstimate(t *testing.T) {
 	}
 }
 
-func checkEstimate(t *testing.T, e, c *Encoder, p, name, kind string, raw []byte, nulls []bool, par vparams) {
+func checkEstimate(t *testing.T, e, c *Encoder, p, name, kind string, raw []byte, nulls []bool, par vparams, close func(got, want int) bool) {
 	w := ptypes[p].Width()
 	n := len(raw) / w
 	c.Reset()
@@ -142,7 +182,7 @@ func checkEstimate(t *testing.T, e, c *Encoder, p, name, kind string, raw []byte
 	// a quarter of the rows, in whole blocks, of data that is the same all along: the number of
 	// distinct values of sorted data, or of random 16-bit values, grows with the rows in a way that a
 	// sample can hardly tell
-	if n < 8192 || kind == "sorted" || kind == "steps" || name == "dict" && kind == "random" {
+	if n < 8192 || kind == "sorted" || kind == "steps" || name == "dict" && kind == "random" || floatOnly(name) && kind == "random" {
 		return
 	}
 	quarter := n / 4 / blockSize * blockSize
@@ -150,8 +190,11 @@ func checkEstimate(t *testing.T, e, c *Encoder, p, name, kind string, raw []byte
 	if nulls != nil {
 		qn = nulls[:quarter]
 	}
+	if name == "zstd" && quarter-countTrue(qn) < 1024 {
+		return // a sample too small for a compressor to learn from
+	}
 	e.Reset()
-	if got := ests[p][name](e, raw[:quarter*w], qn, n, par.BitWidth); !within(got, size) {
+	if got := ests[p][name](e, raw[:quarter*w], qn, n, par.BitWidth); !close(got, size) {
 		t.Fatalf("estimate from a quarter = %d, size = %d", got, size)
 	}
 }

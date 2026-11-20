@@ -4,6 +4,8 @@ import (
 	"hash/maphash"
 	"math"
 
+	"github.com/klauspost/compress/zstd"
+
 	"github.com/fclairamb/vortex-go/internal/protowire"
 	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
@@ -22,6 +24,13 @@ const (
 	IDConstant   = "vortex.constant"
 	IDSparse     = "vortex.sparse"
 	IDVarBinView = "vortex.varbinview"
+
+	IDALP           = "vortex.alp"
+	IDALPRD         = "vortex.alprd"
+	IDFSST          = "vortex.fsst"
+	IDDecimalBytes  = "vortex.decimal_byte_parts"
+	IDDateTimeParts = "vortex.datetimeparts"
+	IDZstd          = "vortex.zstd"
 )
 
 // The numbers of the PType enum of the metadata messages.
@@ -30,6 +39,10 @@ const (
 	pU16 = 1
 	pU32 = 2
 	pU64 = 3
+	pI8  = 4
+	pI16 = 5
+	pI32 = 6
+	pI64 = 7
 )
 
 // The fields of the ScalarValue message.
@@ -100,6 +113,10 @@ type Encoder struct {
 	tab     []int32
 	flagBuf []bool
 	hist    [65]int
+	u16s    []uint16
+	groups  []rdGroup
+	fs      *fsstState
+	zenc    *zstd.Encoder
 	seed    maphash.Seed
 	off     int
 	used    int

@@ -18,6 +18,7 @@ use vortex_buffer::{BitBufferMut, Buffer};
 
 mod cases;
 mod enc;
+mod floats;
 
 pub struct Ctx {
     pub session: VortexSession,
@@ -88,6 +89,8 @@ fn main() {
     vortex_zigzag::initialize(&session);
     vortex_sequence::initialize(&session);
     vortex_sparse::initialize(&session);
+    vortex_alp::initialize(&session);
+    vortex_fsst::initialize(&session);
     let ctx = Ctx { session };
     for (name, vectors) in enc::all(&ctx) {
         let d = dir.join(&name);

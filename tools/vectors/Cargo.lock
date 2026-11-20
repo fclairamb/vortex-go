@@ -2041,9 +2041,11 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "vortex",
+ "vortex-alp",
  "vortex-buffer",
  "vortex-error",
  "vortex-fastlanes",
+ "vortex-fsst",
  "vortex-sequence",
  "vortex-sparse",
  "vortex-zigzag",

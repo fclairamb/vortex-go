@@ -18,7 +18,7 @@ pub type Files = Vec<(String, Value)>;
 
 /// One vector: the input, its validity, the parameters and the node that comes out of the
 /// encoder (null when the encoder declines the input).
-fn vector<T: Copy>(name: &str, input: &[T], valid: &Option<Vec<bool>>, params: Value, out: Option<Value>) -> Value {
+pub fn vector<T: Copy>(name: &str, input: &[T], valid: &Option<Vec<bool>>, params: Value, out: Option<Value>) -> Value {
     json!({
         "name": name,
         "len": input.len(),
@@ -29,12 +29,12 @@ fn vector<T: Copy>(name: &str, input: &[T], valid: &Option<Vec<bool>>, params: V
     })
 }
 
-fn file(encoding: &str, ptype: &str, vectors: Vec<Value>) -> (String, Value) {
+pub fn file(encoding: &str, ptype: &str, vectors: Vec<Value>) -> (String, Value) {
     (ptype.to_string(), json!({"encoding": encoding, "ptype": ptype, "vectors": vectors}))
 }
 
 /// The nulls to try with n values: none, and a few when there is room for both.
-fn validities(rng: &mut Rng, n: usize) -> Vec<(&'static str, Option<Vec<bool>>)> {
+pub fn validities(rng: &mut Rng, n: usize) -> Vec<(&'static str, Option<Vec<bool>>)> {
     let mut v = vec![("", None)];
     if n > 1 {
         v.push(("_nulls", Some(cases::nulls(rng, n, 5))));
@@ -378,7 +378,7 @@ fn strings_dict(ctx: &Ctx) -> Files {
 }
 
 pub fn all(ctx: &Ctx) -> Vec<(String, Files)> {
-    let mut out = vec![];
+    let mut out = crate::floats::all(ctx);
     let mut add = |name: &str, per_type: Vec<(&str, Vec<Value>)>| {
         out.push((
             name.to_string(),

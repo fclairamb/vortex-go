@@ -99,3 +99,8 @@ func Size[T Number]() int {
 	var zero T
 	return int(unsafe.Sizeof(zero))
 }
+
+// StringBytes views the bytes of s without copying them. The result must not be written.
+func StringBytes(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
+}

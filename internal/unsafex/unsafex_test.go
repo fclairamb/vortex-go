@@ -158,3 +158,12 @@ func TestBytes(t *testing.T) {
 		t.Fatal(len(got))
 	}
 }
+
+func TestStringBytes(t *testing.T) {
+	if got := StringBytes("abc"); string(got) != "abc" {
+		t.Fatalf("got %q", got)
+	}
+	if got := StringBytes(""); len(got) != 0 {
+		t.Fatalf("got %q", got)
+	}
+}

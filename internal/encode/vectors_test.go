@@ -34,8 +34,12 @@ type vector struct {
 }
 
 type vparams struct {
-	BitWidth int  `json:"bit_width"`
-	Best     bool `json:"best"`
+	AlpE      *int     `json:"alp_e"`
+	AlpF      *int     `json:"alp_f"`
+	Dict      []uint16 `json:"dict"`
+	BitWidth  int      `json:"bit_width"`
+	RightBits int      `json:"right_bits"`
+	Best      bool     `json:"best"`
 }
 
 type vnode struct {
@@ -86,6 +90,9 @@ func numberRuns[T Number]() map[string]run {
 		"constant": func(e *Encoder, raw []byte, nulls []bool, _ vparams) (*Node, bool) {
 			return Constant(e, unsafex.Slice[T](raw), nulls)
 		},
+		"zstd": func(e *Encoder, raw []byte, nulls []bool, _ vparams) (*Node, bool) {
+			return Zstd(e, unsafex.Slice[T](raw), nulls), true
+		},
 	}
 }
 
@@ -93,6 +100,26 @@ func signedRuns[T Signed]() map[string]run {
 	return map[string]run{
 		"zigzag": func(e *Encoder, raw []byte, nulls []bool, _ vparams) (*Node, bool) {
 			return ZigZag(e, unsafex.Slice[T](raw), nulls), true
+		},
+	}
+}
+
+func floatRuns[T Float]() map[string]run {
+	return map[string]run{
+		"alp": func(e *Encoder, raw []byte, nulls []bool, p vparams) (*Node, bool) {
+			v := unsafex.Slice[T](raw)
+			if p.AlpE == nil {
+				return ALP(e, v, nulls), true
+			}
+			n := ALPWith(e, v, nulls, Exponents{uint8(*p.AlpE), uint8(*p.AlpF)})
+			return n, n != nil
+		},
+		"alprd": func(e *Encoder, raw []byte, nulls []bool, p vparams) (*Node, bool) {
+			v := unsafex.Slice[T](raw)
+			if p.Dict == nil {
+				return ALPRD(e, v, nulls)
+			}
+			return ALPRDWith(e, v, nulls, p.RightBits, p.Dict)
 		},
 	}
 }
@@ -117,8 +144,8 @@ var runs = map[string]map[string]run{
 	"u16": merge(intRuns[uint16](), numberRuns[uint16]()),
 	"u32": merge(intRuns[uint32](), numberRuns[uint32]()),
 	"u64": merge(intRuns[uint64](), numberRuns[uint64]()),
-	"f32": numberRuns[float32](),
-	"f64": numberRuns[float64](),
+	"f32": merge(numberRuns[float32](), floatRuns[float32]()),
+	"f64": merge(numberRuns[float64](), floatRuns[float64]()),
 }
 
 var ptypes = map[string]array.PType{
@@ -208,6 +235,10 @@ func TestVectorsBytes(t *testing.T) {
 	n := forEachVector(t, func(t *testing.T, e *Encoder, file vecFile, v vector) {
 		if file.Encoding == "dict" && v.Strings != nil {
 			vectorStrings(t, e, v)
+			return
+		}
+		if file.Encoding == "fsst" {
+			vectorFSST(t, e, v)
 			return
 		}
 		got, ok := runs[file.PType][file.Encoding](e, unhex(t, v.Input), nullsOf(t, v), v.Params)
