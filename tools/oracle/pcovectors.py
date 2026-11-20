@@ -12,6 +12,9 @@ the mode and the delta encoding it actually wrote (read from the first bits of t
 The Go test checks that every mode and every delta encoding is reached by at least one vector.
 
 The data comes from a generator seeded per case: the output is deterministic.
+
+There is no 0-value case: the reference refuses to compress an empty chunk. A Vortex pco
+array with no valid value has no chunk at all; internal/array/pco_test.go covers it.
 """
 import json
 import os
