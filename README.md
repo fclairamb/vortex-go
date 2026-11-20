@@ -102,7 +102,7 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.masked` | yes | yes |
 | array | `vortex.null` | yes | yes |
 | array | `vortex.onpair` | yes | no |
-| array | `vortex.parquet.variant` | yes | no |
+| array | `vortex.parquet.variant` | yes | yes |
 | array | `vortex.pco` | yes | no |
 | array | `vortex.primitive` | yes | yes |
 | array | `vortex.runend` | yes | yes |
@@ -111,7 +111,7 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.struct` | yes | yes |
 | array | `vortex.varbin` | yes | yes |
 | array | `vortex.varbinview` | yes | yes |
-| array | `vortex.variant` | yes | no |
+| array | `vortex.variant` | yes | yes |
 | array | `vortex.zigzag` | yes | yes |
 | array | `vortex.zstd` | yes | yes |
 | dtype | `vortex.date` | yes | yes |

@@ -332,6 +332,8 @@ func incrementUTF8(s []byte) ([]byte, bool) {
 const (
 	idFixedSizeList = "vortex.fixed_size_list"
 	idMap           = "vortex.map"
+	idVariant       = "vortex.variant"
+	idParquetVar    = "vortex.parquet.variant"
 )
 
 // The identifiers of the aggregates of the statistics.
@@ -531,7 +533,7 @@ func writtenLayouts() []string {
 func writtenArrays() []string {
 	return []string{
 		"vortex.bool", "vortex.decimal", "vortex.ext", idFixedSizeList, "vortex.list", "vortex.listview",
-		idMap, "vortex.null", "vortex.struct", "vortex.varbinview",
+		idMap, "vortex.null", idParquetVar, "vortex.struct", "vortex.varbinview", idVariant,
 	}
 }
 

@@ -289,6 +289,19 @@ func writtenFiles(t *testing.T) map[string]map[string]string {
 		}
 		collect("all types, edition "+ed, f)
 	}
+	// a Variant column, with and without nulls
+	for mode, c := range map[string]Compression{"default": Default, "none": None} {
+		vals := variantRows(300, 5)
+		var buf bytes.Buffer
+		w := NewWriter(&buf, NewSchema(Field{"v", VariantType().AsNullable()}), WriteOptions{Compression: c})
+		if err := w.Write(OfVariants(vals)); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		collect("variants, compression "+mode, openBytes(t, buf.Bytes()))
+	}
 	// a column of of about 1 MiB is cut into chunks, in a chunked layout
 	rows := make([]int32, 600000)
 	for i := range rows {

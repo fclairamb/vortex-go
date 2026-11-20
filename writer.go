@@ -69,7 +69,7 @@ var (
 // A column takes the Data its type calls for: Of for the numbers (the Go type is the one of
 // the column, int32 for Int32; the storage of a date, a time or a timestamp, and uint16 for
 // the bits of a Float16), OfBools, OfStrings or OfBytes for Utf8 and Binary, OfBytes for a
-// UUID, OfDecimals, OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map.
+// UUID, OfDecimals, OfVariants for a Variant, OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map.
 // Each Write adds rows. The rows of a column are cut into chunks that do not depend on how
 // the caller splits them: at multiples of 8,192 rows, about 1 MiB of data a chunk. Each
 // column carries the statistics a reader uses to skip a zone, and a column of few distinct
@@ -600,6 +600,11 @@ var filePTypes = map[Kind]uint8{
 	Float16: fbs.F16, Float32: fbs.F32, Float64: fbs.F64,
 }
 
+// simpleDTypes are the dtypes that have a nullability and nothing else.
+var simpleDTypes = map[Kind]fbs.Kind{
+	Bool: fbs.KindBool, Utf8: fbs.KindUtf8, Binary: fbs.KindBinary, Variant: fbs.KindVariant,
+}
+
 // dtypeTable writes the DType flatbuffer of t.
 func (w *Writer) dtypeTable(t Type) flatbuf.Off {
 	switch t.kind {
@@ -614,8 +619,8 @@ func (w *Writer) dtypeTable(t Type) flatbuf.Off {
 	case Null:
 		kind = fbs.KindNull
 		b.StartTable(0)
-	case Bool, Utf8, Binary:
-		kind = map[Kind]fbs.Kind{Bool: fbs.KindBool, Utf8: fbs.KindUtf8, Binary: fbs.KindBinary}[t.kind]
+	case Bool, Utf8, Binary, Variant:
+		kind = simpleDTypes[t.kind]
 		b.StartTable(1)
 		b.Uint8(0, boolByte(t.nullable), 0)
 	case KindDecimal:

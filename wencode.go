@@ -95,6 +95,8 @@ func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
 		return w.encodeStrings(t, d)
 	case KindDecimal:
 		return w.encodeDecimals(t, d, n)
+	case Variant:
+		return w.encodeVariants(d, n)
 	case Struct:
 		return w.encodeStruct(t, d, n)
 	case List, Map:
@@ -280,6 +282,22 @@ func widthIndex(width int) int {
 		i++
 	}
 	return i
+}
+
+// encodeVariants writes a vortex.variant that holds no shredded type: its only child is a
+// vortex.parquet.variant with a value and no typed_value, whose children are the validity
+// (when a row is null), the metadata and the value of each row, both binary arrays that go
+// through the compressor.
+func (w *Writer) encodeVariants(d Data, n int) flatbuf.Off {
+	base := len(w.stack)
+	w.validity(d, n)
+	w.push(w.encode(BinaryType(), Data{&body{kind: dBytes, n: n, bins: d.bins}}, n))
+	w.push(w.encode(BinaryType(), Data{&body{kind: dBytes, n: n, bins: d.vbins}}, n))
+	meta := protowire.AppendUint(w.meta[:0], 1, 1) // has_value
+	core := w.node(idParquetVar, meta, len(w.bufs), 0, base)
+	w.meta = meta[:0]
+	w.push(core)
+	return w.node(idVariant, nil, len(w.bufs), 0, base)
 }
 
 func (w *Writer) encodeStruct(t Type, d Data, n int) flatbuf.Off {

@@ -139,7 +139,6 @@ func TestInvalidSchemas(t *testing.T) {
 		{"time in days", TimeType(Day), `a time in days, want ns, us, ms or s`},
 		{"timestamp in days", TimestampType(Day, ""), `a timestamp in days`},
 		{"timestamp zone", TimestampType(Second, strings.Repeat("x", 1<<16)), `a timestamp in s with a zone of 65536 bytes`},
-		{"variant", Type{kind: Variant}, `a variant cannot be written`},
 		{"unknown kind", Type{kind: Variant + 1}, `unknown kind 25`},
 		{"in a list", ListOf(DecimalOf(0, 0)), `field "a[]": decimal`},
 		{"in a fixed-size list", FixedSizeListOf(DecimalOf(0, 0), 2), `field "a[]": decimal`},

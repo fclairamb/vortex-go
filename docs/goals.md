@@ -87,8 +87,6 @@ are decoded and never written, each for a reason:
   in file size against the reference (below).
 - `vortex.onpair`: a second string compressor next to FSST. This version writes FSST only; the
   compressor can add OnPair if it saves bytes on the benchmarks against the reference.
-- `vortex.variant`, `vortex.parquet.variant`: the arrays of the Variant type, which the writer
-  has no column for yet. They are read for the files that other writers make.
 
 Two arrays are written only when a test forces them, and no compressor picks them:
 `vortex.bytebool` (bools one byte each, a wider form of `vortex.bool`, which holds the same

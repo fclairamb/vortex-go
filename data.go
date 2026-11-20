@@ -4,6 +4,7 @@ import (
 	"reflect"
 
 	"github.com/fclairamb/vortex-go/internal/unsafex"
+	"github.com/fclairamb/vortex-go/internal/variant"
 )
 
 type dataKind uint8
@@ -18,6 +19,7 @@ const (
 	dStruct          // kids are the fields
 	dList            // offsets and kids[0], the elements; also fixed-size lists and maps
 	dNull            // n nulls
+	dVars            // variants: the Go values, or, in the buffer of a column, their encoding
 )
 
 // Data is the values of one column, in the shape Go holds them. Build one with Of, OfBools,
@@ -33,6 +35,9 @@ type body struct {
 	strs  []string
 	bins  [][]byte
 	decs  []Decimal
+	vars  []any    // the values of a variant column, as the caller gave them
+	vbins [][]byte // the encoded values of a variant column: bins holds the metadata
+	venc  *variant.Encoder
 	kids  []Data // the fields of a struct; the elements of a list, a fixed-size list or a map
 	offs  []int  // the offsets of a list: one more than the rows
 	nulls []bool // the null rows, nil for none
@@ -88,6 +93,24 @@ func OfBytes(v [][]byte) Data { return Data{&body{kind: dBytes, n: len(v), bins:
 // OfDecimals is the values of a decimal column: the unscaled values.
 func OfDecimals(v []Decimal) Data { return Data{&body{kind: dDec, n: len(v), decs: v}} }
 
+// OfVariants is the values of a Variant column, one of: nil (a null row), bool, any Go integer
+// (an unsigned one up to the largest int64), float32, float64, string, []byte, time.Time
+// (a timestamp, in microseconds, or in nanoseconds when it has a finer part), VariantDecimal,
+// []any and map[string]any of these, up to 128 levels deep. Another Go type is an error of
+// Write that names the type and the row.
+func OfVariants(vals []any) Data {
+	var nulls []bool
+	for i, v := range vals {
+		if v == nil {
+			if nulls == nil {
+				nulls = make([]bool, len(vals))
+			}
+			nulls[i] = true
+		}
+	}
+	return Data{&body{kind: dVars, n: len(vals), vars: vals, nulls: nulls}}
+}
+
 // OfNulls is a column of the null type: n rows, all null.
 func OfNulls(n int) Data { return Data{&body{kind: dNull, n: n}} }
 
@@ -138,6 +161,8 @@ func (d Data) describe() string {
 		return "a list"
 	case dNull:
 		return "nulls"
+	case dVars:
+		return "variants"
 	default:
 		return "no values"
 	}

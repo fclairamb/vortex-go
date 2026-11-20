@@ -76,6 +76,8 @@ func rootID(t Type) string {
 		return idFixedSizeList
 	case UUID, Date, Time, Timestamp:
 		return "vortex.ext"
+	case Variant:
+		return idVariant
 	}
 	return "vortex.primitive"
 }
