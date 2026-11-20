@@ -6,12 +6,14 @@
   "customManagers": [
     {
       "customType": "regex",
-      "description": "The upstream Vortex release this implementation follows",
+      "description": "The upstream Vortex release this implementation follows: .vortex-version and the pin of the Rust benchmark harness, in one PR",
       "managerFilePatterns": [
-        "/^\\.vortex-version$/"
+        "/^\\.vortex-version$/",
+        "/^tools/bench-rust/Cargo\\.toml$/"
       ],
       "matchStrings": [
-        "^(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$"
+        "^(?<currentValue>\\d+\\.\\d+\\.\\d+)\\s*$",
+        "^vortex\\s*=\\s*\\{[^}]*version\\s*=\\s*\"=(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
       ],
       "depNameTemplate": "vortex-data",
       "datasourceTemplate": "pypi"

@@ -219,7 +219,7 @@ func readVortex[T any](b *testing.B, path string, q vortex.Query, keep func(*T))
 	return n
 }
 
-func BenchmarkFullScan(b *testing.B) {
+func benchFullScan(b *testing.B) {
 	vpath, ppath := data(b)
 	sink := 0
 	b.Run("vortex-go", func(b *testing.B) {
@@ -241,7 +241,7 @@ func BenchmarkFullScan(b *testing.B) {
 	_ = sink
 }
 
-func Benchmark3of16(b *testing.B) {
+func bench3of16(b *testing.B) {
 	vpath, ppath := data(b)
 	sink := 0
 	b.Run("vortex-go", func(b *testing.B) {
@@ -263,9 +263,9 @@ func Benchmark3of16(b *testing.B) {
 	_ = sink
 }
 
-// BenchmarkFilter keeps 1% of the rows (user < 1000 of 100000). Vortex filters in the reader,
+// benchFilter keeps 1% of the rows (user < 1000 of 100000). Vortex filters in the reader,
 // parquet-go reads the three columns of every row and filters in Go.
-func BenchmarkFilter(b *testing.B) {
+func benchFilter(b *testing.B) {
 	vpath, ppath := data(b)
 	sink := 0
 	b.Run("vortex-go", func(b *testing.B) {
@@ -290,6 +290,15 @@ func BenchmarkFilter(b *testing.B) {
 		report(b, n)
 	})
 	_ = sink
+}
+
+// BenchmarkCases runs the cases of bench/cases.json that parquet-go has too, under the names of
+// that list: BenchmarkCases/<case>/vortex-go and BenchmarkCases/<case>/parquet-go. The
+// benchjson tool merges them with the results of the root module and of the Rust harness.
+func BenchmarkCases(b *testing.B) {
+	b.Run("gen16/scan_full", benchFullScan)
+	b.Run("gen16/scan_3col", bench3of16)
+	b.Run("gen16/scan_filter", benchFilter)
 }
 
 // BenchmarkWriteRows writes 1M rows of the three columns id, price and city.

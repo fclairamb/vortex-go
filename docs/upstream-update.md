@@ -7,6 +7,9 @@ Renovate watches the `vortex-data` package on PyPI. On each release it opens a P
 only changes `.vortex-version`, with upstream's release notes. It is never merged
 automatically. CI is red on that PR until the refresh is in and the Go code follows.
 
+The `vortex` crate of `tools/bench-rust/Cargo.toml` is pinned to the same release (`=x.y.z`):
+Renovate moves it with `.vortex-version`, and `upstream_test.go` fails when the two differ.
+
 Upstream is `https://github.com/vortex-data/vortex`. Tags have no prefix (`0.93.0`).
 
 ## What happens on the PR

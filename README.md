@@ -1,6 +1,15 @@
 # vortex-go
 
+[![Build](https://img.shields.io/github/actions/workflow/status/fclairamb/vortex-go/build.yml?branch=main&label=build&logo=github)](https://github.com/fclairamb/vortex-go/actions/workflows/build.yml)
+[![Coverage](https://codecov.io/gh/fclairamb/vortex-go/graph/badge.svg)](https://codecov.io/gh/fclairamb/vortex-go)
+[![Go Reference](https://pkg.go.dev/badge/github.com/fclairamb/vortex-go.svg)](https://pkg.go.dev/github.com/fclairamb/vortex-go)
+[![Go Report Card](https://goreportcard.com/badge/github.com/fclairamb/vortex-go)](https://goreportcard.com/report/github.com/fclairamb/vortex-go)
+[![Go](https://img.shields.io/github/go-mod/go-version/fclairamb/vortex-go?logo=go)](go.mod)
+[![License](https://img.shields.io/github/license/fclairamb/vortex-go?color=blue)](LICENSE)
+
 A pure Go reader and writer for the [Vortex](https://vortex.dev) columnar file format.
+
+The site, with how to use it and how it compares with the Rust implementation: <https://fclairamb.github.io/vortex-go/>.
 
 ## Goals
 
@@ -122,8 +131,9 @@ Some identifiers are read and never written, each for a reason: see the writer s
 
 ## Speed
 
-[docs/benchmarks.md](docs/benchmarks.md) has the numbers, the machine and the ratio to
-parquet-go and to the Rust reference. `make bench` runs them.
+[docs/benchmarks.md](docs/benchmarks.md) says how the numbers are made. They are recorded on
+every merge to `main`, with the Rust reference measured on the same machine, in the
+`bench-data` branch. `make bench` runs the Go benchmarks, `make bench-json` all three harnesses.
 
 ## Limits
 

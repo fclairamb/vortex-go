@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Versus the Rust implementation - vortex-go</title>
+<meta name="description" content="vortex-go: a pure Go reader and writer for the Vortex columnar file format.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<a class="brand" href="index.html" data-testid="brand-link">vortex-go</a>
+<nav data-testid="nav">
+<a href="index.html" data-testid="nav-home">Home</a>
+<a href="usage.html" data-testid="nav-usage">Usage</a>
+<a href="rust.html" aria-current="page" data-testid="nav-rust">Versus Rust</a>
+</nav>
+</header>
+<main>
+<h1>Versus the Rust implementation</h1>
+<p class="lead">Rust is the reference: the format is defined by its code, and it judges ours. This page says what is the same, what differs, and how fast and how small we are next to it. Every ratio is shown, the ones where we lose first.</p>
+
+<h2 id="same">What is the same</h2>
+<ul data-testid="same-list">
+<li><strong>The file format.</strong> The same files, in both directions.</li>
+<li><strong>The edition.</strong> We target the default <code>core</code> edition of the pinned upstream release.</li>
+<li><strong>Who judges.</strong> The Rust reader reads every file we write and gives back the values we wrote. Our reader is checked against the Rust one on every file of the corpus, including the fixtures of every published release.</li>
+</ul>
+
+<h2 id="differs">What differs</h2>
+<ul data-testid="differs-list">
+<li><strong>What the writer emits.</strong> Bit-packing, frame of reference, zigzag, run-length, run-end, dictionary, sequence, constant, sparse, ALP, ALP-RD, FSST, decimal byte parts, datetime parts and zstd. Not Pco and not OnPair: both are read, neither is written, so compact mode uses zstd for numbers. The matrix below has the rest.</li>
+<li><strong>Not byte-identical.</strong> The format leaves layout, segment order and encoding choice to the writer. Our files are not the Rust writer's.</li>
+<li><strong>Non-goals.</strong> A query engine (projection and filters only, no joins or aggregations), Arrow in the core module, the <code>preview</code> and <code>unstable</code> editions and third-party encodings, big-endian platforms, object store clients (bring an <code>io.ReaderAt</code>), the <code>Union</code> type.</li>
+<li><strong>Self-contained.</strong> No cgo, no assembly. Nothing to install next to the Go toolchain.</li>
+</ul>
+
+<h3 id="matrix">Support matrix</h3>
+<p>What the target edition contains, and what this package reads and writes. Generated from the decoder and encoder registries.</p>
+<div class="table-wrap">
+<!-- matrix:begin -->
+<table data-testid="matrix-table">
+<thead><tr><th>Kind</th><th>Identifier</th><th>Read</th><th>Written</th></tr></thead>
+<tbody>
+<tr><td>aggregate</td><td><code>vortex.bounded_max</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>aggregate</td><td><code>vortex.bounded_min</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>aggregate</td><td><code>vortex.max</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>aggregate</td><td><code>vortex.min</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>aggregate</td><td><code>vortex.nan_count</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>aggregate</td><td><code>vortex.null_count</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>fastlanes.bitpacked</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>fastlanes.for</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>fastlanes.rle</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.alp</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.alprd</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.bool</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.bytebool</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.chunked</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.constant</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.datetimeparts</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.decimal</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.decimal_byte_parts</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.dict</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.ext</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.fixed_size_list</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.fsst</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.list</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.listview</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.map</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.masked</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.null</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.onpair</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.parquet.variant</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.pco</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.primitive</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.runend</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.sequence</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.sparse</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.struct</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.varbin</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.varbinview</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.variant</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.zigzag</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.zstd</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>dtype</td><td><code>vortex.date</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>dtype</td><td><code>vortex.time</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>dtype</td><td><code>vortex.timestamp</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>dtype</td><td><code>vortex.uuid</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>layout</td><td><code>vortex.chunked</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>layout</td><td><code>vortex.dict</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>layout</td><td><code>vortex.flat</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>layout</td><td><code>vortex.stats</code></td><td>yes</td><td>no</td></tr>
+<tr><td>layout</td><td><code>vortex.struct</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>layout</td><td><code>vortex.zoned</code></td><td>yes</td><td>yes</td></tr>
+</tbody>
+</table>
+<!-- matrix:end -->
+</div>
+
+<h2 id="speed">Speed</h2>
+<p>Lower is better. Each case runs with one thread and with every core, on the same machine for Go, Rust and parquet-go. The ratio is our time over the Rust time: above 1, we are slower. The numbers are measured on every merge to <code>main</code> and filled in when this site is built.</p>
+<!-- bench:begin -->
+<p data-testid="speed-empty">no measurement yet</p>
+<!-- bench:end -->
+
+<h3 id="history">The ratio to Rust over the commits</h3>
+<!-- history:begin -->
+<p data-testid="history-empty">no measurement yet</p>
+<!-- history:end -->
+
+<h2 id="size">File size</h2>
+<p>The size of the files we write over the size of the files the Rust writer makes, on TPC-H and ClickBench data. Below 1, our files are smaller.</p>
+<!-- size:begin -->
+<p data-testid="size-empty">no measurement yet</p>
+<!-- size:end -->
+
+<h2 id="which">Which one to use</h2>
+<ul data-testid="which-list">
+<li>A Go program that reads or writes Vortex files: use vortex-go. No cgo, no sidecar, a few lines.</li>
+<li>The fastest scan, or an encoding we do not write (Pco, OnPair): use the Rust implementation, from Rust or through its bindings. The table above says by how much.</li>
+<li>A query engine, joins, aggregations or Arrow: use the Rust implementation and its engines. We do projection and filters only.</li>
+<li>Files that both read: no choice to make. What one writes the other reads.</li>
+</ul>
+</main>
+<footer>
+<p>vortex-go is MIT licensed. <a href="https://github.com/fclairamb/vortex-go" data-testid="footer-repo">Source</a> &middot; <a href="https://pkg.go.dev/github.com/fclairamb/vortex-go" data-testid="footer-pkgsite">pkg.go.dev</a></p>
+</footer>
+</body>
+</html>

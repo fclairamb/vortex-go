@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Usage - vortex-go</title>
+<meta name="description" content="vortex-go: a pure Go reader and writer for the Vortex columnar file format.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<a class="brand" href="index.html" data-testid="brand-link">vortex-go</a>
+<nav data-testid="nav">
+<a href="index.html" data-testid="nav-home">Home</a>
+<a href="usage.html" aria-current="page" data-testid="nav-usage">Usage</a>
+<a href="rust.html" data-testid="nav-rust">Versus Rust</a>
+</nav>
+</header>
+<main>
+<h1>Usage</h1>
+<p class="lead">One section per use case. Every code block is copied from an <code>Example</code> function of the package, which runs as a test.</p>
+<p class="note">Rows are the easy level: struct tags. Columns are the fast level: typed slices, batch by batch. A batch and its views are valid for one loop iteration, use <code>slices.Clone</code> to keep values.</p>
+
+<h2 id="read-rows">Read rows</h2>
+<p>A file goes into structs. A nullable column goes into a <code>sql.Null</code> field or a pointer.</p>
+<!-- example:ExampleRows:begin -->
+<pre data-testid="code-ExampleRows"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.93.0/extra/default_ints.vortex&#34;)
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+type Row struct {
+    Sorted sql.Null[int64] `vortex:&#34;sorted&#34;`
+}
+for r, err := range vortex.Rows[Row](context.Background(), f, vortex.Query{Rows: vortex.Range{End: 3}}) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(r.Sorted.V)
+}</code></pre>
+<!-- example:ExampleRows:end -->
+
+<h2 id="read-columns">Read columns</h2>
+<p>Columns, batch by batch, without structs. <code>Values</code> copies a numeric column into a slice.</p>
+<!-- example:ExampleFile_Scan:begin -->
+<pre data-testid="code-ExampleFile_Scan"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.93.0/extra/default_ints.vortex&#34;)
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+for b, err := range f.Scan(context.Background(), vortex.Query{Rows: vortex.Range{End: 4}}, &#34;sorted&#34;) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    v, err := vortex.Values[int64](b.Col(0))
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(b.Len(), v)
+}</code></pre>
+<!-- example:ExampleFile_Scan:end -->
+
+<h2 id="project">Project</h2>
+<p>The names after the query are the projection: only the columns you list are read. In the example above, only <code>sorted</code> is.
+With rows, the fields of the struct are the projection.</p>
+
+<h2 id="filter">Filter and take a row range</h2>
+<p>A <code>Query</code> has a filter and a row range. The statistics of the file skip the zones that cannot hold a row, and no row is returned that does not match.</p>
+<!-- example:ExampleRows_filter:begin -->
+<pre data-testid="code-ExampleRows_filter"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.93.0/extra/default_ints.vortex&#34;)
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+type Row struct {
+    Sorted sql.Null[int64] `vortex:&#34;sorted&#34;`
+}
+q := vortex.Query{Filter: vortex.Col(&#34;sorted&#34;).Lt(1003), Rows: vortex.Range{End: 10}}
+for r, err := range vortex.Rows[Row](context.Background(), f, q) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(r.Sorted.V)
+}</code></pre>
+<!-- example:ExampleRows_filter:end -->
+<p>The same filter by columns:</p>
+<!-- example:ExampleFile_Scan_filter:begin -->
+<pre data-testid="code-ExampleFile_Scan_filter"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.93.0/extra/default_ints.vortex&#34;)
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+q := vortex.Query{Filter: vortex.Col(&#34;sorted&#34;).Lt(1003), Rows: vortex.Range{End: 10}}
+for b, err := range f.Scan(context.Background(), q, &#34;sorted&#34;) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    v, err := vortex.Values[int64](b.Col(0))
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(v)
+}</code></pre>
+<!-- example:ExampleFile_Scan_filter:end -->
+
+<h2 id="write-rows">Write rows</h2>
+<p>A slice of structs goes to a file. The columns come from the fields, and the tags are the ones of <code>Rows</code>.</p>
+<!-- example:ExampleNewRowWriter:begin -->
+<pre data-testid="code-ExampleNewRowWriter"><code>type Trade struct {
+    ID     int64     `vortex:&#34;id&#34;`
+    Symbol string    `vortex:&#34;symbol&#34;`
+    Price  float64   `vortex:&#34;price&#34;`
+    At     time.Time `vortex:&#34;at&#34;`
+}
+f, err := os.CreateTemp(&#34;&#34;, &#34;trades-*.vortex&#34;)
+if err != nil {
+    log.Fatal(err)
+}
+defer os.Remove(f.Name())
+w := vortex.NewRowWriter[Trade](f, vortex.WriteOptions{})
+n, err := w.Write([]Trade{
+    {1, &#34;ACME&#34;, 10.5, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)},
+    {2, &#34;ACME&#34;, 10.75, time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC)},
+})
+if err != nil {
+    log.Fatal(err)
+}
+if err := w.Close(); err != nil {
+    log.Fatal(err)
+}
+if err := f.Close(); err != nil {
+    log.Fatal(err)
+}
+fmt.Println(n, &#34;rows written&#34;)</code></pre>
+<!-- example:ExampleNewRowWriter:end -->
+<p>Then read them back. A tag picks the logical type of a decimal.</p>
+<!-- example:ExampleNewRowWriter_readBack:begin -->
+<pre data-testid="code-ExampleNewRowWriter_readBack"><code>type Row struct {
+    Name  string           `vortex:&#34;name&#34;`
+    Price vortex.Decimal   `vortex:&#34;price,decimal(10,2)&#34;`
+    Note  sql.Null[string] `vortex:&#34;note&#34;`
+    Tags  []string         `vortex:&#34;tags&#34;`
+}
+var buf bytes.Buffer
+w := vortex.NewRowWriter[Row](&amp;buf, vortex.WriteOptions{})
+if _, err := w.Write([]Row{
+    {&#34;a&#34;, vortex.DecimalFromInt64(1050), sql.Null[string]{V: &#34;first&#34;, Valid: true}, []string{&#34;x&#34;, &#34;y&#34;}},
+    {&#34;b&#34;, vortex.DecimalFromInt64(299), sql.Null[string]{}, nil},
+}); err != nil {
+    log.Fatal(err)
+}
+if err := w.Close(); err != nil {
+    log.Fatal(err)
+}
+f, err := vortex.Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+if err != nil {
+    log.Fatal(err)
+}
+for r, err := range vortex.Rows[Row](context.Background(), f, vortex.Query{}) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(r.Name, r.Price.Text(2), r.Note.Valid, r.Tags)
+}</code></pre>
+<!-- example:ExampleNewRowWriter_readBack:end -->
+
+<h2 id="write-columns">Write columns</h2>
+<p>A schema, then one <code>Write</code> per chunk with a <code>Data</code> per column.</p>
+<!-- example:ExampleNewWriter:begin -->
+<pre data-testid="code-ExampleNewWriter"><code>s := vortex.NewSchema(
+    vortex.Field{Name: &#34;id&#34;, Type: vortex.Int64Type()},
+    vortex.Field{Name: &#34;name&#34;, Type: vortex.Utf8Type()},
+)
+var buf bytes.Buffer
+w := vortex.NewWriter(&amp;buf, s, vortex.WriteOptions{})
+if err := w.Write(vortex.Of([]int64{1, 2, 3}), vortex.OfStrings([]string{&#34;a&#34;, &#34;b&#34;, &#34;c&#34;})); err != nil {
+    log.Fatal(err)
+}
+if err := w.Close(); err != nil {
+    log.Fatal(err)
+}
+f, err := vortex.Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(f.NumRows(), f.Schema())</code></pre>
+<!-- example:ExampleNewWriter:end -->
+
+<h2 id="compression">The three compression modes</h2>
+<p>Set in <code>WriteOptions</code>, for both writers.</p>
+<ul>
+<li><code>vortex.Default</code>: the compressor picks the lightweight encodings of each chunk (bit-packing, frame of reference, dictionaries, run-end, ALP, FSST), as the reference writer does.</li>
+<li><code>vortex.Compact</code>: favors a small file over the time to write it. zstd is a candidate too, for numbers and strings.</li>
+<li><code>vortex.None</code>: writes the values as they are, in plain arrays.</li>
+</ul>
+<pre data-testid="code-compression"><code>w := vortex.NewRowWriter[Trade](f, vortex.WriteOptions{Compression: vortex.Compact})</code></pre>
+
+<h2 id="errors">Errors</h2>
+<p>Errors name the column, the encoding and the byte offset. Test them with <code>errors.Is</code>:</p>
+<ul>
+<li><code>ErrNotVortex</code>: bad magic at either end, or fewer than 12 bytes.</li>
+<li><code>ErrUnsupportedVersion</code>: a format version other than 1.</li>
+<li><code>ErrCorrupt</code>: anything out of bounds or malformed. A corrupt or truncated file gives an error, never a panic.</li>
+<li><code>ErrWriterClosed</code>: a write after an error or after <code>Close</code>.</li>
+<li><code>ErrDecimalRange</code>: a decimal that does not fit in 256 bits.</li>
+</ul>
+<pre data-testid="code-errors"><code>f, err := vortex.OpenFile(path)
+if errors.Is(err, vortex.ErrNotVortex) {
+    // not a Vortex file
+}</code></pre>
+
+<h2 id="types">Vortex types and Go types</h2>
+<div class="table-wrap">
+<table data-testid="types-table">
+<thead><tr><th>Vortex type</th><th>Field of a row struct</th><th>Column</th></tr></thead>
+<tbody>
+<tr><td>Null</td><td>none, leave it out</td><td><code>Null(i)</code> is always true</td></tr>
+<tr><td>Bool</td><td><code>bool</code></td><td><code>Bool(i)</code></td></tr>
+<tr><td><code>u8</code> to <code>u64</code>, <code>i8</code> to <code>i64</code>, <code>f32</code>, <code>f64</code></td><td>the same Go type</td><td><code>Values[T]</code></td></tr>
+<tr><td><code>f16</code></td><td><code>float32</code></td><td><code>Values[float32]</code></td></tr>
+<tr><td>Decimal, precision up to 18</td><td><code>int64</code>, the unscaled value, or <code>vortex.Decimal</code></td><td><code>Values[int64]</code>, or <code>Decimal(i)</code></td></tr>
+<tr><td>Decimal, precision 19 to 76</td><td><code>vortex.Decimal</code></td><td><code>Decimal(i)</code></td></tr>
+<tr><td>Utf8</td><td><code>string</code> (copies) or <code>[]byte</code> (view)</td><td><code>Bytes(i)</code></td></tr>
+<tr><td>Binary</td><td><code>[]byte</code></td><td><code>Bytes(i)</code></td></tr>
+<tr><td>List</td><td><code>[]T</code></td><td><code>Elems()</code> and <code>List(i)</code></td></tr>
+<tr><td>FixedSizeList</td><td><code>[N]T</code>, or <code>[]T</code></td><td><code>Elems()</code> and <code>List(i)</code></td></tr>
+<tr><td>Map</td><td><code>map[K]V</code></td><td><code>Elems()</code> is a struct of key and value, and <code>List(i)</code></td></tr>
+<tr><td>Struct</td><td>a struct</td><td><code>Field(i)</code></td></tr>
+<tr><td>Date</td><td><code>time.Time</code></td><td>the storage, <code>Values[int32]</code> or <code>Values[int64]</code></td></tr>
+<tr><td>Time</td><td><code>time.Duration</code> since midnight</td><td>the storage, <code>Values[int32]</code> or <code>Values[int64]</code></td></tr>
+<tr><td>Timestamp</td><td><code>time.Time</code></td><td>the storage, <code>Values[int64]</code></td></tr>
+<tr><td>UUID</td><td><code>[16]byte</code></td><td><code>Bytes(i)</code>, 16 bytes</td></tr>
+<tr><td>Variant</td><td><code>any</code></td><td><code>Variant(i)</code>, allocates</td></tr>
+</tbody>
+</table>
+</div>
+<p class="note">The match is exact: an <code>int32</code> column does not go into an <code>int64</code> field, and the error names both types.
+The reasons for the shape of the API are in <a href="https://github.com/fclairamb/vortex-go/blob/main/docs/interface.md" data-testid="link-interface">docs/interface.md</a>.</p>
+</main>
+<footer>
+<p>vortex-go is MIT licensed. <a href="https://github.com/fclairamb/vortex-go" data-testid="footer-repo">Source</a> &middot; <a href="https://pkg.go.dev/github.com/fclairamb/vortex-go" data-testid="footer-pkgsite">pkg.go.dev</a></p>
+</footer>
+</body>
+</html>

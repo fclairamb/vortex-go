@@ -1,0 +1,10 @@
+{"case": "gen16/scan_full", "threads": 1, "ns_per_op": 100.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 1, "ns_per_op": 300.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 1, "ns_per_op": 200.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 1, "ns_per_op": 500.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 1, "ns_per_op": 400.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 4, "ns_per_op": 400.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 4, "ns_per_op": 1200.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 4, "ns_per_op": 800.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 4, "ns_per_op": 2000.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}
+{"case": "gen16/scan_full", "threads": 4, "ns_per_op": 1600.0, "rows_per_s": 10000000.0, "mb_per_s": 900.0}

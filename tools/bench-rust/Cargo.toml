@@ -1,0 +1,16 @@
+[package]
+name = "bench-rust"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# The Rust reference, measured natively for docs/benchmarks.md and bench.json. The pin follows
+# .vortex-version (Renovate moves both, upstream_test.go checks it).
+# Only what the harness uses: no parquet-variant, no wasm-bindgen (16 crates fewer to compile).
+[dependencies]
+vortex = { version = "=0.93.0", default-features = false, features = ["files", "zstd", "tokio"] }
+futures = "0.3"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[workspace]

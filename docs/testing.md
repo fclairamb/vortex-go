@@ -249,7 +249,12 @@ encoding choice to the writer, and upstream's own compatibility check
   - the previous commit, compared with `benchstat` and posted on the PR,
   - parquet-go on the same data, in a separate module under `bench/` so it stays out of
     our `go.mod`,
-  - the Rust reference through Python, for information.
+  - the Rust reference, measured natively on the same machine by a Cargo project
+    (`tools/bench-rust/`, pinned to `.vortex-version`). Rust is needed in `bench.yml` only,
+    never in `go test ./...` or `make check`.
+- History: `bench.yml` runs the three on every merge to `main` (one runner, 15 minutes at
+  most) and appends `bench.json` to `history.jsonl` on the `bench-data` branch. The cases
+  are one list, `bench/cases.json`, run with 1 thread and with all cores.
 
 ## 6. Ease of use
 
@@ -312,3 +317,4 @@ encoding choice to the writer, and upstream's own compatibility check
 | All published releases | `make compat` | nightly | in place |
 | Long fuzzing | `make fuzz FUZZTIME=30m` | nightly | in place |
 | Benchmarks against main | `make bench-compare` | no, posted on the PR | in place |
+| Benchmark history | `bench.yml` | no | in place |

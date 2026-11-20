@@ -1,0 +1,179 @@
+{
+ "comment": "The cases of the three harnesses (bench_test.go, bench/, tools/bench-rust). {version} is .vortex-version, {rows} the generated row count. project: the 3 columns of the 3-of-16 case. filter: column < lt keeps about 1% of the rows. range: the fractions of the rows of the row-range case.",
+ "data": {
+  "gen16": {
+   "file": ".cache/bench/gen16-{rows}.vortex",
+   "generated": true,
+   "project": [
+    "id",
+    "price",
+    "city"
+   ],
+   "filter": {
+    "column": "user",
+    "type": "i32",
+    "lt": 1000
+   },
+   "range": [
+    0.5,
+    0.6
+   ]
+  },
+  "tpch_lineitem": {
+   "file": ".cache/fixtures/{version}/tpch_lineitem.regular.vortex",
+   "project": [
+    "l_orderkey",
+    "l_quantity",
+    "l_shipmode"
+   ],
+   "filter": {
+    "column": "l_orderkey",
+    "type": "i64",
+    "lt": 600
+   },
+   "range": [
+    0.5,
+    0.6
+   ]
+  },
+  "clickbench_hits": {
+   "file": ".cache/fixtures/{version}/clickbench_hits_5k.regular.vortex",
+   "project": [
+    "WatchID",
+    "URL",
+    "RegionID"
+   ],
+   "filter": {
+    "column": "RegionID",
+    "type": "i32",
+    "lt": 2
+   },
+   "range": [
+    0.5,
+    0.6
+   ]
+  }
+ },
+ "cases": [
+  {
+   "name": "gen16/open",
+   "data": "gen16",
+   "op": "open"
+  },
+  {
+   "name": "gen16/scan_full",
+   "data": "gen16",
+   "op": "scan_full"
+  },
+  {
+   "name": "gen16/scan_3col",
+   "data": "gen16",
+   "op": "scan_3col"
+  },
+  {
+   "name": "gen16/scan_filter",
+   "data": "gen16",
+   "op": "scan_filter"
+  },
+  {
+   "name": "gen16/scan_range",
+   "data": "gen16",
+   "op": "scan_range"
+  },
+  {
+   "name": "gen16/write_default",
+   "data": "gen16",
+   "op": "write_default"
+  },
+  {
+   "name": "gen16/write_none",
+   "data": "gen16",
+   "op": "write_none"
+  },
+  {
+   "name": "gen16/write_compact",
+   "data": "gen16",
+   "op": "write_compact"
+  },
+  {
+   "name": "tpch_lineitem/open",
+   "data": "tpch_lineitem",
+   "op": "open"
+  },
+  {
+   "name": "tpch_lineitem/scan_full",
+   "data": "tpch_lineitem",
+   "op": "scan_full"
+  },
+  {
+   "name": "tpch_lineitem/scan_3col",
+   "data": "tpch_lineitem",
+   "op": "scan_3col"
+  },
+  {
+   "name": "tpch_lineitem/scan_filter",
+   "data": "tpch_lineitem",
+   "op": "scan_filter"
+  },
+  {
+   "name": "tpch_lineitem/scan_range",
+   "data": "tpch_lineitem",
+   "op": "scan_range"
+  },
+  {
+   "name": "tpch_lineitem/write_default",
+   "data": "tpch_lineitem",
+   "op": "write_default"
+  },
+  {
+   "name": "tpch_lineitem/write_none",
+   "data": "tpch_lineitem",
+   "op": "write_none"
+  },
+  {
+   "name": "tpch_lineitem/write_compact",
+   "data": "tpch_lineitem",
+   "op": "write_compact"
+  },
+  {
+   "name": "clickbench_hits/open",
+   "data": "clickbench_hits",
+   "op": "open"
+  },
+  {
+   "name": "clickbench_hits/scan_full",
+   "data": "clickbench_hits",
+   "op": "scan_full"
+  },
+  {
+   "name": "clickbench_hits/scan_3col",
+   "data": "clickbench_hits",
+   "op": "scan_3col"
+  },
+  {
+   "name": "clickbench_hits/scan_filter",
+   "data": "clickbench_hits",
+   "op": "scan_filter"
+  },
+  {
+   "name": "clickbench_hits/scan_range",
+   "data": "clickbench_hits",
+   "op": "scan_range"
+  },
+  {
+   "name": "clickbench_hits/write_default",
+   "data": "clickbench_hits",
+   "op": "write_default"
+  },
+  {
+   "name": "clickbench_hits/write_none",
+   "data": "clickbench_hits",
+   "op": "write_none"
+  },
+  {
+   "name": "clickbench_hits/write_compact",
+   "data": "clickbench_hits",
+   "op": "write_compact"
+  }
+ ]
+}
