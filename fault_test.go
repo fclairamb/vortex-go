@@ -91,7 +91,7 @@ func TestScanIOFaults(t *testing.T) {
 			for _, err := range f.scan(context.Background(), scanOptions{batchRows: 1000}) {
 				if err != nil {
 					errs++
-					if !errors.Is(err, boom) {
+					if !errors.Is(err, boom) || !strings.Contains(err.Error(), "offset") {
 						t.Fatalf("%s, call %d: %v", fixtureName(path), n, err)
 					}
 				}
@@ -372,6 +372,29 @@ func TestFlatRowsLimit(t *testing.T) {
 	maxFlatRows = 100
 	for _, err := range f.Scan(context.Background(), Query{}) {
 		if !errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "at most 100") {
+			t.Fatalf("err = %v", err)
+		}
+	}
+}
+
+// The error of a scan names the column, the encoding and the byte offset.
+func TestScanErrorNamesColumnEncodingOffset(t *testing.T) {
+	raw := extraFixture(t, "default_ints.vortex")
+	f := reopen(t, raw, plain)
+	defer func(n int) { nodeRowsBase = n }(nodeRowsBase)
+	nodeRowsBase, f.size, f.numRows = 1000, 0, 0
+	for _, err := range f.Scan(context.Background(), Query{}, "bulk") {
+		for _, want := range []string{`column "bulk"`, "vortex.", "at offset "} {
+			if err == nil || !strings.Contains(err.Error(), want) {
+				t.Fatalf("err = %v, want %q in it", err, want)
+			}
+		}
+	}
+	boom := errors.New("boom")
+	f = reopen(t, raw, plain)
+	f.r = &testutil.FailAt{R: f.r, N: 1, Err: boom}
+	for _, err := range f.Scan(context.Background(), Query{}, "sorted") {
+		if !errors.Is(err, boom) || err.Error() != `vortex: reading at offset 8: boom, column "sorted"` {
 			t.Fatalf("err = %v", err)
 		}
 	}

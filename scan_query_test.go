@@ -901,12 +901,15 @@ func TestScanAllocationsPerBatch(t *testing.T) {
 
 // ----- pruning -----
 
-// countReads scans with q and returns the rows and the segments read.
+// countReads scans with q and returns the rows and the segments read. Only contiguous reads
+// are merged: a gap would read the segments between two that are needed, which in these
+// small files are the ones pruning skips.
 func countReads(t *testing.T, f *File, q Query, cols ...string) (rows int, reads int) {
 	t.Helper()
 	log := &logReader{r: f.r}
 	f.r = log
-	defer func() { f.r = log.r }()
+	defer func(gap int64) { f.r, f.gap = log.r, gap }(f.gap)
+	f.gap = 0
 	for b, err := range f.Scan(context.Background(), q, cols...) {
 		if err != nil {
 			t.Fatal(err)
