@@ -49,7 +49,7 @@ type onPairState struct {
 	rng       uint64
 	w0, w1    [onPairMaxTokens]uint64 // the words of the bytes of each token
 	ends      [onPairMaxTokens + 1]uint32
-	lens      [256]uint32 // bit l of the entry of a byte is set when a token of l bytes starts with it
+	lens      [onPairLensSlots]uint32 // bit l of the entry of a hash of two bytes is set when a token of l bytes starts with them
 	single    [256]uint16
 	slots     [onPairSlots]uint16 // the id + 1 of the token of each slot of a hash of its words
 	rank      [onPairMaxTokens]uint16
@@ -62,6 +62,14 @@ func (e *Encoder) onPairState() *onPairState {
 		e.op = &onPairState{}
 	}
 	return e.op
+}
+
+// onPairLensSlots is the size of the table of the lengths of the tokens by their first two bytes.
+const onPairLensSlots = 1 << 12
+
+// onPairLensKey is the slot of the tokens that start with the bytes a and b.
+func onPairLensKey(a, b byte) uint32 {
+	return (uint32(a)<<8 | uint32(b)) * 2654435761 >> 20
 }
 
 func onPairHash(a, b uint64, l int) uint64 {
@@ -92,7 +100,7 @@ func lowBytes(n int) uint64 {
 // reset empties the dictionary and makes it the 256 bytes, in the order of their values.
 func (s *onPairState) reset() {
 	s.bytes = s.bytes[:0]
-	s.n, s.lens = 0, [256]uint32{}
+	s.n, s.lens = 0, [onPairLensSlots]uint32{}
 	clear(s.slots[:])
 	s.ends[0] = 0
 	for b := range 256 {
@@ -109,7 +117,9 @@ func (s *onPairState) add(tok []byte) int {
 	s.ends[id+1] = uint32(len(s.bytes))
 	s.tlen[id] = uint8(l)
 	s.w0[id], s.w1[id] = onPairWords(tok, l)
-	s.lens[tok[0]] |= 1 << l
+	if l > 1 {
+		s.lens[onPairLensKey(tok[0], tok[1])] |= 1 << l
+	}
 	i := onPairHash(s.w0[id], s.w1[id], l) & (onPairSlots - 1)
 	for s.slots[i] != 0 {
 		i = (i + 1) & (onPairSlots - 1)
@@ -126,8 +136,12 @@ func (s *onPairState) match(b []byte) (id, l int) {
 	if len(b) > 8 {
 		w1 = wordAt(b, 8)
 	}
-	// the lengths of the tokens that start with this byte, up to the bytes left
-	for cand := s.lens[b[0]] & (1<<(min(len(b), onPairMaxToken)+1) - 1) &^ 3; cand != 0; {
+	// the lengths of the tokens that start with these two bytes (or collide with them), up to the bytes left
+	var cand uint32
+	if len(b) > 1 {
+		cand = s.lens[onPairLensKey(b[0], b[1])] & (1<<(min(len(b), onPairMaxToken)+1) - 1)
+	}
+	for cand != 0 {
 		l = bits.Len32(cand) - 1
 		cand &^= 1 << l
 		a, c := w0, w1
@@ -365,7 +379,7 @@ func (s *onPairState) load(dict []byte, ends []uint32) bool {
 		return false
 	}
 	s.bytes = s.bytes[:0]
-	s.n, s.lens = 0, [256]uint32{}
+	s.n, s.lens = 0, [onPairLensSlots]uint32{}
 	clear(s.slots[:])
 	s.ends[0] = 0
 	var seen [256]bool
