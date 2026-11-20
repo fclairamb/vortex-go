@@ -353,3 +353,32 @@ func TestForcedErrors(t *testing.T) {
 		})
 	}
 }
+
+// TestForcedMaskedBoolsThatDiffer: booleans of two values among nulls are not a constant under
+// a validity, so they are written with another encoding and read back unchanged.
+func TestForcedMaskedBoolsThatDiffer(t *testing.T) {
+	bools := make([]bool, 300)
+	nulls := make([]bool, 300)
+	vals := make([]val, 300)
+	for i := range bools {
+		bools[i], nulls[i] = i%2 == 0, i%3 != 1
+		vals[i] = val{b: []byte{boolByte(bools[i])}, null: nulls[i]}
+	}
+	ty := BoolType().AsNullable()
+	f, err := writeForced(t, "masked", NewSchema(Field{"c", ty}), []Data{OfBools(bools).Nulls(nulls)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := readBack(f, ty)
+	if err != nil || len(got) != len(vals) {
+		t.Fatalf("%d rows, %v, want %d", len(got), err, len(vals))
+	}
+	for i := range vals {
+		if !eqVal(got[i], vals[i]) {
+			t.Fatalf("row %d is %s, want %s", i, describeVal(got[i]), describeVal(vals[i]))
+		}
+	}
+	if slices.Contains(f.arrayEncodings, encodingIDs["masked"]) {
+		t.Fatalf("the file has %v, with a masked constant", f.arrayEncodings)
+	}
+}

@@ -2,6 +2,7 @@ package encode
 
 import (
 	"bytes"
+	"slices"
 
 	"github.com/fclairamb/vortex-go/internal/protowire"
 	"github.com/fclairamb/vortex-go/internal/unsafex"
@@ -139,16 +140,12 @@ func ConstantBools(e *Encoder, v []bool, nulls []bool) (*Node, bool) {
 }
 
 // Masked is the array of values under the validity of nulls: child 0 the values, child 1 the
-// validity, no metadata and no buffer. values is of the non-nullable type. With no null row it
-// is values itself.
+// validity, no metadata and no buffer. values is of the non-nullable type. The callers
+// only mask a chunk with a null row and a valid row.
 func Masked(e *Encoder, values *Node, nulls []bool, rows int) *Node {
-	v := e.validity(nulls, rows, rows)
-	if v == nil {
-		return values
-	}
 	n := e.node(IDMasked)
 	n.kid(values)
-	n.kid(v)
+	n.kid(e.validity(nulls, rows, rows))
 	return n
 }
 
@@ -226,10 +223,5 @@ func firstValid(nulls []bool, rows int) int {
 	if rows == 0 || len(nulls) < rows {
 		return -1
 	}
-	for i := range rows {
-		if !nulls[i] {
-			return i
-		}
-	}
-	return -1
+	return slices.Index(nulls[:rows], false)
 }
