@@ -1,6 +1,9 @@
 package array
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // Kind is the shape of a DType, as far as the decoders care.
 type Kind uint8
@@ -12,6 +15,12 @@ const (
 	Prim
 	Struct
 	Ext
+	Utf8
+	Binary
+	Decimal
+	List
+	FixedSizeList
+	Map
 	Other
 )
 
@@ -67,11 +76,15 @@ type Field struct {
 // DType is the type an array must decode to. It is not stored in the array: the parent
 // gives it.
 type DType struct {
-	Storage *DType  // Ext
-	Label   string  // Other: the name of the logical type, for messages
-	Fields  []Field // Struct
-	Kind    Kind
-	PType   PType
+	Storage *DType // Ext
+	// Elem is the element type of a List or a FixedSizeList, and the entry type (a struct of
+	// key and value) of a Map.
+	Elem   *DType
+	Label  string  // Other: the name of the logical type, for messages
+	Fields []Field // Struct
+	Size   int     // FixedSizeList: the number of elements of every value
+	Kind   Kind
+	PType  PType
 	// Nullable is whether the array may hold nulls.
 	Nullable bool
 }
@@ -94,6 +107,18 @@ func (t DType) String() string {
 		s = "struct{" + strings.Join(parts, ", ") + "}"
 	case Ext:
 		s = "ext(" + t.Storage.String() + ")"
+	case Utf8:
+		s = "utf8"
+	case Binary:
+		s = "binary"
+	case Decimal:
+		s = "decimal"
+	case List:
+		s = "list<" + t.Elem.String() + ">"
+	case FixedSizeList:
+		s = "fixed_size_list<" + t.Elem.String() + ", " + strconv.Itoa(t.Size) + ">"
+	case Map:
+		s = "map<" + t.Elem.String() + ">"
 	default:
 		s = t.Label
 	}

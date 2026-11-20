@@ -477,8 +477,8 @@ func TestArrayTypeOfDatesAndOthers(t *testing.T) {
 			t.Errorf("%s: %+v", c.t, d)
 		}
 	}
-	if d := arrayType(Type{kind: Utf8, nullable: true}); d.Kind != array.Other || d.Label != "utf8" || !d.Nullable {
-		t.Fatalf("utf8: %+v", d)
+	if d := arrayType(Type{kind: Variant, nullable: true}); d.Kind != array.Other || d.Label != "variant" || !d.Nullable {
+		t.Fatalf("variant: %+v", d)
 	}
 }
 

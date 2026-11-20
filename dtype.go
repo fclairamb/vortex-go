@@ -53,7 +53,7 @@ func typeOf(d fbs.DType) (Type, error) {
 		}
 		t.kind = kind
 	case fbs.KindDecimal:
-		t.kind = Decimal
+		t.kind = KindDecimal
 		t.precision, t.scale, err = d.Decimal()
 	case fbs.KindList, fbs.KindFixedSizeList, fbs.KindMap, fbs.KindStruct:
 		err = nested(d, k, &t)

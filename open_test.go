@@ -38,7 +38,7 @@ func typeFromExpected(t *testing.T, d *testutil.DType) Type {
 	case "primitive":
 		out.kind = ptypes[d.Ptype]
 	case "decimal":
-		out.kind, out.precision, out.scale = Decimal, uint8(d.Precision), int8(d.Scale)
+		out.kind, out.precision, out.scale = KindDecimal, uint8(d.Precision), int8(d.Scale)
 	case "list":
 		out.kind, out.elem = List, conv(d.Element)
 	case "fixed_size_list":

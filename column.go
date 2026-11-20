@@ -71,6 +71,64 @@ func (c *Column) Field(i int) *Column {
 	return &Column{arr: c.arr.Fields[i], typ: c.typ.fields[i].Type}
 }
 
+// Bytes returns the bytes of row i of a Utf8, Binary or UUID column: a view, valid until the
+// next batch. It panics when the column is of another type, and when i is out of range.
+func (c *Column) Bytes(i int) []byte {
+	k := c.typ.kind
+	if k != Utf8 && k != Binary && k != UUID {
+		panic(fmt.Sprintf("vortex: Bytes on a column of type %s", c.typ))
+	}
+	c.checkRow(i)
+	if k == UUID {
+		return c.arr.Elems.Data[i*uuidSize : (i+1)*uuidSize : (i+1)*uuidSize]
+	}
+	return c.arr.Data[c.arr.Starts[i]:c.arr.Ends[i]:c.arr.Ends[i]]
+}
+
+// uuidSize is the number of bytes of a UUID.
+const uuidSize = 16
+
+// Decimal returns the unscaled value of row i of a Decimal column, whatever its precision
+// and the width it is stored at. It panics when the column is of another type, and when i
+// is out of range.
+func (c *Column) Decimal(i int) Decimal {
+	if c.typ.kind != KindDecimal {
+		panic(fmt.Sprintf("vortex: Decimal on a column of type %s", c.typ))
+	}
+	c.checkRow(i)
+	w := c.arr.Width
+	return decimalFromLE(c.arr.Data[i*w : (i+1)*w])
+}
+
+// Elems returns the elements of a List, FixedSizeList or Map column, all the rows' together.
+// For a map, they are structs of two fields, the key and the value. List gives the range of
+// a row. It panics when the column is of another type.
+func (c *Column) Elems() *Column {
+	switch c.typ.kind {
+	case List, FixedSizeList:
+		return &Column{arr: c.arr.Elems, typ: *c.typ.elem}
+	case Map:
+		entry := Type{kind: Struct, fields: []Field{{Name: "key", Type: *c.typ.elem}, {Name: "value", Type: *c.typ.value}}}
+		return &Column{arr: c.arr.Elems, typ: entry}
+	}
+	panic(fmt.Sprintf("vortex: Elems on a column of type %s", c.typ))
+}
+
+// List returns the range of Elems that holds row i of a List, FixedSizeList or Map column:
+// the elements from start to end, end excluded. Ranges of different rows may overlap. It
+// panics when the column is of another type, and when i is out of range.
+func (c *Column) List(i int) (start, end int) {
+	switch c.typ.kind {
+	case List, Map:
+		c.checkRow(i)
+		return c.arr.Starts[i], c.arr.Ends[i]
+	case FixedSizeList:
+		c.checkRow(i)
+		return i * c.typ.Size(), (i + 1) * c.typ.Size()
+	}
+	panic(fmt.Sprintf("vortex: List on a column of type %s", c.typ))
+}
+
 var ptypeOfGo = map[reflect.Kind]array.PType{
 	reflect.Int8: array.I8, reflect.Int16: array.I16, reflect.Int32: array.I32, reflect.Int64: array.I64,
 	reflect.Uint8: array.U8, reflect.Uint16: array.U16, reflect.Uint32: array.U32, reflect.Uint64: array.U64,
@@ -86,6 +144,9 @@ func Values[T Number](c *Column) ([]T, error) {
 	}
 	want := ptypeOfGo[reflect.TypeFor[T]().Kind()]
 	have := c.arr.Type
+	if have.Kind == array.Decimal && want == array.I64 && c.typ.precision <= maxInt64Digits {
+		return decimalValues[T](c)
+	}
 	if have.Kind != array.Prim || (have.PType != want && (have.PType != array.F16 || want != array.F32)) {
 		return nil, fmt.Errorf("vortex: Values[%s] on a column of type %s", reflect.TypeFor[T](), c.typ)
 	}
@@ -122,4 +183,26 @@ func half(h uint32) uint32 {
 		e--
 	}
 	return sign | e<<23 | (mant&0x3ff)<<13
+}
+
+// maxInt64Digits is the greatest precision whose values all fit in an int64.
+const maxInt64Digits = 18
+
+// decimalValues reads a decimal column of precision 18 or less as int64, whatever the width
+// it is stored at.
+func decimalValues[T Number](c *Column) ([]T, error) {
+	w := c.arr.Width
+	if w == 8 {
+		return unsafex.Slice[T](c.arr.Data), nil
+	}
+	out := make([]T, c.arr.Len)
+	for i := range out {
+		d := decimalFromLE(c.arr.Data[i*w : (i+1)*w])
+		v, ok := d.Int64()
+		if !ok {
+			return nil, fmt.Errorf("%w: decimal value at row %d does not fit in an int64", ErrCorrupt, i)
+		}
+		out[i] = T(v)
+	}
+	return out, nil
 }

@@ -21,32 +21,17 @@ var pending = map[string]string{
 	"alp":                           "vortex.alp",
 	"alprd":                         "vortex.alprd",
 	"bitpacked":                     "fastlanes.bitpacked",
-	"constant":                      "vortex.constant",
 	"datetimeparts":                 "vortex.datetimeparts",
-	"decimal":                       "vortex.decimal",
 	"decimal_byte_parts":            "vortex.decimal_byte_parts",
 	"decimal_byte_parts_narrow_msp": "vortex.decimal_byte_parts",
-	"decimal_canonical_widths":      "vortex.decimal",
-	"decimal_gap_values":            "vortex.decimal",
-	"decimal_high_scale":            "vortex.decimal",
-	"decimal_narrow_storage":        "vortex.decimal",
-	"decimal_null_slots":            "vortex.decimal",
-	"decimal_wide_storage":          "vortex.decimal",
 	"dict":                          "vortex.dict",
-	"fixed_size_list":               "vortex.fixed_size_list",
 	"for":                           "fastlanes.for",
 	"fsst":                          "vortex.fsst",
-	"list":                          "vortex.list",
-	"listview":                      "vortex.listview",
-	"map":                           "vortex.map",
 	"pco":                           "vortex.pco",
 	"rle":                           "fastlanes.rle",
 	"runend":                        "vortex.runend",
 	"sequence":                      "vortex.sequence",
 	"sparse":                        "vortex.sparse",
-	"struct_nested/inner.b":         "vortex.varbin",
-	"varbin":                        "vortex.varbin",
-	"varbinview":                    "vortex.varbinview",
 	"zigzag":                        "vortex.zigzag",
 	"zstd":                          "vortex.zstd",
 	"masked":                        "vortex.zoned",
@@ -83,11 +68,49 @@ func hashRow(h *testutil.Hasher, c *Column, i int) bool {
 	case array.Prim:
 		w := c.arr.Type.PType.Width()
 		h.Raw(c.arr.Data[i*w : (i+1)*w])
+	case array.FixedSizeList:
+		if c.typ.kind == UUID {
+			h.Raw(c.Bytes(i))
+			return true
+		}
+		return hashList(h, c, i)
 	case array.Struct:
 		for k := range c.arr.Fields {
 			if !hashRow(h, c.Field(k), i) {
 				return false
 			}
+		}
+	case array.Utf8, array.Binary:
+		b := c.Bytes(i)
+		h.Len(len(b))
+		h.Raw(b)
+	case array.Decimal:
+		b := c.Decimal(i).le()
+		h.Raw(b[:decimalHashBytes(c.typ.Precision())])
+	case array.List, array.Map:
+		return hashList(h, c, i)
+	}
+	return true
+}
+
+// decimalHashBytes is the size of a decimal in the hash: 16 bytes up to precision 38.
+func decimalHashBytes(precision int) int {
+	if precision <= 38 {
+		return 16
+	}
+	return 32
+}
+
+// hashList hashes row i of a list, a fixed-size list or a map: each element is a row.
+func hashList(h *testutil.Hasher, c *Column, i int) bool {
+	start, end := c.List(i)
+	if c.typ.kind != FixedSizeList {
+		h.Len(end - start)
+	}
+	elems := c.Elems()
+	for j := start; j < end; j++ {
+		if !hashRow(h, elems, j) {
+			return false
 		}
 	}
 	return true

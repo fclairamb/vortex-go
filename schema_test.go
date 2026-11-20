@@ -31,7 +31,7 @@ func TestTypeString(t *testing.T) {
 		{Type{kind: Float16}, "f16"},
 		{Type{kind: Float32}, "f32"},
 		{Type{kind: Float64, nullable: true}, "f64?"},
-		{Type{kind: Decimal, precision: 10, scale: -2}, "decimal(10,-2)"},
+		{Type{kind: KindDecimal, precision: 10, scale: -2}, "decimal(10,-2)"},
 		{str, "utf8?"},
 		{Type{kind: Binary}, "binary"},
 		{Type{kind: List, elem: &i32}, "list<i32>"},
@@ -75,8 +75,8 @@ func TestTypeEqual(t *testing.T) {
 	different := []struct{ a, b Type }{
 		{i32, i64},
 		{i32, Type{kind: Int32, nullable: true}},
-		{Type{kind: Decimal, precision: 5}, Type{kind: Decimal, precision: 6}},
-		{Type{kind: Decimal, scale: 1}, Type{kind: Decimal, scale: 2}},
+		{Type{kind: KindDecimal, precision: 5}, Type{kind: KindDecimal, precision: 6}},
+		{Type{kind: KindDecimal, scale: 1}, Type{kind: KindDecimal, scale: 2}},
 		{Type{kind: FixedSizeList, elem: &i32, size: 1}, Type{kind: FixedSizeList, elem: &i32, size: 2}},
 		{Type{kind: Time, unit: Second}, Type{kind: Time, unit: Millisecond}},
 		{Type{kind: Timestamp, zone: "UTC"}, Type{kind: Timestamp, zone: "CET"}},
@@ -106,7 +106,7 @@ func TestTypeAccessors(t *testing.T) {
 	if !l.Elem().Equal(i32) || l.Size() != 4 {
 		t.Fatal(l)
 	}
-	d := Type{kind: Decimal, precision: 10, scale: -3}
+	d := Type{kind: KindDecimal, precision: 10, scale: -3}
 	if d.Precision() != 10 || d.Scale() != -3 {
 		t.Fatal(d)
 	}

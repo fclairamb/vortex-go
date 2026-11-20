@@ -3,8 +3,9 @@ package vortex // import "github.com/fclairamb/vortex-go"
 Package vortex reads and writes files in the Vortex columnar format.
 
 Open and OpenFile read the trailer, the footer and the schema of a file. Scan
-reads whole columns of numbers and booleans, batch by batch. Filters, the other
-types and writing files are not implemented yet. The goals are in docs/goals.md,
+reads whole columns of numbers, booleans, strings, binaries, decimals, lists,
+maps and structs, batch by batch. Filters, dictionaries and the other encodings,
+and writing files are not implemented yet. The goals are in docs/goals.md,
 the planned interface in docs/interface.md and the test plan in docs/testing.md.
 
 VARIABLES
@@ -19,6 +20,9 @@ var (
 )
     The errors Open returns, to test with errors.Is. Their messages carry the
     byte offset.
+
+var ErrDecimalRange = errors.New("vortex: decimal out of the range of 256 bits")
+    ErrDecimalRange reports a value that does not fit in 256 bits.
 
 
 FUNCTIONS
@@ -54,15 +58,68 @@ func (c *Column) Bool(i int) bool
     Bool returns the value of row i of a Bool column. It panics when the column
     is of another type, and when i is out of range.
 
+func (c *Column) Bytes(i int) []byte
+    Bytes returns the bytes of row i of a Utf8, Binary or UUID column: a view,
+    valid until the next batch. It panics when the column is of another type,
+    and when i is out of range.
+
+func (c *Column) Decimal(i int) Decimal
+    Decimal returns the unscaled value of row i of a Decimal column, whatever
+    its precision and the width it is stored at. It panics when the column is of
+    another type, and when i is out of range.
+
+func (c *Column) Elems() *Column
+    Elems returns the elements of a List, FixedSizeList or Map column,
+    all the rows' together. For a map, they are structs of two fields, the key
+    and the value. List gives the range of a row. It panics when the column is
+    of another type.
+
 func (c *Column) Field(i int) *Column
     Field returns the field i of a Struct column. It panics when the column is
     of another type, and when i is out of range.
+
+func (c *Column) List(i int) (start, end int)
+    List returns the range of Elems that holds row i of a List, FixedSizeList
+    or Map column: the elements from start to end, end excluded. Ranges of
+    different rows may overlap. It panics when the column is of another type,
+    and when i is out of range.
 
 func (c *Column) Null(i int) bool
     Null reports whether row i is null. It panics when i is out of range.
 
 func (c *Column) Type() Type
     Type is the logical type of the column.
+
+type Decimal struct {
+	// Has unexported fields.
+}
+    Decimal is the unscaled value of a decimal of any precision, on 256 bits
+    in two's complement: 32 bytes, no pointer. The scale is in the Type of the
+    column, not in each value: Text takes it. The representation is unique,
+    so == and Cmp agree on equality; Cmp also orders.
+
+func DecimalFromBig(v *big.Int) (Decimal, error)
+    DecimalFromBig returns the decimal whose unscaled value is v. It returns an
+    error when v does not fit in 256 bits, that is when it is outside -2^255 to
+    2^255-1.
+
+func DecimalFromInt64(v int64) Decimal
+    DecimalFromInt64 returns the decimal whose unscaled value is v.
+
+func (d Decimal) Big() *big.Int
+    Big returns the value as a new big.Int.
+
+func (d Decimal) Cmp(o Decimal) int
+    Cmp compares the values: -1 when d is less than o, 0 when equal, +1 when
+    greater.
+
+func (d Decimal) Int64() (int64, bool)
+    Int64 returns the value as an int64, and false when it does not fit.
+
+func (d Decimal) Text(scale int) string
+    Text prints the value with the point scale digits from the right: the
+    sign when negative, the digits, no exponent. A negative scale adds zeros:
+    the value is multiplied by 10^-scale.
 
 type Field struct {
 	Name string
@@ -117,7 +174,7 @@ const (
 	Float16
 	Float32
 	Float64
-	Decimal
+	KindDecimal
 	Utf8
 	Binary
 	List

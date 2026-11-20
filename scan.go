@@ -87,6 +87,25 @@ func arrayType(t Type) array.DType {
 		for _, f := range t.fields {
 			d.Fields = append(d.Fields, array.Field{Name: f.Name, Type: arrayType(f.Type)})
 		}
+	case Utf8:
+		d.Kind = array.Utf8
+	case Binary:
+		d.Kind = array.Binary
+	case KindDecimal:
+		d.Kind = array.Decimal
+	case List:
+		d.Kind, d.Elem = array.List, elemOf(t.elem)
+	case FixedSizeList:
+		d.Kind, d.Elem, d.Size = array.FixedSizeList, elemOf(t.elem), int(t.size)
+	case Map:
+		d.Kind = array.Map
+		d.Elem = &array.DType{Kind: array.Struct, Fields: []array.Field{
+			{Name: "key", Type: arrayType(*t.elem)}, {Name: "value", Type: arrayType(*t.value)},
+		}}
+	case UUID:
+		d.Kind = array.Ext
+		d.Storage = &array.DType{Kind: array.FixedSizeList, Size: uuidSize, Nullable: t.nullable,
+			Elem: &array.DType{Kind: array.Prim, PType: array.U8}}
 	case Date, Time, Timestamp:
 		d.Kind = array.Ext
 		d.Storage = &array.DType{Kind: array.Prim, PType: storage(t), Nullable: t.nullable}
@@ -107,4 +126,9 @@ func storage(t Type) array.PType {
 		return array.I32
 	}
 	return array.I64
+}
+
+func elemOf(t *Type) *array.DType {
+	d := arrayType(*t)
+	return &d
 }

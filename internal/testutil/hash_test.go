@@ -17,4 +17,12 @@ func TestHasher(t *testing.T) {
 	if got, want := h.Sum(), "e0dfc6d9ce768779693c831072db961d2345d900315425551359f231969cdb4c"; got != want {
 		t.Fatalf("hash = %s, want %s", got, want)
 	}
+	g := NewHasher()
+	g.Len(0x01020304)
+	g.Raw([]byte{4, 3, 2, 1})
+	k := NewHasher()
+	k.Raw([]byte{4, 3, 2, 1, 4, 3, 2, 1})
+	if g.Sum() != k.Sum() {
+		t.Fatal("Len is a little-endian uint32")
+	}
 }

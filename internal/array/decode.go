@@ -4,6 +4,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/fclairamb/vortex-go/internal/fbs"
 )
@@ -20,6 +21,7 @@ type Options struct {
 }
 
 type context struct {
+	table map[string]Decoder
 	opt   Options
 	specs []string
 	bufs  [][]byte
@@ -37,29 +39,30 @@ type Node struct {
 // Decoder builds the array of the given type and number of rows from a node.
 type Decoder func(n *Node, t DType, rows int) (*Array, error)
 
-// decoder finds the decoder of an encoding identifier.
-func decoder(id string) Decoder {
-	switch id {
-	case "vortex.null":
-		return decodeNull
-	case "vortex.bool":
-		return decodeBool
-	case "vortex.primitive":
-		return decodePrimitive
-	case "vortex.struct":
-		return decodeStruct
-	case "vortex.chunked":
-		return decodeChunked
-	case "vortex.constant":
-		return decodeConstant
-	case "vortex.ext":
-		return decodeExt
-	case "vortex.masked":
-		return decodeMasked
-	case "vortex.bytebool":
-		return decodeByteBool
+// decoders is the table of the decoders, by identifier of encoding. It is built once, and
+// reached through the context: a package variable would be an initialization cycle.
+var decoders = sync.OnceValue(registry)
+
+// registry builds the table of the decoders.
+func registry() map[string]Decoder {
+	return map[string]Decoder{
+		"vortex.null":            decodeNull,
+		"vortex.bool":            decodeBool,
+		"vortex.primitive":       decodePrimitive,
+		"vortex.struct":          decodeStruct,
+		"vortex.chunked":         decodeChunked,
+		"vortex.constant":        decodeConstant,
+		"vortex.ext":             decodeExt,
+		"vortex.masked":          decodeMasked,
+		"vortex.bytebool":        decodeByteBool,
+		"vortex.varbin":          decodeVarBin,
+		"vortex.varbinview":      decodeVarBinView,
+		"vortex.list":            decodeList,
+		"vortex.listview":        decodeListView,
+		"vortex.fixed_size_list": decodeFixedSizeList,
+		"vortex.map":             decodeMap,
+		"vortex.decimal":         decodeDecimal,
 	}
-	return nil
 }
 
 // Decode decodes the serialized array of seg: its buffers, the flatbuffer of the tree, then
@@ -89,7 +92,7 @@ func Decode(seg []byte, specs []string, t DType, rows int, opt Options) (*Array,
 	if !ok {
 		return nil, errors.New("array has no root node")
 	}
-	ctx := &context{opt: opt, specs: specs, bufs: bufs}
+	ctx := &context{opt: opt, specs: specs, bufs: bufs, table: decoders()}
 	return ctx.decode(root, "", t, rows)
 }
 
@@ -117,17 +120,25 @@ func buffers(msg fbs.Array, body []byte) ([][]byte, error) {
 	return out, nil
 }
 
-func (c *context) decode(fb fbs.ArrayNode, path string, t DType, rows int) (*Array, error) {
+// spec is the identifier of the encoding of a node.
+func (c *context) spec(fb fbs.ArrayNode) (string, error) {
 	enc, err := fb.Encoding()
+	if err != nil {
+		return "", err
+	}
+	if int(enc) >= len(c.specs) {
+		return "", fmt.Errorf("encoding %d, the footer has %d array specs", enc, len(c.specs))
+	}
+	return c.specs[enc], nil
+}
+
+func (c *context) decode(fb fbs.ArrayNode, path string, t DType, rows int) (*Array, error) {
+	id, err := c.spec(fb)
 	if err != nil {
 		return nil, err
 	}
-	if int(enc) >= len(c.specs) {
-		return nil, fmt.Errorf("encoding %d, the footer has %d array specs", enc, len(c.specs))
-	}
-	id := c.specs[enc]
-	dec := decoder(id)
-	if dec == nil {
+	dec, ok := c.table[id]
+	if !ok {
 		return nil, fmt.Errorf("unsupported encoding %q: %w", id, errors.ErrUnsupported)
 	}
 	n := &Node{ctx: c, path: path}
@@ -171,6 +182,14 @@ func (n *Node) Buffer(i int) ([]byte, error) {
 // Child decodes child i as an array of type t with the given number of rows.
 func (n *Node) Child(i int, t DType, rows int) (*Array, error) {
 	return n.child(i, n.path, t, rows)
+}
+
+// ChildEncoding is the identifier of the encoding of child i. Call it after the child has been
+// decoded: it returns "" for a child that cannot be read.
+func (n *Node) ChildEncoding(i int) string {
+	fb, _ := n.children.At(i)
+	id, _ := n.ctx.spec(fb)
+	return id
 }
 
 func (n *Node) child(i int, path string, t DType, rows int) (*Array, error) {

@@ -116,7 +116,7 @@ func (d Decimal) Text(scale int) string
 ## Opening, schema and errors
 
 ```go
-type Kind uint8 // Null, Bool, Int8...Int64, Uint8...Uint64, Float16...Float64, Decimal, Utf8,
+type Kind uint8 // Null, Bool, Int8...Int64, Uint8...Uint64, Float16...Float64, KindDecimal, Utf8,
                 // Binary, List, FixedSizeList, Map, Struct, Date, Time, Timestamp, UUID, Variant
 type Unit uint8 // Nanosecond, Microsecond, Millisecond, Second, Day
 
@@ -182,6 +182,8 @@ it is out of scope.
   one it is, with its unit and time zone. The row level converts to the Go type, and also
   accepts the storage type (an `int64` field for a timestamp). A UUID is stored as a list
   of 16 `u8`, and is read and written as 16 bytes.
+- **The decimal kind is `KindDecimal`**, since `Decimal` is the value type. A
+  `DecimalFromBig` error (`ErrDecimalRange`) means the value is outside -2^255 to 2^255-1.
 - **Decimals keep their scale in the schema**, not in each value. A `vortex.Decimal` is the
   unscaled value on 256 bits: 32 bytes, no allocation. `Text(scale)` prints it, `Big()`
   allocates.

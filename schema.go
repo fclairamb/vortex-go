@@ -24,7 +24,7 @@ const (
 	Float16
 	Float32
 	Float64
-	Decimal
+	KindDecimal
 	Utf8
 	Binary
 	List
@@ -41,7 +41,7 @@ const (
 var kindNames = [...]string{
 	Null: "null", Bool: "bool", Int8: "i8", Int16: "i16", Int32: "i32", Int64: "i64",
 	Uint8: "u8", Uint16: "u16", Uint32: "u32", Uint64: "u64", Float16: "f16", Float32: "f32",
-	Float64: "f64", Decimal: "decimal", Utf8: "utf8", Binary: "binary", List: "list",
+	Float64: "f64", KindDecimal: "decimal", Utf8: "utf8", Binary: "binary", List: "list",
 	FixedSizeList: "fixed_size_list", Map: "map", Struct: "struct", Date: "date", Time: "time",
 	Timestamp: "timestamp", UUID: "uuid", Variant: "variant",
 }
@@ -175,7 +175,7 @@ func (t Type) String() string {
 func (t Type) write(b *strings.Builder) {
 	b.WriteString(t.kind.String())
 	switch t.kind {
-	case Decimal:
+	case KindDecimal:
 		b.WriteString("(" + strconv.Itoa(int(t.precision)) + "," + strconv.Itoa(int(t.scale)) + ")")
 	case List:
 		b.WriteString("<" + t.elem.String() + ">")

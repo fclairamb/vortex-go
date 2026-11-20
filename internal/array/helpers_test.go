@@ -13,6 +13,7 @@ import (
 var specs = []string{
 	"vortex.null", "vortex.bool", "vortex.primitive", "vortex.struct", "vortex.chunked",
 	"vortex.constant", "vortex.ext", "vortex.masked", "vortex.bytebool", "vortex.alp",
+	"vortex.varbin", "vortex.varbinview", "vortex.list", "vortex.listview", "vortex.fixed_size_list", "vortex.map", "vortex.decimal",
 }
 
 const (
@@ -26,6 +27,13 @@ const (
 	eMasked
 	eByteBool
 	eAlp
+	eVarBin
+	eVarBinView
+	eList
+	eListView
+	eFSL
+	eMap
+	eDecimal
 )
 
 var (
@@ -127,6 +135,19 @@ func primSeg(vals ...int32) []byte {
 // constSeg is a constant array of the scalar message.
 func constSeg(msg []byte) []byte {
 	return segment(node(eConst, nil, []uint16{0}), buf{data: msg})
+}
+
+func sStr(s string) []byte   { return append([]byte{0x3a, byte(len(s))}, s...) }
+func sBytes(b []byte) []byte { return append([]byte{0x42, byte(len(b))}, b...) }
+
+// sList is a list scalar of the scalar messages.
+func sList(vals ...[]byte) []byte {
+	var body []byte
+	for _, v := range vals {
+		body = append(body, 0x0a, byte(len(v)))
+		body = append(body, v...)
+	}
+	return append([]byte{0x4a, byte(len(body))}, body...)
 }
 
 func mustDecode(t *testing.T, seg []byte, dt DType, rows int) *Array {
