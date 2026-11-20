@@ -44,7 +44,8 @@ const (
 // []byte (Binary, UUID), Decimal, time.Time (date and timestamp) and time.Duration (time),
 // compared exactly even when finer than the unit of the column (Eq never matches then). An
 // integer can be compared with a float column. The filter is checked against the schema before
-// any read: a literal that does not fit the column, and for Eq, Ne and In an integer out of the range of the column, are errors.
+// any read: a literal that does not fit the column, and for Eq, Ne and In an integer out of the
+// range of the column, are errors.
 type Expr struct{ n *exprNode }
 
 // exprNode is a node of an Expr.
