@@ -1,0 +1,15 @@
+{
+ "delta": "none",
+ "header": "0401",
+ "meta": "001000f8ffff070200",
+ "mode": "classic",
+ "name": "one_f32",
+ "pages": [
+  {
+   "data": "",
+   "n": 1
+  }
+ ],
+ "type": "f32",
+ "values": "000000bf"
+}
