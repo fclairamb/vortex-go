@@ -51,16 +51,32 @@ jobs:
       - name: Fetch the fixtures
         run: make fixtures
 
-      # The Rust crates and the build of the harness: a run with the cache only compiles the
-      # harness itself.
-      - name: Cache cargo
-        uses: actions/cache@v6
+      # The Rust crates and the build of the harness. A cold build is about 11 minutes on the 2-core
+      # runner: it is built in its own step and the cache is saved right after it, before the
+      # benchmarks, so a run that times out later still leaves a warm cache for the next one. A run
+      # with the cache only compiles the harness itself.
+      - name: Restore cargo cache
+        id: cargo-cache
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             tools/bench-rust/target
-          key: bench-cargo-${{ runner.os }}-${{ hashFiles('tools/bench-rust/Cargo.lock') }}
+          key: bench-cargo-${{ runner.os }}-${{ hashFiles('tools/bench-rust/Cargo.lock', 'tools/bench-rust/Cargo.toml') }}
+
+      - name: Build the Rust harness
+        run: make bench-rust
+
+      - name: Save cargo cache
+        if: steps.cargo-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/bench-rust/target
+          key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
 
       - name: make bench-json
         run: make bench-json

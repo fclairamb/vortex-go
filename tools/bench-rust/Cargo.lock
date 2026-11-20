@@ -73,38 +73,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28f6098a1e8ab66ff91324cce8fea6643101882cf7d09c85acdb1485ecf61e29"
 
 [[package]]
-name = "arrow"
-version = "59.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f234f0ed15170301e948de79bb5ba02ac52e58c824f7ce63180ccf5ceec272d3"
-dependencies = [
- "arrow-arith",
- "arrow-array",
- "arrow-buffer",
- "arrow-cast",
- "arrow-data",
- "arrow-ord",
- "arrow-row",
- "arrow-schema",
- "arrow-select",
- "arrow-string",
-]
-
-[[package]]
-name = "arrow-arith"
-version = "59.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de71a4e3f13a20dcf695f2fd47a4a95287d4a04e5e4e9b7ab61db5a5cfcb1c81"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "chrono",
- "num-traits",
-]
-
-[[package]]
 name = "arrow-array"
 version = "59.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -183,19 +151,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "arrow-row"
-version = "59.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "258667467d0ca987050ec3402144264bf342e7eea6b510c70fd0299748cb74f4"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "half",
-]
-
-[[package]]
 name = "arrow-schema"
 version = "59.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -218,23 +173,6 @@ dependencies = [
  "arrow-data",
  "arrow-schema",
  "num-traits",
-]
-
-[[package]]
-name = "arrow-string"
-version = "59.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b2c1c51a9fb05f1b0860ed5bf39797a61c2daad3aa1dbf188ffe4f1dae29efb5"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-data",
- "arrow-schema",
- "arrow-select",
- "memchr",
- "num-traits",
- "regex",
- "regex-syntax",
 ]
 
 [[package]]
@@ -590,9 +528,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
- "js-sys",
  "num-traits",
- "wasm-bindgen",
  "windows-link",
 ]
 
@@ -1692,53 +1628,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "parquet-variant"
-version = "59.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "802c8f585174352a72525b6dee7b02baa2e00369e6abc50b1b3c5c5a60606881"
-dependencies = [
- "arrow",
- "arrow-schema",
- "chrono",
- "half",
- "indexmap",
- "num-traits",
- "simdutf8",
- "uuid",
-]
-
-[[package]]
-name = "parquet-variant-compute"
-version = "59.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04731691edf2b4956178e03905c28d1c0e30fad841459fd7d29d824904e8ae61"
-dependencies = [
- "arrow",
- "arrow-schema",
- "chrono",
- "half",
- "indexmap",
- "parquet-variant",
- "parquet-variant-json",
- "serde_json",
- "uuid",
-]
-
-[[package]]
-name = "parquet-variant-json"
-version = "59.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b014584eb1b9060c4d7ea7d9fa9f77d41846950d3a27cb9f8a488bc0ca12ad5"
-dependencies = [
- "arrow-schema",
- "base64",
- "chrono",
- "parquet-variant",
- "serde_json",
- "uuid",
-]
-
-[[package]]
 name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2404,7 +2293,6 @@ dependencies = [
  "vortex-layout",
  "vortex-mask",
  "vortex-metrics",
- "vortex-parquet-variant",
  "vortex-pco",
  "vortex-scan",
  "vortex-sequence",
@@ -2785,7 +2673,6 @@ dependencies = [
  "vortex-metrics",
  "vortex-session",
  "vortex-utils",
- "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -2801,22 +2688,6 @@ dependencies = [
  "pin-project-lite",
  "vortex-array",
  "vortex-buffer",
- "vortex-error",
- "vortex-session",
-]
-
-[[package]]
-name = "vortex-json"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d250825e99850c410b116d9e3ac4feb1c69190c6cd0bc52ba9293bf4608430b"
-dependencies = [
- "arrow-array",
- "arrow-schema",
- "prost",
- "vortex-array",
- "vortex-arrow",
- "vortex-edition",
  "vortex-error",
  "vortex-session",
 ]
@@ -2852,7 +2723,6 @@ dependencies = [
  "tokio",
  "tracing",
  "twox-hash",
- "uuid",
  "vortex-array",
  "vortex-arrow",
  "vortex-btrblocks",
@@ -2901,28 +2771,6 @@ dependencies = [
  "vortex-array",
  "vortex-buffer",
  "vortex-error",
- "vortex-mask",
- "vortex-session",
-]
-
-[[package]]
-name = "vortex-parquet-variant"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6aac64cb0b59a696f8fd578675a9bd19a6866c4abe2744536856e516cb5f0677"
-dependencies = [
- "arrow-array",
- "arrow-buffer",
- "arrow-schema",
- "chrono",
- "parquet-variant",
- "parquet-variant-compute",
- "prost",
- "vortex-array",
- "vortex-arrow",
- "vortex-buffer",
- "vortex-error",
- "vortex-json",
  "vortex-mask",
  "vortex-session",
 ]
@@ -3091,17 +2939,6 @@ dependencies = [
  "rustversion",
  "wasm-bindgen-macro",
  "wasm-bindgen-shared",
-]
-
-[[package]]
-name = "wasm-bindgen-futures"
-version = "0.4.80"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e14e0327cb5368ad60ccb22d04a9827a693c95a926d8d125e9fa39e0baec501"
-dependencies = [
- "js-sys",
- "tokio",
- "wasm-bindgen",
 ]
 
 [[package]]
