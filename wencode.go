@@ -2,7 +2,9 @@ package vortex
 
 import (
 	"encoding/binary"
+	"math"
 
+	"github.com/fclairamb/vortex-go/internal/compress"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 	"github.com/fclairamb/vortex-go/internal/protowire"
 )
@@ -290,10 +292,14 @@ func (w *Writer) encodeStruct(t Type, d Data, n int) flatbuf.Off {
 }
 
 // encodeList writes a listview: the elements, the offset and the size of every row, and the
-// validity. A map is a vortex.map around a listview of its entries.
+// validity. A map is a vortex.map around a listview of its entries. A compressed list is a
+// vortex.list instead: the elements, the rows + 1 offsets and the validity, with no sizes.
 func (w *Writer) encodeList(t Type, d Data, n int) flatbuf.Off {
 	elems := d.kids[0]
 	base := len(w.stack)
+	if t.kind == List && w.comp != nil {
+		return w.encodePlainList(t, d, n)
+	}
 	if t.kind == Map {
 		w.push(w.encodeEntries(t, elems))
 	} else {
@@ -317,6 +323,46 @@ func (w *Writer) encodeList(t Type, d Data, n int) flatbuf.Off {
 	}
 	w.push(view)
 	return w.node("vortex.map", nil, len(w.bufs), 0, base)
+}
+
+// encodePlainList writes a vortex.list: the offsets are narrowed to the smallest unsigned type
+// that holds the last one, then compressed like those of a listview.
+func (w *Writer) encodePlainList(t Type, d Data, n int) flatbuf.Off {
+	elems := d.kids[0]
+	base := len(w.stack)
+	w.push(w.encode(*t.elem, elems, elems.n))
+	last := d.offs[n]
+	p := offsetType(last)
+	raw := w.alloc((n + 1) * p.Width())
+	for i, o := range d.offs {
+		switch p {
+		case compress.U8:
+			raw[i] = byte(o)
+		case compress.U16:
+			binary.LittleEndian.PutUint16(raw[2*i:], uint16(o))
+		default:
+			binary.LittleEndian.PutUint32(raw[4*i:], uint32(o))
+		}
+	}
+	w.push(w.encodeOffsets(p, raw))
+	w.validity(d, n)
+	meta := protowire.AppendUint(w.meta[:0], 1, uint64(elems.n))
+	meta = protowire.AppendUint(meta, 2, uint64(p))
+	node := w.node("vortex.list", meta, len(w.bufs), 0, base)
+	w.meta = meta[:0]
+	return node
+}
+
+// offsetType is the narrowest unsigned type that holds the last offset of a list: the offsets
+// never decrease, and there are at most maxListElems of them.
+func offsetType(last int) compress.PType {
+	switch {
+	case last > math.MaxUint16:
+		return compress.U32
+	case last > math.MaxUint8:
+		return compress.U16
+	}
+	return compress.U8
 }
 
 // encodeEntries writes the entries of a map: a struct of keys and values.

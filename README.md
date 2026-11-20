@@ -96,7 +96,7 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.ext` | yes | yes |
 | array | `vortex.fixed_size_list` | yes | yes |
 | array | `vortex.fsst` | yes | yes |
-| array | `vortex.list` | yes | no |
+| array | `vortex.list` | yes | yes |
 | array | `vortex.listview` | yes | yes |
 | array | `vortex.map` | yes | yes |
 | array | `vortex.masked` | yes | yes |

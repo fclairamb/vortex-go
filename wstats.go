@@ -455,8 +455,8 @@ func writtenLayouts() []string {
 // writtenArrays lists the arrays the writer makes without an encoder: the plain ones.
 func writtenArrays() []string {
 	return []string{
-		"vortex.bool", "vortex.decimal", "vortex.ext", "vortex.fixed_size_list", "vortex.listview", "vortex.map",
-		"vortex.null", "vortex.struct", "vortex.varbinview",
+		"vortex.bool", "vortex.decimal", "vortex.ext", "vortex.fixed_size_list", "vortex.list", "vortex.listview",
+		"vortex.map", "vortex.null", "vortex.struct", "vortex.varbinview",
 	}
 }
 
