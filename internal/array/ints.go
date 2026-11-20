@@ -47,9 +47,19 @@ func (n *Node) ints(i int, what string, p PType, rows int) ([]int, error) {
 	if a.Validity != nil {
 		return nil, fmt.Errorf("%s: has nulls", what)
 	}
+	return toInts(a, what, p, nil)
+}
+
+// toInts reads the values of a, an array of integers of type p, as ints. A value that is
+// negative, or does not fit in an int, is an error. The rows that valid marks null are 0:
+// valid nil means every row is valid.
+func toInts(a *Array, what string, p PType, valid *Bitmap) ([]int, error) {
 	w := p.Width()
-	out := make([]int, rows)
+	out := make([]int, a.Len)
 	for k := range out {
+		if valid != nil && !valid.Get(k) {
+			continue
+		}
 		var u uint64
 		switch w {
 		case 1:

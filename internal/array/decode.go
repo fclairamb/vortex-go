@@ -62,6 +62,14 @@ func registry() map[string]Decoder {
 		"vortex.fixed_size_list": decodeFixedSizeList,
 		"vortex.map":             decodeMap,
 		"vortex.decimal":         decodeDecimal,
+		"fastlanes.bitpacked":    decodeBitPacked,
+		"fastlanes.for":          decodeFoR,
+		"fastlanes.rle":          decodeRLE,
+		"vortex.zigzag":          decodeZigZag,
+		"vortex.sequence":        decodeSequence,
+		"vortex.runend":          decodeRunEnd,
+		"vortex.dict":            decodeDict,
+		"vortex.sparse":          decodeSparse,
 	}
 }
 
