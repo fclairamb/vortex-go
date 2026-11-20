@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"math"
+	"reflect"
 	"testing"
 )
 
@@ -121,4 +122,58 @@ func appendLen(b []byte) []byte {
 func FuzzDecode(f *testing.F) {
 	f.Add([]byte{0x4a, 0x04, 0x0a, 0x02, 0x10, 0x01})
 	f.Fuzz(func(t *testing.T, b []byte) { _, _ = Decode(b) })
+}
+
+func TestEncodeRoundTrip(t *testing.T) {
+	cases := []Value{
+		{Kind: Null}, {Kind: Bool, Bool: true}, {Kind: Bool}, {Kind: Int, Int: -5}, {Kind: Int, Int: 0},
+		{Kind: Uint, Uint: 1 << 63}, {Kind: F32, F32: 1.5}, {Kind: F64, F64: -2.25},
+		{Kind: String, Str: "héllo"}, {Kind: Bytes, Bytes: []byte{1, 2, 3}}, {Kind: F16, Uint: 0x3c00},
+		{Kind: List, List: []Value{{Kind: Int, Int: 1}, {Kind: List, List: []Value{{Kind: Null}}}}},
+		{Kind: List},
+	}
+	for _, v := range cases {
+		b, err := Encode(&v)
+		if err != nil {
+			t.Fatal(v, err)
+		}
+		got, err := Decode(b)
+		if err != nil {
+			t.Fatal(v, err)
+		}
+		if !reflect.DeepEqual(normalize(got), normalize(v)) {
+			t.Fatalf("%+v decoded as %+v", v, got)
+		}
+	}
+}
+
+// normalize makes an empty list and a nil one the same.
+func normalize(v Value) Value {
+	if len(v.List) == 0 {
+		v.List = nil
+	}
+	for i := range v.List {
+		v.List[i] = normalize(v.List[i])
+	}
+	return v
+}
+
+func TestEncodeErrors(t *testing.T) {
+	if _, err := Encode(&Value{Kind: String, Str: "\xff"}); err == nil {
+		t.Fatal("invalid UTF-8 accepted")
+	}
+	if _, err := Encode(&Value{}); !errors.Is(err, ErrNoKind) {
+		t.Fatal(err)
+	}
+	deep := Value{Kind: Null}
+	for range maxDepth + 2 {
+		deep = Value{Kind: List, List: []Value{deep}}
+	}
+	if _, err := Encode(&deep); err == nil {
+		t.Fatal("deep list accepted")
+	}
+	bad := Value{Kind: List, List: []Value{{Kind: String, Str: "\xff"}}}
+	if _, err := Encode(&bad); err == nil {
+		t.Fatal("invalid UTF-8 in a list accepted")
+	}
 }

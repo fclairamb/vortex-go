@@ -1,5 +1,4 @@
-// Package flatbuf reads flatbuffers, by hand, from untrusted bytes. It is a reader only: the
-// builder comes with the writer.
+// Package flatbuf reads flatbuffers, by hand, from untrusted bytes, and builds them (Builder).
 //
 // A Vortex file writes its flatbuffers with finish_minimal: no size prefix and no file
 // identifier (vortex-array/src/flatbuffers/traits.rs). The root offset is the first four bytes.

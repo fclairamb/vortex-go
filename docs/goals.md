@@ -60,7 +60,39 @@ Writer, done when:
 - The compressor picks encodings per chunk, like the reference one, and our files are at
   most 10% larger than the reference writer's on TPC-H and ClickBench.
 
-The writer does not have to emit every encoding. The reader has to decode every one.
+Measured on 0.93.0 (`testdata/size-ratios.json`, our size over the reference's, see
+docs/testing.md section 4):
+
+| Data | Default | Compact |
+|---|---|---|
+| TPC-H `lineitem` | 0.997 | 1.085 |
+| TPC-H `orders` | 1.000 | 1.157 |
+| ClickBench `hits_5k` | 1.077 | 1.060 |
+
+The gate is 1.10 in `Default`. In `Compact`, until a Pco encoder is decided, it is the highest
+ratio measured, 1.157, plus 2%: 1.18. That is what the missing Pco encoder costs: the
+reference's compact mode codes integers with Pco, which takes their deltas (`o_orderkey` of
+`orders`: 1 kB in Pco, 31 kB bit-packed by us), and dates and prices the same way, where zstd
+does not make up for it.
+
+The writer does not have to emit every encoding. The reader has to decode every one. These
+are decoded and never written, each for a reason:
+
+- `vortex.pco`: no Pco encoder in this version. It is the largest format of the edition, and
+  compact mode uses `vortex.zstd` for numbers instead. The compressor measures what that costs
+  in file size against the reference (below).
+- `vortex.onpair`: a second string compressor next to FSST. This version writes FSST only; the
+  compressor can add OnPair if it saves bytes on the benchmarks against the reference.
+- `vortex.variant`, `vortex.parquet.variant`: the arrays of the Variant type, which the writer
+  has no column for yet. They are read for the files that other writers make.
+- `vortex.masked`: puts a validity over an array of another encoding. The encoders put the
+  validity on the array itself, so a column never needs it.
+- `vortex.bytebool`: bools one byte each, a wider form of `vortex.bool`, which holds the same
+  values in a bit each.
+
+What the writer does emit, with the encoders of `internal/encode`: bit-packing, frame of
+reference, zigzag, run-length, run-end, dictionary, sequence, constant, sparse, ALP, ALP-RD,
+FSST, decimal byte parts, datetime parts and zstd.
 
 The support matrix in the README is generated from the code, never written by hand.
 

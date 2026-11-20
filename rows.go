@@ -177,6 +177,7 @@ func (c *rowCell) fillSlow(col *Column, rows reflect.Value) error {
 type goField struct {
 	label    string
 	name     string // the column
+	opts     string // the tag after the name: the options, comma separated
 	path     []int  // in the struct that was asked for
 	sf       reflect.StructField
 	off      uintptr // in the struct that was asked for
@@ -200,7 +201,7 @@ func goFields(rt reflect.Type, path []int, off uintptr, label string) []*goField
 				name = sf.Name
 			}
 			out = append(out, &goField{sf: sf, path: fpath, off: off + sf.Offset, label: label + sf.Name,
-				name: name, optional: slices.Contains(strings.Split(opts, ","), "optional")})
+				name: name, opts: opts, optional: slices.Contains(strings.Split(opts, ","), "optional")})
 		}
 	}
 	return out

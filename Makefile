@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat
+.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors api bench bench-compare bench-parquet bench-rust
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -28,6 +28,12 @@ deps:
 	@out="$$(go list -m all | awk 'NR > 1 { print $$1 }' | grep -v -x -F github.com/klauspost/compress || true)"; \
 	if [ -n "$$out" ]; then echo "modules not allowed:"; echo "$$out"; exit 1; fi; \
 	echo "deps: ok"
+
+# Rewrites the generated files: the example and the support matrix of README.md, and api.txt
+# (go doc -all). CI runs this, then git diff --exit-code. The output of go doc is only
+# promised stable on one Go release: api.txt is generated with Go 1.27, the other legs skip it.
+api:
+	go generate ./...
 
 lint:
 	golangci-lint run ./...
@@ -73,5 +79,48 @@ compat:
 	cp .cache/compat-passed.txt testdata/compat-releases.txt
 	go generate ./...
 
+# The reference reader opens the files our writer makes, and gets the values we wrote. The
+# Go test writes the files and the canonical hashes of its source data into .cache/interop,
+# the oracle checks them with the pinned vortex-data and with the latest release. Needs uv
+# and network.
+INTEROP = .cache/interop
+interop:
+	rm -rf $(INTEROP)
+	mkdir -p $(INTEROP)
+	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropRows|TestSizeRatios)$$' -count=1 .
+	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)
+	uv run --with vortex-data --with pyarrow python tools/oracle/oracle.py check $(INTEROP)
+
+# The byte-exact vectors of the encoders (testdata/vectors), made by the encoders of the
+# reference. Needs cargo and network; the tests never do. See tools/vectors/README.md.
+vectors:
+	cd tools/vectors && cargo run --release -- ../../testdata/vectors
+
 # Everything a .vortex-version bump needs.
 upstream: fixtures edition oracle
+
+# Benchmarks of the root package. The data is generated once into .cache/, the TPC-H and
+# ClickBench files are used when .cache/fixtures/ has them, and a benchmark skips without data.
+BENCHFLAGS = -run '^$$' -bench . -benchmem -count 1
+bench:
+	go test $(BENCHFLAGS) ./...
+
+# benchstat of this tree against main, on the same machine. benchstat is run with go run, so
+# it is not a module of go.mod. BENCH_COUNT repeats each benchmark for the statistics.
+BENCH_COUNT ?= 6
+bench-compare:
+	rm -rf .cache/bench-main && git worktree add --detach .cache/bench-main main
+	cd .cache/bench-main && go test -run '^$$' -bench . -benchmem -count $(BENCH_COUNT) ./... > ../bench-main.txt
+	git worktree remove --force .cache/bench-main
+	go test -run '^$$' -bench . -benchmem -count $(BENCH_COUNT) ./... > .cache/bench-new.txt
+	go run golang.org/x/perf/cmd/benchstat@latest .cache/bench-main.txt .cache/bench-new.txt
+
+# The comparison with parquet-go, a separate module (bench/go.mod) that is not in make deps
+# or in the coverage gate. It reads the file the root benchmarks generate, made first here.
+bench-parquet:
+	go test -run '^$$' -bench '^BenchmarkOpen$$' -benchtime 1x .
+	cd bench && go test -run '^$$' -bench . -benchmem -count 1 ./...
+
+# The reference reader through Python, on the same generated file, for docs/benchmarks.md.
+bench-rust:
+	$(ORACLE) tools/oracle/bench.py

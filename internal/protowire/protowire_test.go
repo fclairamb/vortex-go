@@ -184,3 +184,56 @@ func FuzzIter(f *testing.F) {
 		_, _ = PackedFixed64(b)
 	})
 }
+
+func TestAppendRoundTrip(t *testing.T) {
+	var b []byte
+	b = AppendUint(b, 1, 300)
+	b = AppendSint(b, 2, -3)
+	b = AppendFixed32(b, 3, 0xdeadbeef)
+	b = AppendFixed64(b, 4, 1<<40)
+	b = AppendBytes(b, 5, []byte("hi"))
+	b = AppendUint(b, 6, 0)
+	it := NewIter(b)
+	want := []struct {
+		num int
+		typ Type
+	}{{1, Varint}, {2, Varint}, {3, Fixed32}, {4, Fixed64}, {5, Bytes}, {6, Varint}}
+	for i, w := range want {
+		if !it.Next() || it.Num() != w.num || it.Type() != w.typ {
+			t.Fatalf("field %d: %v", i, it.Err())
+		}
+		switch w.num {
+		case 1:
+			if it.Uint() != 300 {
+				t.Fatal(it.Uint())
+			}
+		case 2:
+			if Zigzag(it.Uint()) != -3 {
+				t.Fatal(it.Uint())
+			}
+		case 3, 4:
+			if it.Uint() != map[int]uint64{3: 0xdeadbeef, 4: 1 << 40}[w.num] {
+				t.Fatal(it.Uint())
+			}
+		case 5:
+			if string(it.Bytes()) != "hi" {
+				t.Fatal(it.Bytes())
+			}
+		}
+	}
+	if it.Next() || it.Err() != nil {
+		t.Fatal(it.Err())
+	}
+	for _, v := range []uint64{0, 1, 127, 128, 1<<63 + 5, math.MaxUint64} {
+		got, n, err := ReadVarint(AppendVarint(nil, v))
+		if err != nil || got != v || n == 0 {
+			t.Fatal(v, got, err)
+		}
+	}
+	for _, v := range []int64{0, -1, 1, math.MinInt64, math.MaxInt64} {
+		got, _, _ := ReadVarint(AppendZigzag(nil, v))
+		if Zigzag(got) != v {
+			t.Fatal(v)
+		}
+	}
+}
