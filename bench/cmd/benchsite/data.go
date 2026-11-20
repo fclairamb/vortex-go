@@ -21,12 +21,12 @@ type result struct {
 // benchCase is one case at one thread count. Rust and ParquetGo are absent when that harness
 // has no result for it.
 type benchCase struct {
-	Name        string   `json:"name"`
-	Threads     int      `json:"threads"`
-	Go          result   `json:"go"`
 	Rust        *result  `json:"rust"`
 	ParquetGo   *result  `json:"parquet_go"`
 	RatioToRust *float64 `json:"ratio_to_rust"`
+	Name        string   `json:"name"`
+	Go          result   `json:"go"`
+	Threads     int      `json:"threads"`
 }
 
 type machine struct {

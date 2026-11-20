@@ -56,12 +56,12 @@ func build(page, benchPath, historyPath, sizesPath string) (string, error) {
 		return "", err
 	}
 	for _, s := range []struct {
-		name string
 		html func() (string, error)
+		name string
 	}{
-		{"bench", func() (string, error) { return renderSpeed(report) }},
-		{"history", func() (string, error) { return renderHistory(history) }},
-		{"size", func() (string, error) { return renderSizes(sizes) }},
+		{func() (string, error) { return renderSpeed(report) }, "bench"},
+		{func() (string, error) { return renderHistory(history) }, "history"},
+		{func() (string, error) { return renderSizes(sizes) }, "size"},
 	} {
 		content, err := s.html()
 		if err != nil {

@@ -1,0 +1,12 @@
+<p>The geometric mean of the ratio to Rust over every case, per run, with one thread and with every core. Above the dashed line, we are slower than Rust. {{.Runs}} run(s).</p>
+<p class="note" data-testid="history-latest">{{range $i, $l := .Latest}}{{if $i}}; {{end}}{{$l}}{{end}}</p>
+<div class="legend"><span><i class="go"></i>1 thread</span><span><i class="rust"></i>all cores</span></div>
+<svg data-testid="history-chart" role="img" aria-label="Ratio to Rust over the commits" viewBox="0 0 640 240" width="640" height="240">
+<line class="axis" x1="40" y1="204" x2="620" y2="204"></line>
+<line class="axis" x1="40" y1="16" x2="40" y2="204"></line>
+<line class="guide" x1="40" y1="{{.Y1}}" x2="620" y2="{{.Y1}}"></line>
+<text x="4" y="{{.Y1}}" dy="4" class="muted">1.0</text>
+<text x="4" y="20" class="muted">{{.Max}}</text>
+{{range .Series}}{{if .Points}}<polyline class="line-{{.Class}}" points="{{.Points}}"></polyline>
+{{range .Dots}}<circle class="dot-{{.Class}}" cx="{{.X}}" cy="{{.Y}}" r="3"><title>{{.Title}}</title></circle>
+{{end}}{{end}}{{end}}</svg>

@@ -2,12 +2,22 @@ package main
 
 import (
 	"bytes"
+	_ "embed"
 	"fmt"
 	"html/template"
 	"math"
 	"sort"
 	"strconv"
 	"strings"
+)
+
+var (
+	//go:embed templates/speed.tmpl
+	speedTemplate string
+	//go:embed templates/history.tmpl
+	historyTemplate string
+	//go:embed templates/size.tmpl
+	sizeTemplate string
 )
 
 const dash = "–"
@@ -60,17 +70,17 @@ type bar struct {
 }
 
 type group struct {
-	Index  int
 	Label  string
-	Y      int
 	Bars   []bar
+	Index  int
+	Y      int
 	Height int
 }
 
 type row struct {
-	Index                                 int
 	Name, Threads, Go, Rust, Parquet, Raw string
 	Ratio, Class                          string
+	Index                                 int
 }
 
 type speedView struct {
@@ -113,7 +123,9 @@ func newSpeedView(r *report) speedView {
 		Versions: fmt.Sprintf("Vortex %s, %s, %s", r.VortexVersion, r.GoVersion, r.RustVersion),
 	}
 	y := 0
-	for i, c := range sorted(r.Cases) {
+	cases := sorted(r.Cases)
+	for i := range cases {
+		c := &cases[i]
 		ratio, class := ratioCell(c.RatioToRust)
 		v.Rows = append(v.Rows, row{
 			Index: i, Name: c.Name, Threads: strconv.Itoa(c.Threads),
@@ -125,9 +137,9 @@ func newSpeedView(r *report) speedView {
 			g.Label += "s"
 		}
 		series := []struct {
-			class, label string
 			r            *result
-		}{{"bar-go", "Go", &c.Go}, {"bar-rust", "Rust", c.Rust}, {"bar-parquet", "parquet-go", c.ParquetGo}}
+			class, label string
+		}{{&c.Go, "bar-go", "Go"}, {c.Rust, "bar-rust", "Rust"}, {c.ParquetGo, "bar-parquet", "parquet-go"}}
 		longest := 0.0
 		for _, s := range series {
 			if s.r != nil {
@@ -154,23 +166,7 @@ func newSpeedView(r *report) speedView {
 	return v
 }
 
-var speedTmpl = template.Must(template.New("speed").Parse(`<p class="note" data-testid="speed-machine">Measured on {{.Machine}}, at commit <code>{{.Commit}}</code>, on {{.Date}}. {{.Versions}}.</p>
-<div class="legend"><span><i class="go"></i>vortex-go</span><span><i class="rust"></i>Rust</span><span><i class="parquet"></i>parquet-go</span></div>
-<div class="table-wrap">
-<table data-testid="speed-table">
-<thead><tr><th>Case</th><th class="num">Threads</th><th class="num">vortex-go</th><th class="num">Rust</th><th class="num">parquet-go</th><th class="num">Go vs Rust</th></tr></thead>
-<tbody>
-{{range .Rows}}<tr data-testid="speed-row-{{.Index}}"><td>{{.Name}}</td><td class="num">{{.Threads}}</td><td class="num">{{.Go}}</td><td class="num">{{.Rust}}</td><td class="num">{{.Parquet}}</td><td class="num {{.Class}}">{{.Ratio}}</td></tr>
-{{end}}</tbody>
-</table>
-</div>
-<h3>As bars</h3>
-<p class="note">Within a case, the longest bar is the slowest. Shorter is better.</p>
-<svg data-testid="speed-chart" role="img" aria-label="Time per case for vortex-go, Rust and parquet-go" viewBox="0 0 640 {{.Height}}" width="640" height="{{.Height}}">
-{{range .Groups}}<g data-testid="speed-bars-{{.Index}}" transform="translate(0 {{.Y}})"><text x="0" y="{{.Height}}" class="muted">{{.Label}}</text>
-{{range .Bars}}<rect class="{{.Class}}" x="210" y="{{.Y}}" width="{{.W}}" height="8"><title>{{.Label}}: {{.Value}}</title></rect><text x="{{.W}}" y="{{.Y}}" dx="216" dy="8" class="muted">{{.Value}}</text>
-{{end}}</g>
-{{end}}</svg>`))
+var speedTmpl = template.Must(template.New("speed").Parse(speedTemplate))
 
 // renderSpeed is the speed table and the bars of a report. No report is no measurement yet.
 func renderSpeed(r *report) (string, error) {
@@ -201,11 +197,11 @@ func geomean(cases []benchCase, keep func(benchCase) bool) (g float64, ok bool) 
 }
 
 type point struct {
-	X, Y        int
 	Title       string
 	Class       string
-	Value       float64
 	Commit, Day string
+	Value       float64
+	X, Y        int
 }
 
 type series struct {
@@ -214,11 +210,11 @@ type series struct {
 }
 
 type historyView struct {
-	Series []series
-	Y1     int
 	Max    string
-	Runs   int
+	Series []series
 	Latest []string
+	Y1     int
+	Runs   int
 }
 
 const (
@@ -235,7 +231,8 @@ func newHistoryView(h []report) historyView {
 	many := func(c benchCase) bool { return c.Threads != 1 }
 	top := 1.0
 	vals := [2][]float64{make([]float64, len(h)), make([]float64, len(h))}
-	for i, r := range h {
+	for i := range h {
+		r := &h[i]
 		for k, keep := range []func(benchCase) bool{one, many} {
 			g, _ := geomean(r.Cases, keep)
 			vals[k][i] = g
@@ -253,7 +250,8 @@ func newHistoryView(h []report) historyView {
 	v := historyView{Y1: yOf(1), Max: strconv.FormatFloat(top, 'f', -1, 64), Runs: len(h)}
 	for k, s := range []series{{Class: "1", Label: "1 thread"}, {Class: "n", Label: "all cores"}} {
 		var pts []string
-		for i, r := range h {
+		for i := range h {
+			r := &h[i]
 			if vals[k][i] == 0 {
 				continue
 			}
@@ -272,18 +270,7 @@ func newHistoryView(h []report) historyView {
 	return v
 }
 
-var historyTmpl = template.Must(template.New("history").Parse(`<p>The geometric mean of the ratio to Rust over every case, per run, with one thread and with every core. Above the dashed line, we are slower than Rust. {{.Runs}} run(s).</p>
-<p class="note" data-testid="history-latest">{{range $i, $l := .Latest}}{{if $i}}; {{end}}{{$l}}{{end}}</p>
-<div class="legend"><span><i class="go"></i>1 thread</span><span><i class="rust"></i>all cores</span></div>
-<svg data-testid="history-chart" role="img" aria-label="Ratio to Rust over the commits" viewBox="0 0 640 240" width="640" height="240">
-<line class="axis" x1="40" y1="204" x2="620" y2="204"></line>
-<line class="axis" x1="40" y1="16" x2="40" y2="204"></line>
-<line class="guide" x1="40" y1="{{.Y1}}" x2="620" y2="{{.Y1}}"></line>
-<text x="4" y="{{.Y1}}" dy="4" class="muted">1.0</text>
-<text x="4" y="20" class="muted">{{.Max}}</text>
-{{range .Series}}{{if .Points}}<polyline class="line-{{.Class}}" points="{{.Points}}"></polyline>
-{{range .Dots}}<circle class="dot-{{.Class}}" cx="{{.X}}" cy="{{.Y}}" r="3"><title>{{.Title}}</title></circle>
-{{end}}{{end}}{{end}}</svg>`))
+var historyTmpl = template.Must(template.New("history").Parse(historyTemplate))
 
 // renderHistory is the line of the ratio to Rust over the runs of history.jsonl.
 func renderHistory(h []report) (string, error) {
@@ -310,14 +297,7 @@ func sizeCell(v float64) (text, class string) {
 	return fmt.Sprintf("%.3f", v), "faster"
 }
 
-var sizeTmpl = template.Must(template.New("size").Parse(`<div class="table-wrap">
-<table data-testid="size-table">
-<thead><tr><th>Data</th><th class="num">Default</th><th class="num">Compact</th></tr></thead>
-<tbody>
-{{range .}}<tr><td>{{.Name}}</td><td class="num {{.DefaultClass}}">{{.Default}}</td><td class="num {{.CompactClass}}">{{.Compact}}</td></tr>
-{{end}}</tbody>
-</table>
-</div>`))
+var sizeTmpl = template.Must(template.New("size").Parse(sizeTemplate))
 
 // renderSizes is the table of the file size ratios.
 func renderSizes(rows []sizeRow) (string, error) {
