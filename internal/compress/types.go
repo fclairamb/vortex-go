@@ -13,12 +13,12 @@ const maxInline = 12
 // Strings is the compressed array of the strings v (utf8, else binary), or nil for the plain
 // array.
 func (c *Compressor) Strings(v [][]byte, nulls []bool, utf8 bool) *encode.Node {
-	return c.strings(c.e, false, v, nulls, utf8, 0, sPlain)
+	return c.strings(c.top(), v, nulls, utf8)
 }
 
 // PicksDictStrings is PicksDict for strings.
 func (c *Compressor) PicksDictStrings(v [][]byte, nulls []bool, utf8 bool) bool {
-	n := c.strings(c.e, false, v, nulls, utf8, 0, sPlain)
+	n := c.strings(c.top(), v, nulls, utf8)
 	return n != nil && n.ID == encode.IDDict
 }
 
@@ -33,8 +33,8 @@ func binsCost(v [][]byte, nulls []bool) int {
 	return total
 }
 
-func (c *Compressor) strings(e *encode.Encoder, trial bool, v [][]byte, nulls []bool, utf8 bool, depth int, parent scheme) *encode.Node {
-	if n, ok := encode.ConstantBytes(e, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
+func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.Node {
+	if n, ok := encode.ConstantBytes(x.e, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
 		return n
 	}
 	valid := 0
@@ -45,33 +45,38 @@ func (c *Compressor) strings(e *encode.Encoder, trial bool, v [][]byte, nulls []
 	}
 	// FSST is for strings: the reference has no scheme of it for binary
 	var l cands
-	l.add(sDict, depth < maxDepth && parent != sDict && valid > 0)
+	l.add(sDict, x.cascades() && x.parent != sDict && valid > 0)
 	l.add(sFSST, utf8 && valid > 0)
 	l.add(sZstd, c.mode == Compact)
-	return pick(c, e, trial, v, nulls, &l, binsCost, sampleBins, func(e *encode.Encoder, trial bool, s scheme, v [][]byte, nulls []bool) *encode.Node {
-		var n *encode.Node
-		switch s {
-		case sDict:
-			n = encode.DictBytes(e, v, nulls)
-			if depth < maxDepth {
-				c.kid(e, trial, n, 0, uintOf(n.Kids[0].Bufs[0].Align), depth+1, s)
-				c.dictValues(e, trial, n, utf8, depth+1)
-			}
-		case sFSST:
-			n = encode.FSSTBytes(e, v, nulls)
-			if depth < maxDepth {
-				c.kid(e, trial, n, 0, I32, depth+1, s)
-				c.kid(e, trial, n, 1, intOf(n.Kids[1].Bufs[0].Align), depth+1, s)
-			}
-		default:
-			n = encode.ZstdBytes(e, v, nulls)
-		}
-		return n
+	return pick(c, x, v, nulls, &l, binsCost, sampleBins, func(x at, s scheme, v [][]byte, nulls []bool) *encode.Node {
+		return c.applyStrings(x, s, v, nulls, utf8)
 	})
 }
 
+// applyStrings is the array of strings of scheme s.
+func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8 bool) *encode.Node {
+	var n *encode.Node
+	switch s {
+	case sDict:
+		n = encode.DictBytes(x.e, v, nulls)
+		if x.cascades() {
+			c.kid(x.child(s), n, 0, uintOf(n.Kids[0].Bufs[0].Align))
+			c.dictValues(x.child(s), n, utf8)
+		}
+	case sFSST:
+		n = encode.FSSTBytes(x.e, v, nulls)
+		if x.cascades() {
+			c.kid(x.child(s), n, 0, I32)
+			c.kid(x.child(s), n, 1, intOf(n.Kids[1].Bufs[0].Align))
+		}
+	default:
+		n = encode.ZstdBytes(x.e, v, nulls)
+	}
+	return n
+}
+
 // dictValues compresses the values of a dictionary of strings, a varbinview, in place.
-func (c *Compressor) dictValues(e *encode.Encoder, trial bool, n *encode.Node, utf8 bool, depth int) {
+func (c *Compressor) dictValues(x at, n *encode.Node, utf8 bool) {
 	vals := n.Kids[1]
 	data, views := vals.Bufs[0].Data, vals.Bufs[1].Data
 	rows := len(views) / 16
@@ -87,7 +92,7 @@ func (c *Compressor) dictValues(e *encode.Encoder, trial bool, n *encode.Node, u
 		}
 	}
 	nulls := c.kidNulls(vals, rows)
-	if out := c.strings(e, trial, strs, nulls, utf8, depth, sDict); out != nil {
+	if out := c.strings(x, strs, nulls, utf8); out != nil {
 		n.Kids[1] = out
 	}
 }
@@ -99,7 +104,7 @@ func (c *Compressor) Decimals(raw []byte, width int, nulls []bool) *encode.Node 
 	if !ok {
 		return nil
 	}
-	c.kid(c.e, false, n, 0, intOf(n.Kids[0].Bufs[0].Align), 1, sDecimal)
+	c.kid(c.top().child(sDecimal), n, 0, intOf(n.Kids[0].Bufs[0].Align))
 	return n
 }
 
@@ -108,9 +113,10 @@ func (c *Compressor) Decimals(raw []byte, width int, nulls []bool) *encode.Node 
 // compressed as integers, or the integers themselves when that is smaller.
 func (c *Compressor) Timestamps(v []int64, nulls []bool, ticks int64) *encode.Node {
 	parts, _ := encode.DateTimeParts(c.e, v, nulls, ticks)
-	c.kid(c.e, false, parts, 0, intOf(parts.Kids[0].Bufs[0].Align), 1, sDateTime)
-	c.kid(c.e, false, parts, 1, I32, 1, sDateTime)
-	c.kid(c.e, false, parts, 2, I32, 1, sDateTime)
+	k := c.top().child(sDateTime)
+	c.kid(k, parts, 0, intOf(parts.Kids[0].Bufs[0].Align))
+	c.kid(k, parts, 1, I32)
+	c.kid(k, parts, 2, I32)
 	best := numberCost(v, nulls)
 	n := c.Numbers(I64, unsafex.Bytes(v), nulls)
 	if n != nil {

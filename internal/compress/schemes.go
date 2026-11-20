@@ -21,18 +21,18 @@ func (l *cands) add(s scheme, ok bool) {
 }
 
 // applyFn builds the array of scheme s, its children compressed.
-type applyFn[T any] func(e *encode.Encoder, trial bool, s scheme, v []T, nulls []bool) *encode.Node
+type applyFn[T any] func(x at, s scheme, v []T, nulls []bool) *encode.Node
 
 // pick is the array of the best candidate, nil when none beats the plain array, which costs
 // plain bytes for the rows v, and is measured by plainCost on a sample.
-func pick[T any](c *Compressor, e *encode.Encoder, trial bool, v []T, nulls []bool, l *cands,
-	plainCost func(v []T, nulls []bool) int, sample func(c *Compressor, v []T) []T, apply applyFn[T],
+func pick[T any](c *Compressor, x at, v []T, nulls []bool, l *cands, plainCost func(v []T, nulls []bool) int,
+	sample func(c *Compressor, v []T) []T, apply applyFn[T],
 ) *encode.Node {
 	plain := plainCost(v, nulls)
-	if trial {
+	if x.trial {
 		var best *encode.Node
 		for _, s := range l.s[:l.n] {
-			if n := apply(e, true, s, v, nulls); n != nil && cost(n) < plain {
+			if n := apply(x, s, v, nulls); n != nil && cost(n) < plain {
 				best, plain = n, cost(n)
 			}
 		}
@@ -41,8 +41,9 @@ func pick[T any](c *Compressor, e *encode.Encoder, trial bool, v []T, nulls []bo
 	raw, bools, bins := c.raw.mark(), c.nulls.mark(), c.bins.mark()
 	sv, sn := sample(c, v), c.sampleNulls(nulls, sampleRuns(len(v), func(int, int) {}))
 	best, bestCost := sPlain, plainCost(sv, sn)
+	trial := at{e: c.trial, depth: x.depth, trial: true, parent: x.parent}
 	for _, s := range l.s[:l.n] {
-		if n := apply(c.trial, true, s, sv, sn); n != nil && cost(n) < bestCost {
+		if n := apply(trial, s, sv, sn); n != nil && cost(n) < bestCost {
 			best, bestCost = s, cost(n)
 		}
 		c.trial.Reset()
@@ -53,7 +54,7 @@ func pick[T any](c *Compressor, e *encode.Encoder, trial bool, v []T, nulls []bo
 	if best == sPlain {
 		return nil
 	}
-	if n := apply(e, false, best, v, nulls); n != nil && cost(n) < plain {
+	if n := apply(x, best, v, nulls); n != nil && cost(n) < plain {
 		return n
 	}
 	return nil
@@ -89,6 +90,14 @@ type intStats struct {
 	forW     int  // the bits of the largest minus the smallest valid value
 }
 
+// framed says whether a frame of reference packs the values narrower than bit-packing.
+func (st intStats) framed() bool {
+	return st.valid > 0 && !st.minZero && (st.negative || st.forW < st.packW)
+}
+
+// long says whether the runs of rows rows are long enough for run-end and RLE.
+func (st intStats) long(rows int) bool { return st.valid > 0 && rows >= runThreshold*st.runs }
+
 func statsOfInts[T encode.Int](v []T, nulls []bool) intStats {
 	var st intStats
 	var lo, hi T
@@ -115,64 +124,89 @@ func statsOfInts[T encode.Int](v []T, nulls []bool) intStats {
 	return st
 }
 
+// zigzagFn is ZigZag for a signed type, nil for an unsigned one.
+type zigzagFn[T encode.Int] func(*encode.Encoder, []T, []bool) *encode.Node
+
 // ints is the compressed array of integers.
-func ints[T encode.Int](c *Compressor, e *encode.Encoder, trial bool, p PType, v []T, nulls []bool, depth int,
-	parent scheme, zigzag func(*encode.Encoder, []T, []bool) *encode.Node,
-) *encode.Node {
-	if n, ok := encode.Sequence(e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
+func ints[T encode.Int](c *Compressor, x at, p PType, v []T, nulls []bool, zigzag zigzagFn[T]) *encode.Node {
+	if n, ok := encode.Sequence(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
-	if n, ok := encode.Constant(e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
+	if n, ok := encode.Constant(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
-	st := statsOfInts(v, nulls)
-	runs := st.valid > 0 && len(v) >= runThreshold*st.runs && parent != sRunEnd && parent != sRLE
-	cascade := depth < maxDepth
-	// the order of the reference (vortex-btrblocks/src/session.rs), which wins the ties
+	l := intCands(statsOfInts(v, nulls), x, p, len(v), zigzag != nil, c.mode)
+	apply := func(x at, s scheme, v []T, nulls []bool) *encode.Node { return applyInt(c, x, p, s, v, nulls, zigzag) }
+	return pick(c, x, v, nulls, &l, numberCost[T], sampleNumbers[T], apply)
+}
+
+// intCands is the schemes to try on integers, in the order of the reference
+// (vortex-btrblocks/src/session.rs), which wins the ties.
+func intCands(st intStats, x at, p PType, rows int, signed bool, mode Mode) cands {
+	valid := st.valid > 0
+	runs := st.long(rows) && x.parent != sRunEnd && x.parent != sRLE
+	cascade := x.cascades()
 	var l cands
-	l.add(sFoR, cascade && st.valid > 0 && !st.minZero && (st.negative || st.forW < st.packW))
-	l.add(sZigZag, cascade && zigzag != nil && st.negative && parent != sZigZag)
+	l.add(sFoR, cascade && st.framed())
+	l.add(sZigZag, cascade && signed && st.negative && x.parent != sZigZag)
 	l.add(sBitPack, !st.negative && st.packW < 8*p.Width())
-	l.add(sSparse, parent != sSparse && st.valid > 0)
-	l.add(sDict, cascade && parent != sDict && st.valid > 0)
+	l.add(sSparse, x.parent != sSparse && valid)
+	l.add(sDict, cascade && x.parent != sDict && valid)
 	l.add(sRunEnd, cascade && runs)
 	l.add(sRLE, cascade && runs)
-	l.add(sZstd, c.mode == Compact)
-	return pick(c, e, trial, v, nulls, &l, numberCost[T], sampleNumbers[T], func(e *encode.Encoder, trial bool, s scheme, v []T, nulls []bool) *encode.Node {
-		var n *encode.Node
-		switch s {
-		case sBitPack:
-			n, _ = encode.BitPackBest(e, v, nulls)
-		case sFoR:
-			n = encode.FoR(e, v, nulls)
-		case sZigZag:
-			n = zigzag(e, v, nulls)
-		case sRunEnd:
-			n = encode.RunEnd(e, v, nulls)
-		case sRLE:
-			n = encode.RLE(e, v, nulls)
-		case sDict:
-			n = encode.Dict(e, v, nulls)
-		case sSparse:
-			n, _ = encode.Sparse(e, v, nulls)
-		default:
-			n = encode.Zstd(e, v, nulls)
-		}
-		if n != nil {
-			c.kids(e, trial, n, p, depth, s)
-		}
-		return n
-	})
+	l.add(sZstd, mode == Compact)
+	return l
+}
+
+// applyInt is the array of integers of scheme s.
+func applyInt[T encode.Int](c *Compressor, x at, p PType, s scheme, v []T, nulls []bool,
+	zigzag zigzagFn[T],
+) *encode.Node {
+	var n *encode.Node
+	switch s {
+	case sBitPack:
+		n, _ = encode.BitPackBest(x.e, v, nulls)
+	case sFoR:
+		n = encode.FoR(x.e, v, nulls)
+	case sZigZag:
+		n = zigzag(x.e, v, nulls)
+	case sRunEnd:
+		n = encode.RunEnd(x.e, v, nulls)
+	case sRLE:
+		n = encode.RLE(x.e, v, nulls)
+	case sDict:
+		n = encode.Dict(x.e, v, nulls)
+	case sSparse:
+		n, _ = encode.Sparse(x.e, v, nulls)
+	default:
+		n = encode.Zstd(x.e, v, nulls)
+	}
+	if n != nil {
+		c.kids(x, n, p, s)
+	}
+	return n
 }
 
 // floats is the compressed array of floats.
-func floats[T encode.Float](c *Compressor, e *encode.Encoder, trial bool, p PType, v []T, nulls []bool, depth int,
-	parent scheme,
-) *encode.Node {
-	if n, ok := encode.Constant(e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
+func floats[T encode.Float](c *Compressor, x at, p PType, v []T, nulls []bool) *encode.Node {
+	if n, ok := encode.Constant(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
-	runs, valid := 0, 0
+	runs, valid := runsOf(v, nulls)
+	cascade := x.cascades()
+	var l cands
+	l.add(sALP, cascade && valid > 0)
+	l.add(sALPRD, valid > 0)
+	l.add(sDict, cascade && x.parent != sDict && valid > 0)
+	l.add(sSparse, x.parent != sSparse && valid > 0 && 10*(len(v)-valid) > 9*len(v)) // dominated by nulls
+	l.add(sRLE, cascade && valid > 0 && len(v) >= runThreshold*runs && x.parent != sRLE)
+	l.add(sZstd, c.mode == Compact)
+	apply := func(x at, s scheme, v []T, nulls []bool) *encode.Node { return applyFloat(c, x, p, s, v, nulls) }
+	return pick(c, x, v, nulls, &l, numberCost[T], sampleNumbers[T], apply)
+}
+
+// runsOf is the runs of equal rows of v, and its valid rows.
+func runsOf[T encode.Float](v []T, nulls []bool) (runs, valid int) {
 	for i := range v {
 		if i == 0 || isNull(nulls, i) != isNull(nulls, i-1) || !isNull(nulls, i) && v[i] != v[i-1] {
 			runs++
@@ -181,31 +215,26 @@ func floats[T encode.Float](c *Compressor, e *encode.Encoder, trial bool, p PTyp
 			valid++
 		}
 	}
-	cascade := depth < maxDepth
-	var l cands
-	l.add(sALP, cascade && valid > 0)
-	l.add(sALPRD, valid > 0)
-	l.add(sDict, cascade && parent != sDict && valid > 0)
-	l.add(sSparse, parent != sSparse && valid > 0 && 10*(len(v)-valid) > 9*len(v)) // dominated by nulls
-	l.add(sRLE, cascade && valid > 0 && len(v) >= runThreshold*runs && parent != sRLE)
-	l.add(sZstd, c.mode == Compact)
-	return pick(c, e, trial, v, nulls, &l, numberCost[T], sampleNumbers[T], func(e *encode.Encoder, trial bool, s scheme, v []T, nulls []bool) *encode.Node {
-		var n *encode.Node
-		switch s {
-		case sALP:
-			n = encode.ALP(e, v, nulls)
-		case sALPRD:
-			n, _ = encode.ALPRD(e, v, nulls)
-		case sDict:
-			n = encode.Dict(e, v, nulls)
-		case sSparse:
-			n, _ = encode.Sparse(e, v, nulls) // there is a valid value
-		case sRLE:
-			n = encode.RLE(e, v, nulls)
-		default:
-			n = encode.Zstd(e, v, nulls)
-		}
-		c.kids(e, trial, n, p, depth, s)
-		return n
-	})
+	return runs, valid
+}
+
+// applyFloat is the array of floats of scheme s.
+func applyFloat[T encode.Float](c *Compressor, x at, p PType, s scheme, v []T, nulls []bool) *encode.Node {
+	var n *encode.Node
+	switch s {
+	case sALP:
+		n = encode.ALP(x.e, v, nulls)
+	case sALPRD:
+		n, _ = encode.ALPRD(x.e, v, nulls)
+	case sDict:
+		n = encode.Dict(x.e, v, nulls)
+	case sSparse:
+		n, _ = encode.Sparse(x.e, v, nulls) // there is a valid value
+	case sRLE:
+		n = encode.RLE(x.e, v, nulls)
+	default:
+		n = encode.Zstd(x.e, v, nulls)
+	}
+	c.kids(x, n, p, s)
+	return n
 }

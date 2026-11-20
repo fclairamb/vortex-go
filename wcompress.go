@@ -92,9 +92,12 @@ func compressData(cp *compress.Compressor, t Type, d Data, scratch *[]byte) *enc
 }
 
 // encodeCompressed writes the compressed array of the rows d of a column of type t, and is
-// false when it is the plain one. The array is the one compressed before (w.pre) when there is
-// one, else the compressor w.comp makes it.
+// false when it is the plain one, or when the array is not compressed. The array is the one
+// compressed before (w.pre) when there is one, else the compressor w.comp makes it.
 func (w *Writer) encodeCompressed(t Type, d Data) (flatbuf.Off, bool) {
+	if (w.depth != 1 || !w.hasPre) && w.comp == nil {
+		return 0, false
+	}
 	node := w.pre
 	if !w.hasPre {
 		node = compressData(w.comp, t, d, &w.decRaw)

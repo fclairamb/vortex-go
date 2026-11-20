@@ -255,85 +255,103 @@ func (c *Compressor) kidNulls(k *encode.Node, rows int) []bool {
 	return nulls
 }
 
+// at is where an array is compressed: the encoder of its nodes, whether it is a trial (a
+// sample, or a child of one), its depth and the scheme of its parent.
+type at struct {
+	e      *encode.Encoder
+	depth  int
+	trial  bool
+	parent scheme
+}
+
+// child is where a child of an array made by scheme s is compressed.
+func (x at) child(s scheme) at { return at{e: x.e, depth: x.depth + 1, trial: x.trial, parent: s} }
+
+// cascades says whether the children of the array are compressed.
+func (x at) cascades() bool { return x.depth < maxDepth }
+
 // kid compresses child i of n, a primitive array of numbers of type p, in place.
-func (c *Compressor) kid(e *encode.Encoder, trial bool, n *encode.Node, i int, p PType, depth int, parent scheme) {
+func (c *Compressor) kid(x at, n *encode.Node, i int, p PType) {
 	k := n.Kids[i]
 	if k.ID != encode.IDPrimitive {
 		return
 	}
 	raw := k.Bufs[0].Data
 	rows := len(raw) / p.Width()
-	if out := c.numbers(e, trial, p, raw, c.kidNulls(k, rows), depth, parent); out != nil {
+	if out := c.numbers(x, p, raw, c.kidNulls(k, rows)); out != nil {
 		n.Kids[i] = out
 	}
 }
 
 // kids compresses the children of n, made by scheme s for numbers of type p.
-func (c *Compressor) kids(e *encode.Encoder, trial bool, n *encode.Node, p PType, depth int, s scheme) {
-	if depth >= maxDepth {
+func (c *Compressor) kids(x at, n *encode.Node, p PType, s scheme) {
+	if !x.cascades() {
 		return
 	}
-	d := depth + 1
+	k := x.child(s)
 	width := func(i int) int { return n.Kids[i].Bufs[0].Align }
 	switch n.ID {
 	case encode.IDFoR:
-		c.kid(e, trial, n, 0, p, d, s)
+		c.kid(k, n, 0, p)
 	case encode.IDZigZag:
-		c.kid(e, trial, n, 0, p.unsigned(), d, s)
+		c.kid(k, n, 0, p.unsigned())
 	case encode.IDRunEnd:
-		c.kid(e, trial, n, 0, uintOf(width(0)), d, s)
-		c.kid(e, trial, n, 1, p, d, s)
+		c.kid(k, n, 0, uintOf(width(0)))
+		c.kid(k, n, 1, p)
 	case encode.IDRLE:
-		c.kid(e, trial, n, 0, p, d, s)
-		c.kid(e, trial, n, 1, U16, d, s)
-		c.kid(e, trial, n, 2, U64, d, s)
+		c.kid(k, n, 0, p)
+		c.kid(k, n, 1, U16)
+		c.kid(k, n, 2, U64)
 	case encode.IDDict:
-		c.kid(e, trial, n, 0, uintOf(width(0)), d, s)
-		c.kid(e, trial, n, 1, p, d, s)
+		c.kid(k, n, 0, uintOf(width(0)))
+		c.kid(k, n, 1, p)
 	case encode.IDALP:
-		c.kid(e, trial, n, 0, intOf(p.Width()), d, s)
+		c.kid(k, n, 0, intOf(p.Width()))
 	case encode.IDALPRD:
-		c.kid(e, trial, n, 0, U16, d, s)
-		c.kid(e, trial, n, 1, uintOf(width(1)), d, s)
+		c.kid(k, n, 0, U16)
+		c.kid(k, n, 1, uintOf(width(1)))
 	}
 }
 
 // numbers is the compressed array of the numbers raw of type p, or nil when the plain array is
-// the smallest. In a trial (the array is a sample, or a child of one) every candidate is
-// built on the whole array, and the smallest kept. Else the candidates are measured on a
-// sample, in the trial encoder, and the best one is applied to the whole array.
-func (c *Compressor) numbers(e *encode.Encoder, trial bool, p PType, raw []byte, nulls []bool, depth int, parent scheme) *encode.Node {
+// the smallest. In a trial every candidate is built on the whole array, and the smallest kept.
+// Else the candidates are measured on a sample, in the trial encoder, and the best one is
+// applied to the whole array.
+func (c *Compressor) numbers(x at, p PType, raw []byte, nulls []bool) *encode.Node {
 	switch p {
 	case U8:
-		return ints(c, e, trial, p, unsafex.Slice[uint8](raw), nulls, depth, parent, nil)
+		return ints(c, x, p, unsafex.Slice[uint8](raw), nulls, nil)
 	case U16:
-		return ints(c, e, trial, p, unsafex.Slice[uint16](raw), nulls, depth, parent, nil)
+		return ints(c, x, p, unsafex.Slice[uint16](raw), nulls, nil)
 	case U32:
-		return ints(c, e, trial, p, unsafex.Slice[uint32](raw), nulls, depth, parent, nil)
+		return ints(c, x, p, unsafex.Slice[uint32](raw), nulls, nil)
 	case U64:
-		return ints(c, e, trial, p, unsafex.Slice[uint64](raw), nulls, depth, parent, nil)
+		return ints(c, x, p, unsafex.Slice[uint64](raw), nulls, nil)
 	case I8:
-		return ints(c, e, trial, p, unsafex.Slice[int8](raw), nulls, depth, parent, encode.ZigZag[int8])
+		return ints(c, x, p, unsafex.Slice[int8](raw), nulls, encode.ZigZag[int8])
 	case I16:
-		return ints(c, e, trial, p, unsafex.Slice[int16](raw), nulls, depth, parent, encode.ZigZag[int16])
+		return ints(c, x, p, unsafex.Slice[int16](raw), nulls, encode.ZigZag[int16])
 	case I32:
-		return ints(c, e, trial, p, unsafex.Slice[int32](raw), nulls, depth, parent, encode.ZigZag[int32])
+		return ints(c, x, p, unsafex.Slice[int32](raw), nulls, encode.ZigZag[int32])
 	case I64:
-		return ints(c, e, trial, p, unsafex.Slice[int64](raw), nulls, depth, parent, encode.ZigZag[int64])
+		return ints(c, x, p, unsafex.Slice[int64](raw), nulls, encode.ZigZag[int64])
 	case F32:
-		return floats(c, e, trial, p, unsafex.Slice[float32](raw), nulls, depth, parent)
+		return floats(c, x, p, unsafex.Slice[float32](raw), nulls)
 	}
-	return floats(c, e, trial, p, unsafex.Slice[float64](raw), nulls, depth, parent)
+	return floats(c, x, p, unsafex.Slice[float64](raw), nulls)
 }
+
+// top is where the array of a chunk is compressed.
+func (c *Compressor) top() at { return at{e: c.e} }
 
 // Numbers is the compressed array of the numbers raw of type p, or nil for the plain array.
 func (c *Compressor) Numbers(p PType, raw []byte, nulls []bool) *encode.Node {
-	return c.numbers(c.e, false, p, raw, nulls, 0, sPlain)
+	return c.numbers(c.top(), p, raw, nulls)
 }
 
 // PicksDict says whether the compressor would write the numbers raw of type p as a
 // dictionary: the probe of the dictionary layout of the writer.
 func (c *Compressor) PicksDict(p PType, raw []byte, nulls []bool) bool {
-	n := c.numbers(c.e, false, p, raw, nulls, 0, sPlain)
+	n := c.numbers(c.top(), p, raw, nulls)
 	return n != nil && n.ID == encode.IDDict
 }

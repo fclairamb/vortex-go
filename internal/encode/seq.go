@@ -1,6 +1,8 @@
 package encode
 
 import (
+	"bytes"
+
 	"github.com/fclairamb/vortex-go/internal/protowire"
 	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
@@ -102,7 +104,7 @@ func ConstantBytes(e *Encoder, v [][]byte, nulls []bool, utf8 bool) (*Node, bool
 		return n, true
 	}
 	for _, x := range v[1:] {
-		if string(x) != string(v[0]) {
+		if !bytes.Equal(x, v[0]) {
 			return nil, false
 		}
 	}

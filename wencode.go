@@ -75,17 +75,15 @@ func (w *Writer) leaf(id string, data []byte, align int) flatbuf.Off {
 // encode writes the array of a column of type t.
 func (w *Writer) encode(t Type, d Data, n int) flatbuf.Off {
 	w.depth++
-	off := w.encodeNode(t, d, n)
+	off, ok := w.encodeCompressed(t, d)
+	if !ok {
+		off = w.encodeNode(t, d, n)
+	}
 	w.depth--
 	return off
 }
 
 func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
-	if w.depth == 1 && w.hasPre || w.comp != nil {
-		if off, ok := w.encodeCompressed(t, d); ok {
-			return off
-		}
-	}
 	switch t.kind {
 	case Null:
 		return w.node("vortex.null", nil, len(w.bufs), 0, len(w.stack))
