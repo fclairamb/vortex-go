@@ -342,6 +342,7 @@ func (w *Writer) setEdition(name string) error {
 		NoMasked:   !has(edition.KindArray, encode.IDMasked),
 		NoSequence: !has(edition.KindArray, encode.IDSequence),
 		NoZstd:     !has(edition.KindArray, encode.IDZstd),
+		NoOnPair:   !has(edition.KindArray, encode.IDOnPair),
 	}
 	return nil
 }

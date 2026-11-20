@@ -56,6 +56,8 @@ func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.
 	var l cands
 	l.add(sDict, x.cascades() && x.parent != sDict && valid > 0)
 	l.add(sFSST, utf8 && valid > 0)
+	// the second scheme of fragments of strings, kept when the sample says it is smaller
+	l.add(sOnPair, utf8 && valid > 0 && !c.limit.NoOnPair)
 	// the reference tries it for binary only, between the dictionary and zstd
 	l.add(sVarBin, !utf8)
 	l.add(sZstd, c.zstd())
@@ -79,6 +81,14 @@ func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8
 		if x.cascades() {
 			c.kid(x.child(s), n, 0, I32)
 			c.kid(x.child(s), n, 1, intOf(n.Kids[1].Bufs[0].Align))
+		}
+	case sOnPair:
+		n = encode.OnPairBytes(x.e, v, nulls)
+		if x.cascades() {
+			c.kid(x.child(s), n, 0, U32)
+			c.kid(x.child(s), n, 1, U16)
+			c.kid(x.child(s), n, 2, uintOf(n.Kids[2].Bufs[0].Align))
+			c.kid(x.child(s), n, 3, U32)
 		}
 	case sVarBin:
 		n = encode.VarBinBytes(x.e, v, nulls)

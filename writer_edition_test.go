@@ -124,10 +124,15 @@ func TestEditionDropsEncodings(t *testing.T) {
 			i++
 		}
 	}
+	hosts := []string{"www.acme.com", "shop.acme.org", "api.example.net"}
+	urls := make([]string, rows)
+	for i := range urls {
+		urls[i] = fmt.Sprintf("https://%s/p/%d?q=%d&ref=%s", hosts[r.IntN(3)], r.IntN(5000), i%7, strings.Repeat("x", r.IntN(10)))
+	}
 	schema := NewSchema(Field{"seq", Int64Type()}, Field{"masked", Int64Type().AsNullable()}, Field{"runs", Float64Type()},
-		Field{"vals", Float64Type()})
-	data := []Data{Of(seq), Of(same).Nulls(nulls), Of(runRows), Of(vals)}
-	for _, id := range []string{"vortex.sequence", "vortex.masked", "fastlanes.rle", "vortex.zstd"} {
+		Field{"vals", Float64Type()}, Field{"urls", Utf8Type()})
+	data := []Data{Of(seq), Of(same).Nulls(nulls), Of(runRows), Of(vals), OfStrings(urls)}
+	for _, id := range []string{"vortex.sequence", "vortex.masked", "fastlanes.rle", "vortex.zstd", "vortex.onpair"} {
 		mode := Default
 		if id == "vortex.zstd" {
 			mode = Compact // only a candidate of the compact level

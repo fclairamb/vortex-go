@@ -313,7 +313,7 @@ func writtenFiles(t *testing.T) map[string]map[string]string {
 		var ty Type
 		var d Data
 		switch enc {
-		case "fsst", "zstd", "dict", "varbin":
+		case "fsst", "onpair", "zstd", "dict", "varbin":
 			ty = Utf8Type()
 			strs := make([]string, 200)
 			for i := range strs {

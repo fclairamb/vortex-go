@@ -117,7 +117,7 @@ func writeInteropEncoders(t *testing.T, dir string) {
 		switch enc {
 		case "masked":
 			fields, data = addInteropMasked(fields, data, hashes, n)
-		case "dict", "fsst", "zstd", "varbin":
+		case "dict", "fsst", "onpair", "zstd", "varbin":
 			fields, data = addInteropStrings(fields, data, hashes, n)
 		case "bytebool", "chunked":
 			fields, data = addInteropBools(fields, data, hashes, n)
@@ -217,6 +217,16 @@ func addInteropStrings(fields []Field, data []Data, hashes map[string]hashEntry,
 		name := "strings_" + ty.String()
 		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins).Nulls(nulls))
 		hashColumn(hashes, name, ty, vals)
+	}
+	// and without a null
+	plain := make([]val, n)
+	for i := range plain {
+		plain[i] = val{b: bins[i]}
+	}
+	for _, ty := range []Type{Utf8Type(), BinaryType()} {
+		name := "plain_" + ty.String()
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins))
+		hashColumn(hashes, name, ty, plain)
 	}
 	return fields, data
 }

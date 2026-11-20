@@ -20,7 +20,7 @@ var encodingIDs = map[string]string{
 	"bitpacked": "fastlanes.bitpacked", "for": "fastlanes.for", "zigzag": "vortex.zigzag",
 	"rle": "fastlanes.rle", "runend": "vortex.runend", "dict": "vortex.dict",
 	"sequence": "vortex.sequence", "constant": "vortex.constant", "masked": "vortex.masked", "sparse": "vortex.sparse",
-	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "fsst": "vortex.fsst", "varbin": "vortex.varbin",
+	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "fsst": "vortex.fsst", "onpair": "vortex.onpair", "varbin": "vortex.varbin",
 	"decimal_byte_parts": "vortex.decimal_byte_parts", "datetimeparts": "vortex.datetimeparts",
 	"bytebool": "vortex.bytebool", "chunked": "vortex.chunked",
 }
@@ -42,7 +42,7 @@ func forcedTypes(enc string) []Kind {
 		switch {
 		case enc == "zigzag" && !isSigned, isFloat && slices.Contains([]string{"bitpacked", "for", "sequence"}, enc):
 		case !isFloat && (enc == "alp" || enc == "alprd"):
-		case enc == "fsst" || enc == "varbin" || enc == "decimal_byte_parts" || enc == "datetimeparts" || enc == "bytebool": // not numbers
+		case enc == "fsst" || enc == "onpair" || enc == "varbin" || enc == "decimal_byte_parts" || enc == "datetimeparts" || enc == "bytebool": // not numbers
 		default:
 			out = append(out, k)
 		}
@@ -322,7 +322,7 @@ func TestForcedStrings(t *testing.T) {
 	}
 	checkForced(t, "varbin", BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
 	checkForced(t, "varbin", BinaryType(), OfBytes(bins), vals[:0:0], 0)
-	for _, enc := range []string{"dict", "fsst", "zstd"} {
+	for _, enc := range []string{"dict", "fsst", "onpair", "zstd"} {
 		checkForced(t, enc, Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 300)
 		checkForced(t, enc, BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
 	}

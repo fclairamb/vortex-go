@@ -71,7 +71,12 @@ docs/testing.md section 4):
 |---|---|---|
 | TPC-H `lineitem` | 0.997 | 1.085 |
 | TPC-H `orders` | 1.000 | 1.157 |
-| ClickBench `hits_5k` | 1.077 | 1.060 |
+| ClickBench `hits_5k` | 0.984 | 1.060 |
+
+`vortex.onpair` is written next to FSST: the compressor keeps the smaller of the two on the
+sample of each chunk, as the reference does. The reference file of `hits_5k` holds OnPair
+arrays, which is why its `Default` ratio fell from 1.077 to 0.984. On the string columns of
+`default_mixed`, our OnPair output is within a few bytes of the reference's.
 
 The gate is 1.10 in `Default`. In `Compact`, until a Pco encoder is decided, it is the highest
 ratio measured, 1.157, plus 2%: 1.18. That is what the missing Pco encoder costs: the
@@ -79,14 +84,12 @@ reference's compact mode codes integers with Pco, which takes their deltas (`o_o
 `orders`: 1 kB in Pco, 31 kB bit-packed by us), and dates and prices the same way, where zstd
 does not make up for it.
 
-The writer does not have to emit every encoding. The reader has to decode every one. These
-are decoded and never written, each for a reason:
+The writer does not have to emit every encoding. The reader has to decode every one. This
+one is decoded and never written:
 
 - `vortex.pco`: no Pco encoder in this version. It is the largest format of the edition, and
   compact mode uses `vortex.zstd` for numbers instead. The compressor measures what that costs
   in file size against the reference (below).
-- `vortex.onpair`: a second string compressor next to FSST. This version writes FSST only; the
-  compressor can add OnPair if it saves bytes on the benchmarks against the reference.
 
 Two arrays are written only when a test forces them, and no compressor picks them:
 `vortex.bytebool` (bools one byte each, a wider form of `vortex.bool`, which holds the same
@@ -97,7 +100,7 @@ proof, by the reference reader, that the bytes written for them are right.
 
 What the writer does emit, with the encoders of `internal/encode`: bit-packing, frame of
 reference, zigzag, run-length, run-end, dictionary, sequence, constant, masked (a constant under a validity), sparse, ALP, ALP-RD,
-FSST, decimal byte parts, datetime parts and zstd.
+FSST, OnPair, decimal byte parts, datetime parts and zstd.
 
 The support matrix in the README is generated from the code, never written by hand.
 
@@ -120,7 +123,7 @@ Speed targets, to revise after the first measurements:
 - **Standard library, plus one module.** `github.com/klauspost/compress` is the only
   dependency allowed, for zstd (Go 1.27 has no public zstd package). It is pure Go.
   Everything else is hand-written: flatbuffers, the protobuf wire format, FastLanes, ALP,
-  FSST and Pco.
+  FSST, OnPair and Pco.
 - No assembly in the first version.
 - `unsafe` only in one internal package, for two things: casting decoded bytes to typed
   slices, and writing the fields of a row struct.

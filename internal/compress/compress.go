@@ -40,6 +40,7 @@ type Limits struct {
 	NoMasked   bool // vortex.masked
 	NoSequence bool // vortex.sequence
 	NoZstd     bool // vortex.zstd
+	NoOnPair   bool // vortex.onpair
 }
 
 // PType is the type of the numbers of an array.
@@ -98,6 +99,7 @@ const (
 	sALP
 	sALPRD
 	sFSST
+	sOnPair
 	sZstd
 	sVarBin
 	sDecimal

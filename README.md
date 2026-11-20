@@ -101,7 +101,7 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.map` | yes | yes |
 | array | `vortex.masked` | yes | yes |
 | array | `vortex.null` | yes | yes |
-| array | `vortex.onpair` | yes | no |
+| array | `vortex.onpair` | yes | yes |
 | array | `vortex.parquet.variant` | yes | yes |
 | array | `vortex.pco` | yes | no |
 | array | `vortex.primitive` | yes | yes |
@@ -141,7 +141,7 @@ every merge to `main`, with the Rust reference measured on the same machine, in 
 - No Arrow in the core module, no `preview` or `unstable` edition, no third-party encodings.
 - Our files are not byte-identical to the Rust writer's: the format leaves the choice of
   encodings to the writer. They are at most 10% larger on TPC-H and ClickBench.
-- No Pco and no OnPair encoder: both are read, neither is written.
+- No Pco encoder: it is read, not written.
 
 See the non-goals in [docs/goals.md](docs/goals.md#non-goals).
 
