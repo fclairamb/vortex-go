@@ -216,6 +216,7 @@ func (f *File) plan(o scanOptions) (*scanPlan, error) {
 			p.late = append(p.late, i)
 		}
 	}
+	o.array.MaxRows = f.maxNodeRows()
 	if err = f.openSource(p, o.array, need); err != nil {
 		return nil, err
 	}
@@ -224,6 +225,19 @@ func (f *File) plan(o scanOptions) (*scanPlan, error) {
 	}
 	return p, nil
 }
+
+// maxNodeRows is the most rows of a node of an array of the file: a multiple of its size and
+// of its rows. A list of constants may expand, not without bound.
+func (f *File) maxNodeRows() int {
+	const factor = 64
+	if n := uint64(f.size) + uint64(f.numRows); n <= uint64(math.MaxInt-nodeRowsBase)/factor {
+		return nodeRowsBase + factor*int(n)
+	}
+	return math.MaxInt
+}
+
+// nodeRowsBase is the rows any node may have, whatever the file. A variable for the tests.
+var nodeRowsBase = 1 << 20
 
 // openSource makes the readers of the fields of need.
 func (f *File) openSource(p *scanPlan, opt array.Options, need []bool) (err error) {

@@ -86,7 +86,7 @@ func (c *countingReader) ReadAt(p []byte, off int64) (int, error) {
 	return c.r.ReadAt(p, off)
 }
 
-func fixtures(t *testing.T) []string {
+func fixtures(t testing.TB) []string {
 	t.Helper()
 	paths, err := filepath.Glob("testdata/fixtures/*/*.vortex")
 	if err != nil || len(paths) == 0 {

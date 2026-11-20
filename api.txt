@@ -220,8 +220,9 @@ func OpenFile(path string) (*File, error)
     OpenFile opens the Vortex file at path. Close it when done.
 
 func (f *File) Close() error
-    Close closes the file that OpenFile opened. It does nothing for a File made
-    by Open. A second call returns nil.
+    Close closes the file that OpenFile opened: a scan still running returns
+    an error that wraps os.ErrClosed. It does nothing for a File made by Open.
+    A second call returns nil.
 
 func (f *File) NumRows() int64
     NumRows returns the number of rows of the file.

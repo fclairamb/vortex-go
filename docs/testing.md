@@ -168,15 +168,26 @@ integers), `patched` (patches applied on top of an inner array) and `decimal_byt
   corpus. The result must equal a plain Go loop over the fully decoded data. The seed is
   printed on failure.
 - **Batch boundaries.** Batch sizes of 1, 7, 1024, and larger than a chunk.
-- **Corrupt files.** Native Go fuzzing (`testing.F`) on open plus full scan, seeded with
-  the whole corpus. Three properties: no panic, no hang, no allocation above a limit
-  derived from the file size. Every crasher found is committed. 30 seconds on each PR,
-  longer every night.
-- **Systematic damage.** Each file is truncated at many offsets, and each byte of its
-  footer is flipped. Same three properties.
+- **Corrupt files.** Native Go fuzzing (`FuzzOpenScan`) on open plus scan, seeded with
+  the fixtures of at most 32 KiB. Three properties: no panic, done within a deadline, no
+  allocation above a limit derived from the file size and its rows. A small file may hold
+  any number of rows (a constant does), so the fuzzer scans the first 65,536 rows, and
+  takes flats of that many rows at most. Every crasher found is committed under
+  `testdata/fuzz/`. 30 seconds on each PR, longer every night.
+- **Systematic damage.** Each file is truncated at 200 offsets, and each byte of its
+  footer, postscript and trailer is flipped. Same three properties, the allocation one on
+  every 16th copy (the others run in parallel, which a global allocation count cannot
+  measure).
 - **I/O faults.** A reader that fails at call N, for every N, and a reader that returns
-  short reads. The scan must return an error that wraps the cause.
-- **Concurrency.** Everything runs with `-race`. One test runs many scans on one `File`.
+  short reads. The scan must return an error that wraps the cause. The readers are in
+  `internal/testutil`, with one that returns `io.EOF` with the last bytes and one that
+  blocks until a context is cancelled.
+- **Concurrency.** Everything runs with `-race`. 16 scans at once on one `File` give the
+  sequential results; `GOMAXPROCS` of 1, 2 and 8 give the same batches; a cancelled
+  context, a `break` or a panic in the loop leave no goroutine; `Close` during a scan is an
+  error.
+- **Memory.** The peak heap of a scan stays under a fixed bound, on a committed file and on
+  2 million rows written by `make bigfile` into `.cache/` (skipped when absent).
 
 ## 4. Writer validity
 
@@ -279,11 +290,11 @@ encoding choice to the writer, and upstream's own compatibility check
 | Expected values of every fixture exist and parse | `go test ./...` | yes | in place |
 | Corpus against the oracle | `go test ./...` | yes | in place |
 | Edition table complete and seen | `go test ./...` | yes | in place |
-| Allocation | `go test ./...` | yes | planned |
+| Allocation | `go test ./...` | yes | in place |
 | Examples, API snapshot, README | `go test ./...`, `make api` | yes | planned |
 | Reference reads our files | `make interop` | yes | planned |
 | File size ratio | `make interop` | yes | planned |
-| Fuzzing, 30 seconds | `make fuzz` | yes | planned |
+| Fuzzing, 30 seconds | `make fuzz` | yes | in place |
 | All published releases | `make compat` | nightly | planned |
 | Long fuzzing | `make fuzz FUZZTIME=30m` | nightly | planned |
 | Benchmarks against main | `make bench` | no, posted on the PR | planned |

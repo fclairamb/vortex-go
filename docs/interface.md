@@ -228,10 +228,14 @@ it is out of scope.
 - **Nested fields.** `Col("address", "city")` filters on a field of a struct. `Scan` only
   takes top-level columns, the children come with `Field(i)`.
 - **Filters are exact.** The caller never has to filter again.
-- **Parallelism.** Decoding runs ahead on internal goroutines. Breaking out of the loop
-  stops them.
+- **Parallelism.** Decoding runs ahead on `GOMAXPROCS` internal goroutines, a bounded
+  number of segments ahead of the loop. Batches come in file order. Leaving the loop
+  (`break`, `return`, a panic) or cancelling the context stops them before the iterator
+  returns. `Close` during a scan makes it return an error that wraps `os.ErrClosed`.
 - **I/O.** Reads are merged and issued in parallel. The gap is chosen from the reader:
-  small for `*os.File` and memory, large for anything else.
+  small for `*os.File` and memory (4 KiB, reads of 1 MiB at most), large for anything else
+  (1 MiB, reads of 16 MiB at most). A reader that returns fewer bytes without an error is
+  called again for the rest.
 
 ## Why this shape
 

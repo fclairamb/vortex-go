@@ -212,7 +212,7 @@ func compare(exp *testutil.Expected, accs map[string]*acc, rows int64) error {
 	return nil
 }
 
-func corpus(t *testing.T) []string {
+func corpus(t testing.TB) []string {
 	t.Helper()
 	paths := append(fixtures(t), mustGlob(t, "testdata/fixtures/*/extra/*.vortex")...)
 	paths = append(paths, mustGlob(t, "testdata/fixtures/compat/*/*.vortex")...)
@@ -220,7 +220,7 @@ func corpus(t *testing.T) []string {
 	return paths
 }
 
-func mustGlob(t *testing.T, pattern string) []string {
+func mustGlob(t testing.TB, pattern string) []string {
 	t.Helper()
 	paths, err := filepath.Glob(pattern)
 	if err != nil {

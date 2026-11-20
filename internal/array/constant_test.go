@@ -2,6 +2,7 @@ package array
 
 import (
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -78,4 +79,15 @@ func TestConstantErrors(t *testing.T) {
 		{"null for a struct", constSeg(sNull()), structOf(true), 1, "unsupported operation"},
 		{"value for a variant", constSeg(sInt(1)), DType{Kind: Variant}, 1, "constant of type variant"},
 	})
+}
+
+// A node of more rows than Options.MaxRows is an error before it allocates.
+func TestMaxRows(t *testing.T) {
+	seg := constSeg(sInt(-2))
+	if _, err := Decode(seg, specs, i32, 1<<40, Options{MaxRows: 100}); err == nil || !strings.Contains(err.Error(), "more than the 100") {
+		t.Fatalf("err = %v", err)
+	}
+	if a, err := Decode(seg, specs, i32, 100, Options{MaxRows: 100}); err != nil || a.Len != 100 {
+		t.Fatalf("%v", err)
+	}
 }

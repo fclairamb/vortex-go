@@ -56,7 +56,7 @@ bigfile:
 # with its fix.
 FUZZTIME ?= 30s
 fuzz:
-	go test -run '^$$' -fuzz '^FuzzOpenScan$$' -fuzztime $(FUZZTIME) .
+	go test -run '^$$' -fuzz '^FuzzOpenScan$$' -fuzztime $(FUZZTIME) -fuzzminimizetime 10s .
 
 # Everything a .vortex-version bump needs.
 upstream: fixtures edition oracle

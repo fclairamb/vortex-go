@@ -1606,3 +1606,27 @@ func cmpNs(a, b int64) int {
 	}
 	return 0
 }
+
+// A node may not have more rows than the size and the rows of the file justify.
+func TestScanMaxNodeRows(t *testing.T) {
+	f, err := open(extraFixture(t, "default_ints.vortex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := f.maxNodeRows(); n != 1<<20+64*int(f.size+f.numRows) {
+		t.Fatalf("%d rows at most", n)
+	}
+	// The constant lists of bulk expand to 40 elements a row, more than a file of no size and
+	// no rows allows.
+	defer func(n int) { nodeRowsBase = n }(nodeRowsBase)
+	nodeRowsBase, f.size, f.numRows = 1000, 0, 0
+	for _, err := range f.Scan(context.Background(), Query{}, "bulk") {
+		if !errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "more than the 1000") {
+			t.Fatalf("err = %v", err)
+		}
+	}
+	f.size, f.numRows = math.MaxInt64, math.MaxInt64
+	if n := f.maxNodeRows(); n != math.MaxInt {
+		t.Fatalf("%d rows at most", n)
+	}
+}

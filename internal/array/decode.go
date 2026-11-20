@@ -20,6 +20,10 @@ type Options struct {
 	// encoding, whether to carry on: the field then is an Array with Skipped set. The path
 	// is the dotted names of the fields from the root. Tests use it, a scan never does.
 	Tolerate func(path string, err error) bool
+	// MaxRows, when not 0, is the most rows of any node: the rows of a child come from the
+	// file (the elements of a list, the codes of a dictionary), and a node that expands
+	// without a buffer to bound it (a constant, a sequence) allocates as many.
+	MaxRows int
 }
 
 type context struct {
@@ -175,6 +179,9 @@ func (c *context) decode(fb fbs.ArrayNode, path string, t DType, rows int) (*Arr
 	dec, ok := c.table[id]
 	if !ok {
 		return nil, fmt.Errorf("unsupported encoding %q at column %q: %w", id, path, errors.ErrUnsupported)
+	}
+	if c.opt.MaxRows > 0 && rows > c.opt.MaxRows {
+		return nil, fmt.Errorf("%s: %d rows, more than the %d the file allows", id, rows, c.opt.MaxRows)
 	}
 	n := &Node{ctx: c, path: path}
 	if n.metadata, err = fb.Metadata(); err != nil {
