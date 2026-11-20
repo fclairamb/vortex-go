@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"os/exec"
 	"runtime"
 	"testing"
 	"time"
@@ -97,68 +98,72 @@ func damage(t *testing.T, raw []byte) [][]byte {
 	return out
 }
 
+// damageShardEnv names, in a process TestSystematicDamage starts, the share of the fixtures
+// it checks: "k/n" for the fixtures whose index is k modulo n.
+const damageShardEnv = "VORTEX_DAMAGE_SHARD"
+
 // Every fixture, truncated or with a byte of its footer, postscript or trailer flipped, opens
-// and scans to an error or to data, without a panic, within the deadline. The fixtures run in
-// parallel; every 16th damaged copy is then run alone, under the allocation limit.
+// and scans to an error or to data, without a panic, within the deadline and under the
+// allocation limit. Go counts allocations only for the whole process, so each copy is
+// measured alone in its process: the test runs itself in one process per core, each checking
+// its share of the fixtures one copy after the other.
 func TestSystematicDamage(t *testing.T) {
 	if testing.Short() || raceEnabled {
 		t.Skip("about 90,000 scans")
 	}
-	var measured [][]byte
-	for _, path := range corpus(t) {
+	shard, shards := 0, 1
+	if env := os.Getenv(damageShardEnv); env != "" {
+		if _, err := fmt.Sscanf(env, "%d/%d", &shard, &shards); err != nil {
+			t.Fatal(err)
+		}
+	} else if n := runtime.GOMAXPROCS(0); n > 1 {
+		runDamageShards(t, n)
+		return
+	}
+	for i, path := range corpus(t) {
+		if i%shards != shard {
+			continue
+		}
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		cases := damage(t, raw)
-		for i := 0; i < len(cases); i += 16 {
-			measured = append(measured, cases[i])
-		}
 		t.Run(fixtureName(path), func(t *testing.T) {
-			t.Parallel()
-			for i, b := range cases {
-				if err := openScan(b, Query{}, false); err != nil {
+			for i, b := range damage(t, raw) {
+				if err := openScan(b, Query{}, true); err != nil {
 					t.Fatalf("damage %d: %v", i, err)
 				}
 			}
 		})
 	}
-	t.Cleanup(func() {
-		for i, b := range measured {
-			if err := openScan(b, Query{}, true); err != nil {
-				t.Errorf("measured damage %d: %v", i, err)
-			}
-		}
-	})
 }
 
-// fuzzRows is the most rows the fuzzer scans, and the most rows of a flat it accepts.
-const fuzzRows = 1 << 16
-
-// fuzzBytes is the largest input of the fuzzer: mutating and minimizing larger ones is slow.
-const fuzzBytes = 32 << 10
+// runDamageShards runs TestSystematicDamage in n processes, each on its share of the fixtures.
+func runDamageShards(t *testing.T, n int) {
+	for k := range n {
+		t.Run(fmt.Sprintf("shard-%d", k), func(t *testing.T) {
+			t.Parallel()
+			cmd := exec.Command(os.Args[0], "-test.run=^TestSystematicDamage$", "-test.count=1", "-test.timeout=30m")
+			cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%d/%d", damageShardEnv, k, n))
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("%v\n%s", err, out)
+			}
+		})
+	}
+}
 
 // FuzzOpenScan opens and scans arbitrary bytes: no panic, done within the deadline, under the
-// allocation limit. `make fuzz` runs it.
+// allocation limit. It is seeded with every fixture. `make fuzz` runs it.
 func FuzzOpenScan(f *testing.F) {
 	for _, path := range corpus(f) {
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			f.Fatal(err)
 		}
-		if len(raw) <= fuzzBytes {
-			f.Add(raw)
-		}
+		f.Add(raw)
 	}
-	// A small file may hold any number of rows (a constant does), which then take their time
-	// to scan. The fuzzer scans the first rows, of flats that are not too large.
-	defer func(n uint64) { maxFlatRows = n }(maxFlatRows)
-	maxFlatRows = fuzzRows
 	f.Fuzz(func(t *testing.T, raw []byte) {
-		if len(raw) > fuzzBytes {
-			t.Skip()
-		}
-		if err := openScan(raw, Query{Rows: Range{End: fuzzRows}}, true); err != nil {
+		if err := openScan(raw, Query{}, true); err != nil {
 			t.Fatal(err)
 		}
 	})
