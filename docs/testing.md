@@ -248,7 +248,10 @@ encoding choice to the writer, and upstream's own compatibility check
 - Numbers: rows per second, MB per second of decoded data, bytes and allocations per
   operation, file size.
 - Baselines:
-  - the previous commit, compared with `benchstat` and posted on the PR,
+  - the base branch, compared with `benchstat` and posted on the PR as one comment that each
+    run edits (`bench/cmd/benchcomment` writes it). `scripts/bench-pr.sh` interleaves the
+    runs of both sides, so the drift of the runner hits both alike, and a change under 5%
+    counts as noise,
   - parquet-go on the same data, in a separate module under `bench/` so it stays out of
     our `go.mod`,
   - the Rust reference, measured natively on the same machine by a Cargo project
