@@ -95,19 +95,41 @@ jobs:
           go-version: '1.27'
 
       - name: Benchmark main and the PR
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          git worktree add --detach "$RUNNER_TEMP/main" "origin/${{ github.base_ref }}"
-          (cd "$RUNNER_TEMP/main" && go test -run '^$' -bench . -benchmem -count 6 ./... > "$RUNNER_TEMP/old.txt" || true)
-          go test -run '^$' -bench . -benchmem -count 6 ./... > "$RUNNER_TEMP/new.txt"
-          # go run pkg@version does not touch go.mod: benchstat is not a dependency.
-          go run golang.org/x/perf/cmd/benchstat@latest "$RUNNER_TEMP/old.txt" "$RUNNER_TEMP/new.txt" > "$RUNNER_TEMP/benchstat.txt" || true
-          { echo '### Benchmarks against the base branch'; echo; echo '```'; cat "$RUNNER_TEMP/benchstat.txt"; echo '```'; } > "$RUNNER_TEMP/comment.md"
+          git worktree add --detach "$RUNNER_TEMP/main" "origin/$BASE_REF"
+          # Interleaved, so that the drift of the runner hits both sides alike.
+          scripts/bench-pr.sh "$RUNNER_TEMP/main" . "$RUNNER_TEMP"
+          # go run pkg@version does not touch go.mod: benchstat is not a dependency. The text
+          # table goes to the log, the CSV to bench/cmd/benchcomment, which writes the comment.
+          benchstat='go run golang.org/x/perf/cmd/benchstat@latest'
+          $benchstat main="$RUNNER_TEMP/old.txt" PR="$RUNNER_TEMP/new.txt" || true
+          $benchstat -format csv main="$RUNNER_TEMP/old.txt" PR="$RUNNER_TEMP/new.txt" > "$RUNNER_TEMP/bench.csv"
+          go -C bench test ./cmd/benchcomment
+          go -C bench run ./cmd/benchcomment -in "$RUNNER_TEMP/bench.csv" \
+            -head "$HEAD_SHA" -base "$(git rev-parse "origin/$BASE_REF")" -base-ref "$BASE_REF" \
+            -repo "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" -run "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            > "$RUNNER_TEMP/comment.md"
+          cat "$RUNNER_TEMP/comment.md" >> "$GITHUB_STEP_SUMMARY"
 
+      # One comment per PR, edited by every run, found by the marker on its first line.
       - name: Post on the PR
         if: github.event.pull_request.head.repo.full_name == github.repository
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file "$RUNNER_TEMP/comment.md"
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          id=$(gh api --paginate "repos/$GITHUB_REPOSITORY/issues/$PR/comments" \
+            --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- vortex-go:bench -->"))) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            jq -n --rawfile body "$RUNNER_TEMP/comment.md" '{body: $body}' |
+              gh api -X PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$id" --input - > /dev/null
+            echo "Edited comment $id"
+          else
+            gh pr comment "$PR" --body-file "$RUNNER_TEMP/comment.md"
+          fi
 
   build-status:
     needs: build
