@@ -47,6 +47,8 @@ func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.
 	var l cands
 	l.add(sDict, x.cascades() && x.parent != sDict && valid > 0)
 	l.add(sFSST, utf8 && valid > 0)
+	// the reference tries it for binary only, between the dictionary and zstd
+	l.add(sVarBin, !utf8)
 	l.add(sZstd, c.mode == Compact)
 	return pick(c, x, v, nulls, &l, binsCost, sampleBins, func(x at, s scheme, v [][]byte, nulls []bool) *encode.Node {
 		return c.applyStrings(x, s, v, nulls, utf8)
@@ -68,6 +70,11 @@ func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8
 		if x.cascades() {
 			c.kid(x.child(s), n, 0, I32)
 			c.kid(x.child(s), n, 1, intOf(n.Kids[1].Bufs[0].Align))
+		}
+	case sVarBin:
+		n = encode.VarBinBytes(x.e, v, nulls)
+		if x.cascades() {
+			c.kid(x.child(s), n, 0, uintOf(n.Kids[0].Bufs[0].Align))
 		}
 	default:
 		n = encode.ZstdBytes(x.e, v, nulls)

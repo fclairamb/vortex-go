@@ -109,7 +109,7 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.sequence` | yes | yes |
 | array | `vortex.sparse` | yes | yes |
 | array | `vortex.struct` | yes | yes |
-| array | `vortex.varbin` | yes | no |
+| array | `vortex.varbin` | yes | yes |
 | array | `vortex.varbinview` | yes | yes |
 | array | `vortex.variant` | yes | no |
 | array | `vortex.zigzag` | yes | yes |

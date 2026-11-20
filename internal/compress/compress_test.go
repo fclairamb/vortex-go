@@ -500,3 +500,38 @@ func TestMaskedConstant(t *testing.T) {
 		t.Fatalf("two values: %s", got)
 	}
 }
+
+// TestVarBinForBinary: binary values of one width are a varbin whose offsets are a sequence,
+// and cost under 17 bytes a value (32 as views). A utf8 column never is a varbin, and a few
+// distinct binary values stay a dictionary.
+func TestVarBinForBinary(t *testing.T) {
+	r := rand.New(rand.NewPCG(5, 6))
+	c := New(Default)
+	v := make([][]byte, 10_000)
+	for i := range v {
+		v[i] = make([]byte, 16)
+		for k := range v[i] {
+			v[i][k] = byte(r.Uint32())
+		}
+	}
+	got := c.Strings(v, nil, false)
+	if got == nil || got.ID != encode.IDVarBin || got.Kids[0].ID != encode.IDSequence {
+		t.Fatalf("got %s, want a varbin of a sequence", tree(got))
+	}
+	if per := float64(cost(got)) / float64(len(v)); per >= 17 {
+		t.Errorf("%.2f bytes a value", per)
+	}
+	checkBins(t, got, v, nil, false)
+	c.Reset()
+	if got := c.Strings(v, nil, true); got != nil && got.ID == encode.IDVarBin {
+		t.Error("a utf8 column is a varbin")
+	}
+	c.Reset()
+	few := make([][]byte, 10_000)
+	for i := range few {
+		few[i] = v[i%3]
+	}
+	if got := c.Strings(few, nil, false); got == nil || got.ID != encode.IDDict {
+		t.Errorf("3 distinct values are %s", tree(got))
+	}
+}

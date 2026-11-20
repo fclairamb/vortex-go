@@ -273,13 +273,20 @@ func writtenFiles(t *testing.T) map[string]map[string]string {
 		var ty Type
 		var d Data
 		switch enc {
-		case "fsst", "zstd", "dict":
+		case "fsst", "zstd", "dict", "varbin":
 			ty = Utf8Type()
 			strs := make([]string, 200)
 			for i := range strs {
 				strs[i] = []string{"a", "abcdefghijkl", "a string that is longer than twelve bytes"}[i%3]
 			}
 			d = OfStrings(strs)
+			if enc == "varbin" {
+				bs := make([][]byte, len(strs))
+				for i, s := range strs {
+					bs[i] = []byte(s)
+				}
+				ty, d = BinaryType(), OfBytes(bs)
+			}
 		case "decimal_byte_parts":
 			ty = DecimalOf(5, 2)
 			d, _ = (&gen{r: rand.New(rand.NewPCG(1, 1))}).make(ty, 200)

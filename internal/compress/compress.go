@@ -90,6 +90,7 @@ const (
 	sALPRD
 	sFSST
 	sZstd
+	sVarBin
 	sDecimal
 	sDateTime
 )

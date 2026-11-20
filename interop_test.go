@@ -81,7 +81,7 @@ func writeInteropEncoders(t *testing.T, dir string) {
 		switch enc {
 		case "masked":
 			fields, data = addInteropMasked(fields, data, hashes, n)
-		case "dict", "fsst", "zstd":
+		case "dict", "fsst", "zstd", "varbin":
 			fields, data = addInteropStrings(fields, data, hashes, n)
 		case "decimal_byte_parts", "datetimeparts":
 			fields, data = addInteropParts(enc, fields, data, hashes, n)

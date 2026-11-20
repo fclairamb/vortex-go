@@ -49,8 +49,8 @@ func (w *Writer) encodeForced(d Data, n int) flatbuf.Off {
 }
 
 // encodeForcedStrings is the array of strings d (the buffer of a column holds them as byte
-// slices) as a dictionary, FSST or zstd, when that is the encoding forced, and false when it
-// is not.
+// slices) as a dictionary, FSST, zstd or (binary only) varbin, when that is the encoding
+// forced, and false when it is not.
 func (w *Writer) encodeForcedStrings(t Type, d Data) (flatbuf.Off, bool) {
 	if w.depth != 1 {
 		return 0, false
@@ -65,6 +65,10 @@ func (w *Writer) encodeForcedStrings(t Type, d Data) (flatbuf.Off, bool) {
 		return w.emit(encode.FSSTBytes(w.enc, d.bins, d.nulls)), true
 	case "zstd":
 		return w.emit(encode.ZstdBytes(w.enc, d.bins, d.nulls)), true
+	case "varbin":
+		if t.kind == Binary {
+			return w.emit(encode.VarBinBytes(w.enc, d.bins, d.nulls)), true
+		}
 	case forceMasked:
 		if n, ok := encode.ConstantBytesMasked(w.enc, d.bins, d.nulls, t.kind == Utf8); ok {
 			return w.emit(n), true
