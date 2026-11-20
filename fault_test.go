@@ -259,6 +259,54 @@ func TestCloseDuringScan(t *testing.T) {
 	}
 }
 
+// closingReader is a reader whose reads block until it is closed, then fail with
+// os.ErrClosed, as those of an *os.File closed under them.
+type closingReader struct {
+	testutil.Blocking
+	cancel context.CancelFunc
+}
+
+func (c closingReader) ReadAt(p []byte, off int64) (int, error) {
+	_, _ = c.Blocking.ReadAt(p, off)
+	return 0, os.ErrClosed
+}
+
+func (c closingReader) Close() error {
+	c.cancel()
+	return nil
+}
+
+// Closing the file while reads are in flight stops the scan with os.ErrClosed, and leaves no
+// goroutine.
+func TestCloseDuringReads(t *testing.T) {
+	before := runtime.NumGoroutine()
+	f := reopen(t, extraFixture(t, "default_ints.vortex"), plain)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	started := make(chan struct{}, 1)
+	r := closingReader{Blocking: testutil.Blocking{Ctx: ctx, Started: started}, cancel: cancel}
+	f.r, f.closer = r, r
+	go func() {
+		<-started
+		_ = f.Close()
+	}()
+	batches, errs := 0, 0
+	for _, err := range f.Scan(context.Background(), Query{}) {
+		if err == nil {
+			batches++
+			continue
+		}
+		errs++
+		if !errors.Is(err, os.ErrClosed) {
+			t.Fatal(err)
+		}
+	}
+	if batches != 0 || errs != 1 {
+		t.Fatalf("%d batches, %d errors", batches, errs)
+	}
+	waitGoroutines(t, before)
+}
+
 // The batches come in the same order with the same content, whatever the parallelism.
 func TestScanOrderWhateverTheCores(t *testing.T) {
 	f := reopen(t, extraFixture(t, "default_ints.vortex"), plain)
