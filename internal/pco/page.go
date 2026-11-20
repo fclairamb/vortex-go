@@ -4,9 +4,9 @@ package pco
 type pageVar struct {
 	v     *latentVar
 	state []uint64 // the delta state
-	ans   [interleaving]uint32
-	count int      // latents in the body of the page
 	body  []uint64 // n latents, the first count of them read
+	ans   [interleaving]uint32
+	count int // latents in the body of the page
 }
 
 // kind is the delta encoding that applies to a latent variable.
@@ -43,32 +43,9 @@ func (c *Chunk) Page(page []byte, n int, dst []byte) error {
 		return corrupt("a destination of %d bytes for %d %s", len(dst), n, c.typ)
 	}
 	r := newBitReader(page)
-	var pv [3]*pageVar
-	for key, v := range c.vars {
-		if v != nil {
-			pv[key] = &pageVar{v: v}
-			if err := c.readPageMeta(r, pv[key], key); err != nil {
-				return err
-			}
-		}
-	}
-	r.align("page metadata")
-	if r.err != nil {
-		return r.err
-	}
-	primaryBody := max(0, n-c.stateCount(varPrimary))
-	for key, p := range pv {
-		if p == nil {
-			continue
-		}
-		p.count = max(0, n-c.stateCount(key))
-		if key == varDelta {
-			p.count = primaryBody
-		}
-		if p.v.nBins == 0 && primaryBody > 0 {
-			return corrupt("%d numbers and no bins", primaryBody)
-		}
-		p.body = make([]uint64, n)
+	pv, err := c.readVars(r, n)
+	if err != nil {
+		return err
 	}
 	for start := 0; start < n; start += batchN {
 		for _, p := range pv {
@@ -92,6 +69,37 @@ func (c *Chunk) Page(page []byte, n int, dst []byte) error {
 		}
 	}
 	return c.join(pv, n, dst)
+}
+
+// readVars reads the metadata of a page of n numbers, and prepares the latent variables.
+func (c *Chunk) readVars(r *bitReader, n int) (pv [3]*pageVar, err error) {
+	for key, v := range c.vars {
+		if v != nil {
+			pv[key] = &pageVar{v: v}
+			if err := c.readPageMeta(r, pv[key], key); err != nil {
+				return pv, err
+			}
+		}
+	}
+	r.align("page metadata")
+	if r.err != nil {
+		return pv, r.err
+	}
+	primaryBody := max(0, n-c.stateCount(varPrimary))
+	for key, p := range pv {
+		if p == nil {
+			continue
+		}
+		p.count = max(0, n-c.stateCount(key))
+		if key == varDelta {
+			p.count = primaryBody
+		}
+		if p.v.nBins == 0 && primaryBody > 0 {
+			return pv, corrupt("%d numbers and no bins", primaryBody)
+		}
+		p.body = make([]uint64, n)
+	}
+	return pv, nil
 }
 
 // readPageMeta reads the delta state and the tANS states of a latent variable.

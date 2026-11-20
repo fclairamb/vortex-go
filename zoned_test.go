@@ -377,13 +377,14 @@ func TestDictLayoutOddities(t *testing.T) {
 	meta := []byte{0x08, 0x00}
 	bad := aSeg(aNode(aAlp, nil))
 	for name, c := range map[string]struct {
-		kids []fbtest.Tab
-		seg  []byte
+		kids      []fbtest.Tab
+		vals, seg []byte
 	}{
-		"unsupported codes layout": {[]fbtest.Tab{values, layoutTab(lList, 4, nil)}, primSeg(1, 2, 0, 1, 1)},
-		"unsupported codes array":  {[]fbtest.Tab{values, codes}, bad},
+		"unsupported codes layout": {[]fbtest.Tab{values, layoutTab(lList, 4, nil)}, primSeg(8, 10, 20, 30), primSeg(1, 2, 0, 1, 1)},
+		"unsupported codes array":  {[]fbtest.Tab{values, codes}, primSeg(8, 10, 20, 30), bad},
+		"unsupported values array": {[]fbtest.Tab{values, codes}, bad, primSeg(1, 2, 0, 1, 1)},
 	} {
-		f, err := open(buildFile(dtype, layoutTab(lStruct, 4, nil, metaLayout(lDict, 4, meta, c.kids...)), primSeg(8, 10, 20, 30), c.seg))
+		f, err := open(buildFile(dtype, layoutTab(lStruct, 4, nil, metaLayout(lDict, 4, meta, c.kids...)), c.vals, c.seg))
 		if err != nil {
 			t.Fatal(err)
 		}

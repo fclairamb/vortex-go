@@ -17,9 +17,9 @@ func corrupt(format string, args ...any) error {
 // bitReader reads a little-endian bit stream. A read past the end sets an error and returns 0,
 // so that a loop needs to look at err once per batch rather than once per read.
 type bitReader struct {
+	err error
 	buf []byte
 	pos int // in bits
-	err error
 }
 
 func newBitReader(b []byte) *bitReader { return &bitReader{buf: b} }

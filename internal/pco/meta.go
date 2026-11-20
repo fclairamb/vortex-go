@@ -104,12 +104,12 @@ func ReadHeader(b []byte) (Header, int, error) {
 
 // latentVar is what a chunk says about one latent variable: its tANS table and its bins.
 type latentVar struct {
-	bits   int // width of its latents
-	mask   uint64
-	ansLog int
 	nodes  []ansNode
 	lowers []uint64 // per tANS state, the lower bound of its bin
 	bins   []uint64 // per bin, its lower bound
+	mask   uint64
+	bits   int // width of its latents
+	ansLog int
 	nBins  int
 }
 
@@ -122,26 +122,26 @@ type ansNode struct {
 
 // delta is the delta encoding of a chunk.
 type delta struct {
+	weights   []int64
+	bias      int64
 	kind      int
 	order     int // consecutive
 	windowLog int // lookback
 	stateLog  int
-	secondary bool // the secondary latent is delta encoded too
 	quant     int  // conv1
-	bias      int64
-	weights   []int64
+	secondary bool // the secondary latent is delta encoded too
 }
 
 // Chunk is the metadata of a chunk, ready to decode its pages.
 type Chunk struct {
-	typ   Type
-	mode  int
-	base  uint64 // IntMult and FloatMult
-	k     int    // FloatQuant
+	// vars is the delta, primary and secondary latent variables, nil when absent.
+	vars  [3]*latentVar
 	dict  []uint64
 	delta delta
-	// vars is the delta, primary and secondary latent variables, nil when absent.
-	vars [3]*latentVar
+	base  uint64 // IntMult and FloatMult
+	mode  int
+	k     int // FloatQuant
+	typ   Type
 }
 
 const (
@@ -339,6 +339,26 @@ func slicesClone(s []uint32) []uint32 { return append([]uint32(nil), s...) }
 // validate checks the chunk against its number type and the rules the reference applies after
 // reading the metadata.
 func (c *Chunk) validate() error {
+	if err := c.validateMode(); err != nil {
+		return err
+	}
+	d := &c.delta
+	switch d.kind {
+	case deltaLookback:
+		window := uint64(1) << d.windowLog
+		for _, l := range c.vars[varDelta].bins {
+			if l < 1 || l > window {
+				return corrupt("lookback bin with a lower bound of %d outside [1, %d]", l, window)
+			}
+		}
+	case deltaConv1:
+		return c.validateConv()
+	}
+	return nil
+}
+
+// validateMode checks the mode against the number type.
+func (c *Chunk) validateMode() error {
 	t := c.typ
 	switch c.mode {
 	case modeIntMult:
@@ -353,18 +373,6 @@ func (c *Chunk) validate() error {
 		if !t.Float() || c.k < 1 || c.k > mantissaBits(t) {
 			return corrupt("invalid float quant mode for %s", t)
 		}
-	}
-	d := &c.delta
-	switch d.kind {
-	case deltaLookback:
-		window := uint64(1) << d.windowLog
-		for _, l := range c.vars[varDelta].bins {
-			if l < 1 || l > window {
-				return corrupt("lookback bin with a lower bound of %d outside [1, %d]", l, window)
-			}
-		}
-	case deltaConv1:
-		return c.validateConv()
 	}
 	return nil
 }

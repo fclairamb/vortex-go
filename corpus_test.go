@@ -17,16 +17,7 @@ import (
 // value must appear in the error. A fixture with an entry fails as a whole when the scan
 // itself fails with that identifier. An entry that no error matches makes the test fail: the
 // list can only shrink.
-var pending = map[string]string{
-	"pco":                      "vortex.pco",
-	"zstd":                     "vortex.zstd",
-	"default_compact/rec.b":    "vortex.pco",
-	"default_compact/str_low":  "vortex.zstd",
-	"default_compact/str_high": "vortex.zstd",
-	"default_compact/float":    "vortex.pco",
-	"default_compact/low_card": "vortex.pco",
-	"default_compact/nullable": "vortex.pco",
-}
+var pending = map[string]string{}
 
 // fixtureName is the key of a fixture in pending.
 func fixtureName(path string) string {

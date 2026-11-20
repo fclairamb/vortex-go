@@ -17,7 +17,7 @@ import (
 
 // The footer lists of the hand-built files.
 var (
-	testArraySpecs  = []string{"vortex.primitive", "vortex.bool", "vortex.struct", "vortex.chunked", "vortex.zstd"}
+	testArraySpecs  = []string{"vortex.primitive", "vortex.bool", "vortex.struct", "vortex.chunked", "vortex.variant"}
 	testLayoutSpecs = []string{"vortex.flat", "vortex.struct", "vortex.chunked", "vortex.zoned", "vortex.list", "vortex.stats", "vortex.dict"}
 )
 
@@ -348,6 +348,45 @@ func TestScanLayoutErrors(t *testing.T) {
 	}
 }
 
+// A field whose array no decoder knows is skipped when the scan is told to tolerate it, for
+// every batch: the columns the harness hashes are the other ones.
+func TestTolerateSkipsAField(t *testing.T) {
+	dtype := structType(false, []string{"a", "b"}, prim(7, false), prim(7, false))
+	bad := aSeg(aNode(aAlp, nil))
+	good := aSeg(aNode(aPrim, []uint16{0}), abuf{data: bytesOf(8, 1, 2)})
+	layout := layoutTab(lStruct, 2, nil, layoutTab(lFlat, 2, []uint32{0}), layoutTab(lFlat, 2, []uint32{1}))
+	f, err := open(buildFile(dtype, layout, bad, good))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var asked []string
+	opt := scanOptions{batchRows: 1, array: array.Options{Tolerate: func(path string, err error) bool {
+		asked = append(asked, path)
+		return true
+	}}}
+	n := 0
+	for b, e := range f.scan(context.Background(), opt) {
+		if e != nil {
+			t.Fatal(e)
+		}
+		n++
+		if a, c := b.Col(0), b.Col(1); a.arr.Skipped == nil || c.arr.Skipped != nil || mustValues[int64](t, c)[0] != int64(n) {
+			t.Fatalf("batch %d: skipped a = %v, b = %v", n, a.arr.Skipped, c.arr.Skipped)
+		}
+	}
+	if n != 2 || len(asked) != 1 || asked[0] != "a" {
+		t.Fatalf("%d batches, asked about %v", n, asked)
+	}
+	// A scan that refuses to tolerate it fails.
+	opt.array.Tolerate = func(string, error) bool { return false }
+	for _, e := range f.scan(context.Background(), opt) {
+		if !errors.Is(e, errors.ErrUnsupported) {
+			t.Fatalf("err = %v", e)
+		}
+		break
+	}
+}
+
 func TestScanSegmentErrors(t *testing.T) {
 	dtype := structType(false, []string{"a"}, prim(7, false))
 	good := aSeg(aNode(aPrim, []uint16{0}), abuf{data: bytesOf(8, 1)})
@@ -358,7 +397,7 @@ func TestScanSegmentErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = scanAll(t, f, 8)
-	if !errors.Is(err, errors.ErrUnsupported) || errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "vortex.zstd") {
+	if !errors.Is(err, errors.ErrUnsupported) || errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "vortex.variant") {
 		t.Fatalf("err = %v", err)
 	}
 	// A segment that is no array is corrupt.

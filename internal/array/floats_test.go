@@ -421,7 +421,7 @@ func TestDateTimePartsErrors(t *testing.T) {
 // reach.
 func TestFloatEncodingsMalformed(t *testing.T) {
 	bad := []byte{0x08} // a varint field with no value
-	fsst := node(eZstd, nil, nil)
+	fsst := node(eVariant, nil, nil)
 	rdMeta := func(extra ...[]byte) []byte {
 		m := pb(8, 1)
 		m = append(m, lenField(3, []byte{1})...)

@@ -75,6 +75,8 @@ func registry() map[string]Decoder {
 		"vortex.datetimeparts":   decodeDateTimeParts,
 		"vortex.fsst":            decodeFSST,
 		"vortex.onpair":          decodeOnPair,
+		"vortex.zstd":            decodeZstd,
+		"vortex.pco":             decodePco,
 
 		"vortex.decimal_byte_parts": decodeDecimalBytePartsV1,
 	}
