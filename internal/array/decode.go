@@ -102,10 +102,7 @@ func buffers(msg fbs.Array, body []byte) ([][]byte, error) {
 	out := make([][]byte, list.Len())
 	pos := 0
 	for i := range out {
-		b, err := list.At(i)
-		if err != nil {
-			return nil, err
-		}
+		b, _ := list.At(i) // i < Len, and a struct vector has nothing else to check
 		if b.Compression != 0 {
 			return nil, fmt.Errorf("buffer %d is compressed (%d), which is not supported", i, b.Compression)
 		}

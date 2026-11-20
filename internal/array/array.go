@@ -99,12 +99,16 @@ func Concat(t DType, parts []*Array) *Array {
 	}
 	total := 0
 	anyNull := false
+	var skipped error
 	for _, p := range parts {
-		if p.Skipped != nil {
-			return &Array{Type: t, Len: total + p.Len, Skipped: p.Skipped}
-		}
 		total += p.Len
 		anyNull = anyNull || p.Validity != nil
+		if p.Skipped != nil {
+			skipped = p.Skipped
+		}
+	}
+	if skipped != nil {
+		return &Array{Type: t, Len: total, Skipped: skipped}
 	}
 	out := &Array{Type: t, Len: total}
 	if anyNull {
@@ -127,14 +131,20 @@ func Concat(t DType, parts []*Array) *Array {
 			out.Data = append(out.Data, p.Data...)
 		}
 	case Struct:
-		out.Fields = make([]*Array, len(t.Fields))
-		for i, ft := range t.Fields {
-			col := make([]*Array, len(parts))
-			for j, p := range parts {
-				col[j] = p.Fields[i]
-			}
-			out.Fields[i] = Concat(ft, col)
-		}
+		out.Fields = concatFields(t, parts)
 	}
 	return out
+}
+
+// concatFields joins the fields of struct arrays, field by field.
+func concatFields(t DType, parts []*Array) []*Array {
+	fields := make([]*Array, len(t.Fields))
+	for i, ft := range t.Fields {
+		col := make([]*Array, len(parts))
+		for j, p := range parts {
+			col[j] = p.Fields[i]
+		}
+		fields[i] = Concat(ft.Type, col)
+	}
+	return fields
 }

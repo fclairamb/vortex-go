@@ -2,8 +2,9 @@ package vortex // import "github.com/fclairamb/vortex-go"
 
 Package vortex reads and writes files in the Vortex columnar format.
 
-Open and OpenFile read the trailer, the footer and the schema of a file. Reading
-rows and writing files are not implemented yet. The goals are in docs/goals.md,
+Open and OpenFile read the trailer, the footer and the schema of a file. Scan
+reads whole columns of numbers and booleans, batch by batch. Filters, the other
+types and writing files are not implemented yet. The goals are in docs/goals.md,
 the planned interface in docs/interface.md and the test plan in docs/testing.md.
 
 VARIABLES
@@ -20,7 +21,48 @@ var (
     byte offset.
 
 
+FUNCTIONS
+
+func Values[T Number](c *Column) ([]T, error)
+    Values returns the values of a numeric column as a slice of T, null rows
+    included (their value is unspecified: check Null). It returns an error,
+    naming both types, when the column is not a T. A f16 column is read as
+    float32. The slice is a view, valid for the iteration.
+
+
 TYPES
+
+type Batch struct {
+	// Has unexported fields.
+}
+    Batch is a group of rows of the columns of a scan. It and its columns are
+    valid for one iteration of the loop.
+
+func (b *Batch) Col(i int) *Column
+    Col returns the column i of the batch, in the order the columns were asked
+    for. It panics when i is out of range.
+
+func (b *Batch) Len() int
+    Len is the number of rows of the batch.
+
+type Column struct {
+	// Has unexported fields.
+}
+    Column is a view of the values of one column in a batch.
+
+func (c *Column) Bool(i int) bool
+    Bool returns the value of row i of a Bool column. It panics when the column
+    is of another type, and when i is out of range.
+
+func (c *Column) Field(i int) *Column
+    Field returns the field i of a Struct column. It panics when the column is
+    of another type, and when i is out of range.
+
+func (c *Column) Null(i int) bool
+    Null reports whether row i is null. It panics when i is out of range.
+
+func (c *Column) Type() Type
+    Type is the logical type of the column.
 
 type Field struct {
 	Name string
@@ -49,6 +91,11 @@ func (f *File) Close() error
 
 func (f *File) NumRows() int64
     NumRows returns the number of rows of the file.
+
+func (f *File) Scan(ctx context.Context, _ Query, columns ...string) iter.Seq2[*Batch, error]
+    Scan reads the columns of the file, batch by batch, in order, on the calling
+    goroutine. A batch has at most 8,192 rows. Every column is read: columns
+    must be empty for now.
 
 func (f *File) Schema() *Schema
     Schema returns the schema of the file.
@@ -88,6 +135,14 @@ const (
 
 func (k Kind) String() string
     String returns the name of the kind, like "i32" or "fixed_size_list".
+
+type Number interface {
+	~int8 | ~int16 | ~int32 | ~int64 | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~float32 | ~float64
+}
+    Number is the set of the Go types a numeric column can be read as.
+
+type Query struct{}
+    Query selects the rows of a scan. It has no field yet: every row is read.
 
 type Schema struct {
 	// Has unexported fields.

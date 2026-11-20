@@ -25,7 +25,7 @@ func decodeChunked(n *Node, t DType, rows int) (*Array, error) {
 		lo := binary.LittleEndian.Uint64(offs.Data[i*8:])
 		hi := binary.LittleEndian.Uint64(offs.Data[i*8+8:])
 		if hi < lo || hi-lo > uint64(rows-total) {
-			return nil, fmt.Errorf("chunk %d runs from offset %d to %d, which is out of order or past the %d rows", i, lo, hi, rows)
+			return nil, fmt.Errorf("chunk %d runs from offset %d to %d: out of order, or past the %d rows", i, lo, hi, rows)
 		}
 		size := int(hi - lo)
 		if parts[i], err = n.Child(i+1, t, size); err != nil {

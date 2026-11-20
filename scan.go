@@ -22,7 +22,7 @@ type scanOptions struct {
 
 // Scan reads the columns of the file, batch by batch, in order, on the calling goroutine.
 // A batch has at most 8,192 rows. Every column is read: columns must be empty for now.
-func (f *File) Scan(ctx context.Context, q Query, columns ...string) iter.Seq2[*Batch, error] {
+func (f *File) Scan(ctx context.Context, _ Query, columns ...string) iter.Seq2[*Batch, error] {
 	if len(columns) > 0 {
 		return func(yield func(*Batch, error) bool) {
 			yield(nil, fmt.Errorf("vortex: Scan reads every column for now, got %d column names", len(columns)))
@@ -85,8 +85,7 @@ func arrayType(t Type) array.DType {
 	case Struct:
 		d.Kind = array.Struct
 		for _, f := range t.fields {
-			d.Names = append(d.Names, f.Name)
-			d.Fields = append(d.Fields, arrayType(f.Type))
+			d.Fields = append(d.Fields, array.Field{Name: f.Name, Type: arrayType(f.Type)})
 		}
 	case Date, Time, Timestamp:
 		d.Kind = array.Ext

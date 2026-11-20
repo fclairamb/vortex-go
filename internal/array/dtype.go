@@ -58,13 +58,18 @@ func (p PType) Signed() bool { return p >= I8 && p <= I64 }
 // Float reports whether p is a floating-point type.
 func (p PType) Float() bool { return p >= F16 }
 
+// Field is a named field of a struct type.
+type Field struct {
+	Name string
+	Type DType
+}
+
 // DType is the type an array must decode to. It is not stored in the array: the parent
 // gives it.
 type DType struct {
-	Storage *DType // Ext
-	Label   string // Other: the name of the logical type, for messages
-	Names   []string
-	Fields  []DType
+	Storage *DType  // Ext
+	Label   string  // Other: the name of the logical type, for messages
+	Fields  []Field // Struct
 	Kind    Kind
 	PType   PType
 	// Nullable is whether the array may hold nulls.
@@ -84,7 +89,7 @@ func (t DType) String() string {
 	case Struct:
 		parts := make([]string, len(t.Fields))
 		for i, f := range t.Fields {
-			parts[i] = t.Names[i] + ": " + f.String()
+			parts[i] = f.Name + ": " + f.Type.String()
 		}
 		s = "struct{" + strings.Join(parts, ", ") + "}"
 	case Ext:

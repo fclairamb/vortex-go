@@ -24,9 +24,9 @@ func decodeStruct(n *Node, t DType, rows int) (*Array, error) {
 		a.Validity = valid
 	}
 	for i, ft := range t.Fields {
-		f, err := n.Field(first+i, t.Names[i], ft, rows)
+		f, err := n.Field(first+i, ft.Name, ft.Type, rows)
 		if err != nil {
-			return nil, fmt.Errorf("field %q: %w", t.Names[i], err)
+			return nil, fmt.Errorf("field %q: %w", ft.Name, err)
 		}
 		a.Fields[i] = f
 	}

@@ -3,7 +3,6 @@ package vortex
 import (
 	"errors"
 	"fmt"
-	"math"
 
 	"github.com/fclairamb/vortex-go/internal/array"
 )
@@ -105,7 +104,7 @@ func (f *File) newStruct(l *layoutNode, t array.DType, opt array.Options) (reade
 		}
 	}
 	for i, ft := range t.Fields {
-		r, err := f.newReader(l.children[first+i], ft, opt)
+		r, err := f.newReader(l.children[first+i], ft.Type, opt)
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +154,7 @@ func (f *File) newChunked(l *layoutNode, t array.DType, opt array.Options) (read
 	var total uint64
 	c := &chunked{}
 	for _, k := range l.children {
-		if total += k.rowCount; total < k.rowCount || total > math.MaxInt64 {
+		if total += k.rowCount; total < k.rowCount {
 			return nil, badLayout("chunked row counts overflow")
 		}
 		r, err := f.newReader(k, t, opt)

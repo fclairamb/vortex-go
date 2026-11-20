@@ -1,7 +1,9 @@
 # Interface
 
 This is the planned public API. Implemented so far: `Open`, `OpenFile`, `Schema`,
-`NumRows`, `Close`, `Type`, `Kind`, `Field` and the errors.
+`NumRows`, `Close`, `Type`, `Kind`, `Field`, the errors, and `Scan` with `Query` (empty, and
+`columns` must be empty), `Batch`, `Column` (`Type`, `Null`, `Bool`, `Field`), `Values` and
+`Number`, for numbers, booleans, structs and the storage of dates, times and timestamps.
 
 Once the code exists, the source of truth becomes `api.txt` (the output of `go doc -all`,
 checked by CI) and this file only keeps the reasons.

@@ -23,10 +23,10 @@ func decodeConstant(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	return constantArray(v, t, rows)
+	return constantArray(&v, t, rows)
 }
 
-func constantArray(v scalar.Value, t DType, rows int) (*Array, error) {
+func constantArray(v *scalar.Value, t DType, rows int) (*Array, error) {
 	if t.Kind == Ext {
 		return constantArray(v, *t.Storage, rows)
 	}
@@ -82,7 +82,7 @@ func nullConstant(a *Array, t DType, rows int) (*Array, error) {
 }
 
 // primBytes is the little-endian encoding of v as a value of type p.
-func primBytes(v scalar.Value, p PType) ([]byte, error) {
+func primBytes(v *scalar.Value, p PType) ([]byte, error) {
 	if p.Float() {
 		return floatBytes(v, p)
 	}
@@ -108,7 +108,7 @@ func primBytes(v scalar.Value, p PType) ([]byte, error) {
 	return binary.LittleEndian.AppendUint64(nil, u)[:p.Width()], nil
 }
 
-func floatBytes(v scalar.Value, p PType) ([]byte, error) {
+func floatBytes(v *scalar.Value, p PType) ([]byte, error) {
 	switch {
 	case v.Kind == scalar.F16 && p == F16:
 		return binary.LittleEndian.AppendUint16(nil, uint16(v.Uint)), nil

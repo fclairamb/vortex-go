@@ -224,6 +224,7 @@ func layoutTab(enc uint16, rows uint64, segs []uint32, kids ...fbtest.Tab) fbtes
 }
 
 type parts struct {
+	body    []byte // written between the magic and the dtype
 	dtype   []byte // nil: no dtype segment
 	layout  []byte
 	footer  []byte
@@ -264,6 +265,7 @@ func segTab(off uint64, length uint32) fbtest.Tab {
 func (p parts) build() []byte {
 	var out bytes.Buffer
 	out.WriteString(p.head)
+	out.Write(p.body)
 	ps := map[string]fbtest.Tab{}
 	add := func(name string, b []byte) {
 		ps[name] = segTab(uint64(out.Len()), uint32(len(b)))
