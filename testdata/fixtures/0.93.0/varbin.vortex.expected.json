@@ -1,0 +1,63 @@
+{
+  "columns": {
+    "nullable_text": {
+      "first": [
+        "hello",
+        "None",
+        "world",
+        ""
+      ],
+      "last": [
+        "hello",
+        "None",
+        "world",
+        ""
+      ],
+      "nulls": 1,
+      "sha256": "ca0427d5d9c0acf3650ba43d8deb4c8dd8f391d1bec1ae02245cadaf25ed517b"
+    },
+    "text": {
+      "first": [
+        "",
+        "hello",
+        "\u3053\u3093\u306b\u3061\u306f",
+        "\ud83e\udd80"
+      ],
+      "last": [
+        "",
+        "hello",
+        "\u3053\u3093\u306b\u3061\u306f",
+        "\ud83e\udd80"
+      ],
+      "nulls": 0,
+      "sha256": "470e6bf822a191f4da02f9406c2816028ea3e5b29481f5d19403f94674e3ad90"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.primitive",
+    "vortex.struct",
+    "vortex.varbin"
+  ],
+  "rows": 4,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "text"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "nullable_text"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

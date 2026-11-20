@@ -1,0 +1,223 @@
+{
+  "columns": {
+    "all_null_i32": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 1024,
+      "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+    },
+    "all_zeros": {
+      "first": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "nulls": 0,
+      "sha256": "3800e8b26fc67567bf722e1766fa94489769efab722f802bd019451ea07cc47b"
+    },
+    "floats": {
+      "first": [
+        "100000.0",
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793"
+      ],
+      "last": [
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793"
+      ],
+      "nulls": 0,
+      "sha256": "323ba325be1c1a3063682c35326d1cb6caffd3154c0c2fcbd11e31d6d7684ffe"
+    },
+    "ints": {
+      "first": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "127",
+        "127",
+        "127",
+        "127",
+        "127"
+      ],
+      "nulls": 0,
+      "sha256": "58af0514d845a349a4dcdb505b0ffe5143bb3e4ccbdb02c9983443d7e5bc8611"
+    },
+    "nullable_i64": {
+      "first": [
+        "None",
+        "10003",
+        "10006",
+        "10009",
+        "10012"
+      ],
+      "last": [
+        "13057",
+        "13060",
+        "13063",
+        "13066",
+        "13069"
+      ],
+      "nulls": 114,
+      "sha256": "b2887934471fc064abcb2f09369371425d762b5cf05b3ed740333524e4859d50"
+    },
+    "nullable_utf8": {
+      "first": [
+        "None",
+        "another-string",
+        "nullable-zstd-string",
+        "another-string",
+        "nullable-zstd-string"
+      ],
+      "last": [
+        "another-string",
+        "nullable-zstd-string",
+        "another-string",
+        "nullable-zstd-string",
+        "None"
+      ],
+      "nulls": 94,
+      "sha256": "566728d049c2dfced26ae04e12264e11efa645b0c9ae48a44174450f43c7c08d"
+    },
+    "pseudo_random": {
+      "first": [
+        "0",
+        "2654435761",
+        "1013904226",
+        "3668339987",
+        "2027808452"
+      ],
+      "last": [
+        "3335611275",
+        "1695079740",
+        "54548205",
+        "2708983966",
+        "1068452431"
+      ],
+      "nulls": 0,
+      "sha256": "d9bf92217129f01a991f09c6ad2f0e55111783d7d0860ae1e2d7f883fa4995b8"
+    },
+    "utf8": {
+      "first": [
+        "https://example.com/path",
+        "hello-world",
+        "compression-fixture",
+        "https://example.com/path",
+        "hello-world"
+      ],
+      "last": [
+        "compression-fixture",
+        "https://example.com/path",
+        "hello-world",
+        "compression-fixture",
+        "https://example.com/path"
+      ],
+      "nulls": 0,
+      "sha256": "c295e716c39a1690bba024c2c4e3cda71da9421362f68ca777dbf4c7461ca62c"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.constant",
+    "vortex.struct",
+    "vortex.zstd"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "ints"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "floats"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i64"
+        },
+        "name": "nullable_i64"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "utf8"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "nullable_utf8"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "all_zeros"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "all_null_i32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u32"
+        },
+        "name": "pseudo_random"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

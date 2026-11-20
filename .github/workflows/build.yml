@@ -31,6 +31,11 @@ jobs:
       - name: Gates
         run: make check
 
+      # Open and scan arbitrary bytes for 30 seconds, on one leg.
+      - name: Fuzz
+        if: matrix.lint
+        run: make fuzz
+
       # Codecov shows the coverage on the PR. It never fails the job: the gate
       # above does. Skipped on fork PRs, which have no access to the secret.
       - name: Upload coverage to Codecov

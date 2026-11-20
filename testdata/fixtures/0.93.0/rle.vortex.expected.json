@@ -1,0 +1,226 @@
+{
+  "columns": {
+    "all_null_i32": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 1024,
+      "sha256": "5f70bf18a086007016e948b04aed3b82103a36bea41755b6cddfaf10ace3c6ef"
+    },
+    "alternating_singletons": {
+      "first": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "last": [
+        "1019",
+        "1020",
+        "1021",
+        "1022",
+        "1023"
+      ],
+      "nulls": 0,
+      "sha256": "4fa06f018c03f419c5904c7c56c86b2479bc85286d33e9bdd88f4dadff883992"
+    },
+    "exact_boundary_runs": {
+      "first": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "15",
+        "15",
+        "15",
+        "15",
+        "15"
+      ],
+      "nulls": 0,
+      "sha256": "8e21c56547f3b552782b053d791d20c364967dba22ff8f378cb708800b6f944a"
+    },
+    "giant_final_run": {
+      "first": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "last": [
+        "999",
+        "999",
+        "999",
+        "999",
+        "999"
+      ],
+      "nulls": 0,
+      "sha256": "815bee31d09ba3695e263677407faadd634f9f5d51e4dc4ef36c4e944505d42a"
+    },
+    "nullable_runs": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 384,
+      "sha256": "880d438a5b7652908ec14f728bb27049432dc9e05c3cb5d506084e28d1418224"
+    },
+    "runs_i32": {
+      "first": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "15",
+        "15",
+        "15",
+        "15",
+        "15"
+      ],
+      "nulls": 0,
+      "sha256": "cdc7327144c9137bcb78bd586ec941baf3ed555305c6ce17e83dd49169b6bee7"
+    },
+    "short_runs_u8": {
+      "first": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "63",
+        "63",
+        "63",
+        "63",
+        "63"
+      ],
+      "nulls": 0,
+      "sha256": "9dcccd4e50e737b913104fdd30b04281ddd352f5b04b825fa5f41ced9eb430c5"
+    },
+    "single_run": {
+      "first": [
+        "42",
+        "42",
+        "42",
+        "42",
+        "42"
+      ],
+      "last": [
+        "42",
+        "42",
+        "42",
+        "42",
+        "42"
+      ],
+      "nulls": 0,
+      "sha256": "b00bcf2572e38e3c2946e77a9aaf4bbc529383d2a6e0f63dd88ec47740b3923c"
+    }
+  },
+  "encodings": [
+    "fastlanes.rle",
+    "vortex.bool",
+    "vortex.constant",
+    "vortex.primitive",
+    "vortex.struct"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "runs_i32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u64"
+        },
+        "name": "single_run"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "nullable_runs"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u16"
+        },
+        "name": "alternating_singletons"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u16"
+        },
+        "name": "exact_boundary_runs"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u32"
+        },
+        "name": "giant_final_run"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "all_null_i32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u8"
+        },
+        "name": "short_runs_u8"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "columns": {
+    "sparse_f64": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 2696,
+      "sha256": "33bf16e8ae57c4f2cb435946f3ba51041e30eee08bf952a507972a6ddf1de93e"
+    }
+  },
+  "encodings": [
+    "vortex.alp",
+    "vortex.bool",
+    "vortex.constant",
+    "vortex.masked",
+    "vortex.primitive",
+    "vortex.struct"
+  ],
+  "rows": 3000,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "f64"
+        },
+        "name": "sparse_f64"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

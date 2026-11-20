@@ -1,0 +1,198 @@
+{
+  "columns": {
+    "alternating_singletons": {
+      "first": [
+        "-512",
+        "-511",
+        "-510",
+        "-509",
+        "-508"
+      ],
+      "last": [
+        "507",
+        "508",
+        "509",
+        "510",
+        "511"
+      ],
+      "nulls": 0,
+      "sha256": "9787e8a339a4ecd4fde1c97d43bc47a12350fcbf3c92babf8d25706b23546df4"
+    },
+    "bool_runs": {
+      "first": [
+        "True",
+        "True",
+        "True",
+        "True",
+        "True"
+      ],
+      "last": [
+        "False",
+        "False",
+        "False",
+        "False",
+        "False"
+      ],
+      "nulls": 0,
+      "sha256": "eb31226b2974efda1781235bd67c5774b0a2fb345d72aa614f7553b7126d704e"
+    },
+    "nullable_runs": {
+      "first": [
+        "10",
+        "10",
+        "10",
+        "10",
+        "10"
+      ],
+      "last": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "nulls": 304,
+      "sha256": "634324aa93c821c89d9ed32e5875671621cc519627ffe6c22aecc7309710d826"
+    },
+    "run_values": {
+      "first": [
+        "0",
+        "1",
+        "1",
+        "1",
+        "1"
+      ],
+      "last": [
+        "33",
+        "33",
+        "33",
+        "33",
+        "33"
+      ],
+      "nulls": 0,
+      "sha256": "c98e78fcc6c62451fa356027cb62481d45a028747379d03d65f20112e2d5f01a"
+    },
+    "single_run": {
+      "first": [
+        "1234",
+        "1234",
+        "1234",
+        "1234",
+        "1234"
+      ],
+      "last": [
+        "1234",
+        "1234",
+        "1234",
+        "1234",
+        "1234"
+      ],
+      "nulls": 0,
+      "sha256": "26002174a1f9de160158920a9db2f0f6404b424d1809f6e1fcfbcc1fe6a9b7a5"
+    },
+    "statuses": {
+      "first": [
+        "open",
+        "open",
+        "open",
+        "open",
+        "open"
+      ],
+      "last": [
+        "open",
+        "open",
+        "open",
+        "open",
+        "open"
+      ],
+      "nulls": 0,
+      "sha256": "da66d53d72eee564b51d6dc57e39857f35e10ae8e7a6c62495c77a0147b6b68b"
+    },
+    "uniform_runs": {
+      "first": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "15",
+        "15",
+        "15",
+        "15",
+        "15"
+      ],
+      "nulls": 0,
+      "sha256": "cdc7327144c9137bcb78bd586ec941baf3ed555305c6ce17e83dd49169b6bee7"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.primitive",
+    "vortex.runend",
+    "vortex.struct",
+    "vortex.varbin"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "run_values"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "statuses"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "uniform_runs"
+      },
+      {
+        "dtype": {
+          "kind": "bool",
+          "nullable": false
+        },
+        "name": "bool_runs"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "nullable_runs"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "single_run"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i16"
+        },
+        "name": "alternating_singletons"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}
