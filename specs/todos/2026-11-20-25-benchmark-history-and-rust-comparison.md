@@ -7,6 +7,12 @@ automerge: false
 
 # The benchmark numbers are recorded on every merge to `main`, next to the Rust reference's measured on the same machine
 
+## Not before the writer is merged
+
+Florent, 2026-11-20: "Do not start implementation until #10 is merged". This spec and the
+two after it (26, 27) start only when the writer pull request (#10) is merged into `main`.
+While it is open, stop here and report: write no code, and leave this branch as it is.
+
 ## Problem
 
 After the examples and benchmarks spec, `make bench` exists and `docs/benchmarks.md` holds
