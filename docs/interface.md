@@ -1,6 +1,7 @@
 # Interface
 
-This is the planned public API. Nothing is implemented yet.
+This is the planned public API. Implemented so far: `Open`, `OpenFile`, `Schema`,
+`NumRows`, `Close`, `Type`, `Kind`, `Field` and the errors.
 
 Once the code exists, the source of truth becomes `api.txt` (the output of `go doc -all`,
 checked by CI) and this file only keeps the reasons.
@@ -109,6 +110,44 @@ func (d Decimal) Int64() (v int64, ok bool)
 func (d Decimal) Big() *big.Int
 func (d Decimal) Text(scale int) string
 ```
+
+## Opening, schema and errors
+
+```go
+type Kind uint8 // Null, Bool, Int8...Int64, Uint8...Uint64, Float16...Float64, Decimal, Utf8,
+                // Binary, List, FixedSizeList, Map, Struct, Date, Time, Timestamp, UUID, Variant
+type Unit uint8 // Nanosecond, Microsecond, Millisecond, Second, Day
+
+type Type struct{ /* unexported */ }
+func (t Type) Kind() Kind
+func (t Type) Nullable() bool
+func (t Type) Precision() int; func (t Type) Scale() int // Decimal
+func (t Type) Elem() Type; func (t Type) Size() int      // List, FixedSizeList
+func (t Type) Key() Type; func (t Type) Value() Type     // Map
+func (t Type) Fields() []Field                           // Struct
+func (t Type) Unit() Unit; func (t Type) Zone() string   // Date, Time, Timestamp
+func (t Type) Equal(o Type) bool
+func (t Type) String() string
+
+type Field struct{ Name string; Type Type }
+type Schema struct{ /* unexported */ }
+func (s *Schema) Fields() []Field
+func (s *Schema) Field(name string) (Field, bool)
+func (s *Schema) String() string
+
+var ErrNotVortex, ErrUnsupportedVersion, ErrCorrupt error // test with errors.Is
+```
+
+- **`Type` is a value with unexported fields**, compared with `Equal`, not `==`: it holds
+  nested types. An accessor of another kind returns the zero value. The writer spec adds
+  the constructors.
+- **`Null` types are always nullable.** The oracle reports them so.
+- **Errors carry the byte offset.** `ErrNotVortex`: bad magic at either end, or fewer
+  than 12 bytes. `ErrUnsupportedVersion`: a version other than 1. `ErrCorrupt`: anything
+  out of bounds or malformed, an unknown extension type and `Union` included.
+- **Reads.** `Open` reads the last 64 KiB in one call, and one more range when the footer
+  reaches further back. A file larger than 64 KiB costs one more read for its first four
+  bytes, so a typical open is two reads.
 
 ## Types
 
