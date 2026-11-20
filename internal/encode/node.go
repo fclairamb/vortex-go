@@ -33,6 +33,7 @@ const (
 	IDALP           = "vortex.alp"
 	IDALPRD         = "vortex.alprd"
 	IDFSST          = "vortex.fsst"
+	IDOnPair        = "vortex.onpair"
 	IDDecimalBytes  = "vortex.decimal_byte_parts"
 	IDDateTimeParts = "vortex.datetimeparts"
 	IDZstd          = "vortex.zstd"
@@ -76,7 +77,7 @@ type Buf struct {
 
 // Node is an encoded array.
 type Node struct {
-	kids  [4]*Node
+	kids  [5]*Node
 	ID    string
 	Meta  []byte
 	Bufs  []Buf
@@ -115,6 +116,7 @@ func (n *Node) Size() int {
 // The zero value is not usable: call New.
 type Encoder struct {
 	fs      *fsstState
+	op      *onPairState
 	zenc    *zstd.Encoder
 	arena   []byte
 	pool    []*Node
@@ -329,7 +331,7 @@ func (e *Encoder) leafPadded(raw []byte, width int, nulls []bool, rows, padded i
 func Encodings() []string {
 	return []string{
 		IDPrimitive, IDBool, IDBitPacked, IDFoR, IDRLE, IDZigZag, IDRunEnd, IDDict, IDSequence,
-		IDConstant, IDMasked, IDSparse, IDVarBin, IDVarBinView, IDALP, IDALPRD, IDFSST, IDDecimalBytes,
+		IDConstant, IDMasked, IDSparse, IDVarBin, IDVarBinView, IDALP, IDALPRD, IDFSST, IDOnPair, IDDecimalBytes,
 		IDDateTimeParts, IDZstd, IDByteBool, IDChunked,
 	}
 }

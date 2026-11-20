@@ -64,7 +64,8 @@ var strEncoders = map[string]strEnc{
 			return EstimateFSSTStrings(e, asStrings(v), nulls, rows)
 		},
 	},
-	"zstd-bytes": {run: ZstdBytes, estim: EstimateZstdBytes},
+	"onpair-bytes": {run: OnPairBytes, estim: EstimateOnPairBytes},
+	"zstd-bytes":   {run: ZstdBytes, estim: EstimateZstdBytes},
 	"varbin": {
 		run:   VarBinBytes,
 		estim: func(_ *Encoder, v [][]byte, nulls []bool, rows int) int { return EstimateVarBinBytes(v, nulls, rows) },
@@ -347,6 +348,8 @@ func TestNoAllocationFSSTZstd(t *testing.T) {
 		"zstd frames":     func() { e.Reset(); Zstd(e, many, nil) },
 		"fsst bytes":      func() { e.Reset(); FSSTBytes(e, col, nulls) },
 		"fsst strings":    func() { e.Reset(); FSSTStrings(e, strs, nulls) },
+		"onpair bytes":    func() { e.Reset(); OnPairBytes(e, col, nulls) },
+		"estimate onpair": func() { e.Reset(); EstimateOnPairBytes(e, col[:500], nulls[:500], len(col)) },
 		"zstd bytes":      func() { e.Reset(); ZstdBytes(e, col, nulls) },
 		"zstd strings":    func() { e.Reset(); ZstdStrings(e, strs, nulls) },
 		"varbin":          func() { e.Reset(); VarBinBytes(e, col, nulls) },

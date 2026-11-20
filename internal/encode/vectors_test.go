@@ -241,6 +241,10 @@ func TestVectorsBytes(t *testing.T) {
 			vectorFSST(t, e, v)
 			return
 		}
+		if file.Encoding == "onpair" {
+			vectorOnPair(t, e, v)
+			return
+		}
 		got, ok := runs[file.PType][file.Encoding](e, unhex(t, v.Input), nullsOf(t, v), v.Params)
 		if v.Output == nil {
 			if ok {
