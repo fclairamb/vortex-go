@@ -297,7 +297,7 @@ encoding choice to the writer, and upstream's own compatibility check
 | Edition table complete and seen | `go test ./...` | yes | in place |
 | Allocation | `go test ./...` | yes | in place |
 | Examples, API snapshot, README | `go test ./...`, `make api` | yes | planned |
-| Reference reads our files | `make interop` | yes | in place |
+| Reference reads our files, and filters on our zone statistics | `make interop` | yes | in place |
 | File size ratio | `make interop` | yes | planned |
 | Fuzzing, 30 seconds | `make fuzz` | yes | in place |
 | All published releases | `make compat` | nightly | in place |

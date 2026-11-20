@@ -64,17 +64,17 @@ func statWidth(t Type, class statClass) int {
 
 // zoneAcc gathers the statistics of the zones of a column, one entry per block of rows.
 type zoneAcc struct {
-	ranger
-	n     int
 	nulls []uint64
 	nans  []uint64
-	has   []bool // the zone has a min and a max
-	unk   []bool // the upper bound of a string zone cannot be represented
-	minB  []byte // width bytes a zone
+	has   []bool
+	unk   []bool
+	minB  []byte
 	maxB  []byte
-	minV  [][]byte // the bounded min and max of a string zone
+	minV  [][]byte
 	maxV  [][]byte
 	arena []byte
+	ranger
+	n int
 }
 
 // ranger finds the extremes of the rows of a buffer of one type.
@@ -128,7 +128,7 @@ func countNulls(b *body, t Type, lo, hi int) uint64 {
 
 // scan finds the smallest and the largest value of the valid rows lo to hi, as row numbers
 // (-1 when there is none), and counts the NaNs, which are neither.
-func (r ranger) scan(b *body, lo, hi int) (imin, imax, nans int) {
+func (r *ranger) scan(b *body, lo, hi int) (imin, imax, nans int) {
 	imin, imax = -1, -1
 	for i := lo; i < hi; i++ {
 		if isNull(b.nulls, i) {
@@ -153,7 +153,7 @@ func (r ranger) scan(b *body, lo, hi int) (imin, imax, nans int) {
 }
 
 // order compares the rows i and j of the buffer.
-func (r ranger) order(b *body, i, j int) int {
+func (r *ranger) order(b *body, i, j int) int {
 	w := r.width
 	switch r.class {
 	case scInt:
@@ -238,7 +238,7 @@ func (z *zoneAcc) addFixed(b *body, imin, imax int) {
 	z.minB, z.maxB = z.putFixed(z.minB, b, imin), z.putFixed(z.maxB, b, imax)
 }
 
-func (r ranger) putFixed(dst []byte, b *body, i int) []byte {
+func (r *ranger) putFixed(dst []byte, b *body, i int) []byte {
 	w := r.width
 	switch {
 	case i < 0:
@@ -306,10 +306,10 @@ func incrementUTF8(s []byte) ([]byte, bool) {
 	for len(s) > 0 {
 		r, size := utf8.DecodeLastRune(s)
 		s = s[:len(s)-size]
-		switch {
-		case r == 0xD7FF:
+		switch r {
+		case 0xD7FF:
 			r = 0xE000
-		case r == utf8.MaxRune:
+		case utf8.MaxRune:
 			continue
 		default:
 			r++
@@ -318,6 +318,16 @@ func incrementUTF8(s []byte) ([]byte, bool) {
 	}
 	return nil, false
 }
+
+// The identifiers of the aggregates of the statistics.
+const (
+	aggBoundedMax = "vortex.bounded_max"
+	aggBoundedMin = "vortex.bounded_min"
+	aggMax        = "vortex.max"
+	aggMin        = "vortex.min"
+	aggNullCount  = "vortex.null_count"
+	aggNanCount   = "vortex.nan_count"
+)
 
 // aggSpec is an aggregate of the zone map: its identifier and its serialized options.
 type aggSpec struct {
@@ -354,19 +364,19 @@ func (z *zoneAcc) table() ([]Field, []Data, []aggSpec) {
 	switch {
 	case z.class == scBytes:
 		if anyHas || slices.Contains(z.unk, true) {
-			add("vortex.bounded_max", optsBounded, z.boundedMaxType(), z.boundedMax(missing))
+			add(aggBoundedMax, optsBounded, z.boundedMaxType(), z.boundedMax(missing))
 		}
 		if anyHas {
-			add("vortex.bounded_min", optsBounded, nullable, OfBytes(z.minV).Nulls(missing))
+			add(aggBoundedMin, optsBounded, nullable, OfBytes(z.minV).Nulls(missing))
 		}
 	case z.class != scNone && anyHas:
-		add("vortex.max", optsSkipNaNs, nullable, z.fixed(z.maxB).Nulls(missing))
-		add("vortex.min", optsSkipNaNs, nullable, z.fixed(z.minB).Nulls(missing))
+		add(aggMax, optsSkipNaNs, nullable, z.fixed(z.maxB).Nulls(missing))
+		add(aggMin, optsSkipNaNs, nullable, z.fixed(z.minB).Nulls(missing))
 	}
 	if z.class == scFloat {
-		add("vortex.nan_count", nil, Uint64Type().AsNullable(), Of(z.nans))
+		add(aggNanCount, nil, Uint64Type().AsNullable(), Of(z.nans))
 	}
-	add("vortex.null_count", nil, Uint64Type().AsNullable(), Of(z.nulls))
+	add(aggNullCount, nil, Uint64Type().AsNullable(), Of(z.nulls))
 	return fields, cols, specs
 }
 
@@ -406,7 +416,7 @@ func (z *zoneAcc) boundedMax(missing []bool) Data {
 	}
 	bound := make([]bool, z.n)
 	for i := range bound {
-		bound[i] = !z.has[i]
+		bound[i] = !z.has[i] || z.unk[i]
 	}
 	return OfStruct(OfBytes(z.maxV).Nulls(bound), OfBools(z.unk)).Nulls(empty)
 }

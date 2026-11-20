@@ -6,10 +6,10 @@ Open and OpenFile read the trailer, the footer and the schema of a file.
 Scan reads columns of numbers, booleans, strings, binaries, decimals, lists,
 maps and structs, batch by batch, for the columns, the row range and the filter
 of a Query, and skips what the statistics of the file rule out. Rows reads the
-same rows into Go structs. NewWriter writes a file from a Schema and Data,
-one Write per chunk of rows, with plain arrays only for now. The goals are in
-docs/goals.md, the planned interface in docs/interface.md and the test plan in
-docs/testing.md.
+same rows into Go structs. NewWriter writes a file from a Schema and Data, in
+chunks of 8,192 rows, with zone statistics and dictionaries, and plain arrays.
+The goals are in docs/goals.md, the planned interface in docs/interface.md and
+the test plan in docs/testing.md.
 
 VARIABLES
 
@@ -583,8 +583,13 @@ type Writer struct {
     type is the one of the column, int32 for Int32; the storage of a date,
     a time or a timestamp, and uint16 for the bits of a Float16), OfBools,
     OfStrings or OfBytes for Utf8 and Binary, OfBytes for a UUID, OfDecimals,
-    OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map. Each
-    Write adds rows: a file made of several Write calls has one chunk per call.
+    OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map.
+    Each Write adds rows. The rows of a column are cut into chunks that do not
+    depend on how the caller splits them: at multiples of 8,192 rows, about 1
+    MiB of data a chunk. Each column carries the statistics a reader uses to
+    skip a zone, and a column of few distinct values is written as a dictionary.
+    Write copies the rows into a buffer of a few MiB a column, so they reach the
+    io.Writer when a chunk is full, and at Close.
 
     Write and Close are not safe for concurrent use.
 
@@ -603,5 +608,5 @@ func (w *Writer) Write(cols ...Data) error
     the same length. It returns an error when a Data does not fit its field,
     and then, or when the io.Writer fails, the writer is closed for writing.
     Write reads the slices of the Data and does not keep them. The rows are in
-    the io.Writer when it returns.
+    the io.Writer when Close returns, some of them before.
 

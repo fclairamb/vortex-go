@@ -6,8 +6,8 @@ This is the planned public API. Implemented so far: `Open`, `OpenFile`, `Schema`
 `Number`, for numbers, booleans, structs and the storage of dates, times and timestamps, and
 `Rows`, which reads a file into Go structs, and `NewWriter` with `Writer`, `Data`, `Of`,
 `OfBools`, `OfStrings`, `OfBytes`, `OfDecimals`, `OfNulls`, `OfStruct`, `OfList`,
-`WriteOptions` and the schema constructors (plain arrays only, `Compression` has no effect
-yet). `NewRowWriter` is not there yet.
+`WriteOptions` and the schema constructors (plain arrays, chunks, zone statistics and dictionaries;
+`Compression` has no effect yet). `NewRowWriter` is not there yet.
 
 Once the code exists, the source of truth becomes `api.txt` (the output of `go doc -all`,
 checked by CI) and this file only keeps the reasons.
@@ -143,9 +143,15 @@ func (d Decimal) Text(scale int) string
   no error.
 - **A non-nullable field takes no validity.** The reference reader rejects a validity child
   on a non-nullable dtype, so `Nulls` on such a field is an error when a row is null.
-- **Chunks.** Each `Write` of one row or more adds a chunk to every column; a column with a
-  single chunk is a flat layout. A file with no row has one empty chunk. A struct needs one
-  field at least to have a length.
+- **Chunks do not depend on the `Write` calls.** The rows of a column are buffered and cut at
+  multiples of 8,192 rows (the row block), a chunk at about 1 MiB of uncompressed data, so
+  a file is the same however it is fed, and memory depends on the number of columns, not on
+  the size of the file. A column is `vortex.zoned` over `vortex.flat`, `vortex.chunked` or
+  `vortex.dict`, with one row of statistics per block: min and max (bounded to 64 bytes for
+  strings), null count, NaN count for floats. No zones under a nullable struct. A column
+  whose first block has fewer than half distinct values is a dictionary (numbers, strings,
+  binary). A file with no row has one empty chunk. A struct needs one field at least to
+  have a length. Rows reach the `io.Writer` when a chunk is full, and at `Close`.
 - **Lists are `vortex.listview`**, maps are `vortex.map` over a listview of structs: it is
   the canonical form, and the one a map requires.
 

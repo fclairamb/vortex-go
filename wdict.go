@@ -177,9 +177,6 @@ func (w *Writer) flushCodes(c *column) {
 // endRun writes the codes and the values of the run, and starts a new one.
 func (w *Writer) endRun(c *column) {
 	d := c.dict
-	if d.rows == 0 {
-		return
-	}
 	w.flushCodes(c)
 	vals := Data{&body{kind: dPrim, pk: c.buf.pk, n: d.n, raw: d.raw, nulls: d.nulls}}
 	if c.buf.kind == dBytes {

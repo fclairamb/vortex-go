@@ -15,29 +15,32 @@ import (
 
 // astat is the content of an ArrayStats table.
 type astat struct {
-	min, max           []byte // ScalarValue messages, nil for none
-	minExact, maxExact bool
-	nulls              uint64
-	nans               *uint64
-	sorted, constant   *bool
+	nans     *uint64
+	sorted   *bool
+	constant *bool
+	min      []byte
+	max      []byte
+	nulls    uint64
+	minExact bool
+	maxExact bool
 }
 
 // table writes the ArrayStats flatbuffer.
 func (s *astat) table(b *flatbuf.Builder) flatbuf.Off {
-	var min, max flatbuf.Off
+	var lo, hi flatbuf.Off
 	if s.min != nil {
-		min = b.Bytes(s.min)
+		lo = b.Bytes(s.min)
 	}
 	if s.max != nil {
-		max = b.Bytes(s.max)
+		hi = b.Bytes(s.max)
 	}
 	b.StartTable(11)
-	if min != 0 {
-		b.Ref(0, min)
+	if lo != 0 {
+		b.Ref(0, lo)
 		b.Uint8(1, boolByte(s.minExact), 0)
 	}
-	if max != 0 {
-		b.Ref(2, max)
+	if hi != 0 {
+		b.Ref(2, hi)
 		b.Uint8(3, boolByte(s.maxExact), 0)
 	}
 	optBool := func(id int, v *bool) {
@@ -78,36 +81,36 @@ func rootID(t Type) string {
 }
 
 // valueAt is the ScalarValue of the value whose width bytes are elem.
-func (r ranger) valueAt(elem []byte) scalar.Value {
+func (r *ranger) valueAt(elem []byte) *scalar.Value {
 	switch r.class {
 	case scInt:
-		return scalar.Value{Kind: scalar.Int, Int: rawInt(elem, r.width, 0)}
+		return &scalar.Value{Kind: scalar.Int, Int: rawInt(elem, r.width, 0)}
 	case scUint:
-		return scalar.Value{Kind: scalar.Uint, Uint: rawUint(elem, r.width, 0)}
+		return &scalar.Value{Kind: scalar.Uint, Uint: rawUint(elem, r.width, 0)}
 	case scFloat:
 		switch r.width {
 		case 2:
-			return scalar.Value{Kind: scalar.F16, Uint: rawUint(elem, 2, 0)}
+			return &scalar.Value{Kind: scalar.F16, Uint: rawUint(elem, 2, 0)}
 		case 4:
-			return scalar.Value{Kind: scalar.F32, F32: math.Float32frombits(binary.LittleEndian.Uint32(elem))}
+			return &scalar.Value{Kind: scalar.F32, F32: math.Float32frombits(binary.LittleEndian.Uint32(elem))}
 		}
-		return scalar.Value{Kind: scalar.F64, F64: math.Float64frombits(binary.LittleEndian.Uint64(elem))}
+		return &scalar.Value{Kind: scalar.F64, F64: math.Float64frombits(binary.LittleEndian.Uint64(elem))}
 	case scBool:
-		return scalar.Value{Kind: scalar.Bool, Bool: elem[0] != 0}
+		return &scalar.Value{Kind: scalar.Bool, Bool: elem[0] != 0}
 	}
-	return scalar.Value{Kind: scalar.Bytes, Bytes: elem}
+	return &scalar.Value{Kind: scalar.Bytes, Bytes: elem}
 }
 
 // bytesValue is the ScalarValue of a string or of binary.
-func (r ranger) bytesValue(v []byte) scalar.Value {
+func (r *ranger) bytesValue(v []byte) *scalar.Value {
 	if r.t.kind == Utf8 {
-		return scalar.Value{Kind: scalar.String, Str: string(v)}
+		return &scalar.Value{Kind: scalar.String, Str: string(v)}
 	}
-	return scalar.Value{Kind: scalar.Bytes, Bytes: v}
+	return &scalar.Value{Kind: scalar.Bytes, Bytes: v}
 }
 
 // compare orders two stored values, the width bytes of a number, a bool or a decimal.
-func (r ranger) compare(a, b []byte) int {
+func (r *ranger) compare(a, b []byte) int {
 	switch r.class {
 	case scInt:
 		return cmp.Compare(rawInt(a, r.width, 0), rawInt(b, r.width, 0))
@@ -121,11 +124,8 @@ func (r ranger) compare(a, b []byte) int {
 	return bytes.Compare(a, b)
 }
 
-func encodeScalar(v scalar.Value) []byte {
-	out, err := scalar.Encode(&v)
-	if err != nil { // only a string that is not UTF-8, which the writer checked
-		panic(err)
-	}
+func encodeScalar(v *scalar.Value) []byte {
+	out, _ := scalar.Encode(v) // it fails on a string that is not UTF-8: the writer checked them
 	return out
 }
 
@@ -133,7 +133,7 @@ func encodeScalar(v scalar.Value) []byte {
 func (w *Writer) arrayStats(c *column) flatbuf.Off {
 	b, n := c.buf, c.buf.n
 	s := astat{nulls: countNulls(b, c.t, 0, n)}
-	r := c.ranger
+	r := &c.ranger
 	imin, imax, nans := -1, -1, 0
 	if r.class != scNone {
 		imin, imax, nans = r.scan(b, 0, n)
@@ -157,7 +157,7 @@ func (w *Writer) arrayStats(c *column) flatbuf.Off {
 
 // minMax sets the min and the max of the stats from the rows imin and imax of the buffer. A
 // string is cut to the bounds of the zones, and marked inexact when it was.
-func (r ranger) minMax(s *astat, b *body, imin, imax int) {
+func (r *ranger) minMax(s *astat, b *body, imin, imax int) {
 	if r.class != scBytes {
 		s.min = encodeScalar(r.valueAt(r.putFixed(nil, b, imin)))
 		s.max = encodeScalar(r.valueAt(r.putFixed(nil, b, imax)))
@@ -212,10 +212,9 @@ func (z *zoneAcc) reduce() colStat {
 	if lo == nil {
 		return s
 	}
-	min, max := z.stat(lo), z.stat(hi)
-	s.min = &min
+	s.min = z.stat(lo)
 	if !s.maxUnknown {
-		s.max = &max
+		s.max = z.stat(hi)
 	}
 	return s
 }
@@ -228,7 +227,7 @@ func (z *zoneAcc) stored(fixed []byte, varlen [][]byte, i int) []byte {
 	return fixed[i*z.width : (i+1)*z.width]
 }
 
-func (r ranger) stat(v []byte) scalar.Value {
+func (r *ranger) stat(v []byte) *scalar.Value {
 	if r.class == scBytes {
 		return r.bytesValue(v)
 	}
@@ -241,10 +240,10 @@ type fstat struct {
 	partial []byte
 }
 
-func uintValue(v uint64) []byte { return encodeScalar(scalar.Value{Kind: scalar.Uint, Uint: v}) }
+func uintValue(v uint64) []byte { return encodeScalar(&scalar.Value{Kind: scalar.Uint, Uint: v}) }
 
 // aggregates lists the aggregates of the entry of a column: the bounds, then the counts.
-func (s colStat) aggregates(r ranger) []fstat {
+func (s colStat) aggregates(r *ranger) []fstat {
 	var out []fstat
 	if r.class == scBytes {
 		if s.max != nil || s.maxUnknown {
@@ -252,32 +251,32 @@ func (s colStat) aggregates(r ranger) []fstat {
 			if s.max != nil {
 				bound = *s.max
 			}
-			partial := scalar.Value{Kind: scalar.List, List: []scalar.Value{
+			partial := &scalar.Value{Kind: scalar.List, List: []scalar.Value{
 				bound, {Kind: scalar.Bool, Bool: s.maxUnknown}}}
-			out = append(out, fstat{aggSpec{"vortex.bounded_max", optsBounded}, encodeScalar(partial)})
+			out = append(out, fstat{aggSpec{aggBoundedMax, optsBounded}, encodeScalar(partial)})
 		}
 		if s.min != nil {
-			out = append(out, fstat{aggSpec{"vortex.bounded_min", optsBounded}, encodeScalar(*s.min)})
+			out = append(out, fstat{aggSpec{aggBoundedMin, optsBounded}, encodeScalar(s.min)})
 		}
 	} else if s.min != nil {
-		out = append(out, fstat{aggSpec{"vortex.max", optsSkipNaNs}, encodeScalar(*s.max)},
-			fstat{aggSpec{"vortex.min", optsSkipNaNs}, encodeScalar(*s.min)})
+		out = append(out, fstat{aggSpec{aggMax, optsSkipNaNs}, encodeScalar(s.max)},
+			fstat{aggSpec{aggMin, optsSkipNaNs}, encodeScalar(s.min)})
 	}
-	out = append(out, fstat{aggSpec{id: "vortex.null_count"}, uintValue(s.nulls)})
+	out = append(out, fstat{aggSpec{id: aggNullCount}, uintValue(s.nulls)})
 	if r.class == scFloat {
-		out = append(out, fstat{aggSpec{id: "vortex.nan_count"}, uintValue(s.nans)})
+		out = append(out, fstat{aggSpec{id: aggNanCount}, uintValue(s.nans)})
 	}
 	return out
 }
 
 // legacy is the ArrayStats of a top-level field of the file statistics.
-func (s colStat) legacy(r ranger) astat {
+func (s colStat) legacy(r *ranger) astat {
 	a := astat{nulls: s.nulls}
 	if s.min != nil {
-		a.min, a.minExact = encodeScalar(*s.min), r.class != scBytes
+		a.min, a.minExact = encodeScalar(s.min), r.class != scBytes
 	}
 	if s.max != nil {
-		a.max, a.maxExact = encodeScalar(*s.max), r.class != scBytes
+		a.max, a.maxExact = encodeScalar(s.max), r.class != scBytes
 	}
 	if r.class == scFloat {
 		a.nans = &s.nans
@@ -288,20 +287,20 @@ func (s colStat) legacy(r ranger) astat {
 // fileEntries walks the layout in post-order, as the reference does for the file statistics:
 // an entry for each column, and one after the fields of a nullable struct for its own null
 // count. A column under a nullable struct has no statistics.
-func fileEntries(l *layoutBuild, t Type, out *[][]fstat) {
+func fileEntries(l *layoutBuild, out *[][]fstat) {
 	if !l.isStruct {
 		var set []fstat
 		if c := l.col; c.zones != nil && c.rows > 0 {
-			set = c.zones.reduce().aggregates(c.ranger)
+			set = c.zones.reduce().aggregates(&c.ranger)
 		}
 		*out = append(*out, set)
 		return
 	}
-	for i, k := range l.kids {
-		fileEntries(k, t.fields[i].Type, out)
+	for _, k := range l.kids {
+		fileEntries(k, out)
 	}
 	if l.valid != nil {
-		*out = append(*out, []fstat{{aggSpec{id: "vortex.null_count"}, uintValue(l.valid.nulls)}})
+		*out = append(*out, []fstat{{aggSpec{id: aggNullCount}, uintValue(l.valid.nulls)}})
 	}
 }
 
@@ -314,39 +313,39 @@ func legacyStats(root *layoutBuild) []astat {
 		case k.isStruct && k.valid != nil:
 			out[i] = astat{nulls: k.valid.nulls}
 		case !k.isStruct && k.col.zones != nil && k.col.rows > 0:
-			out[i] = k.col.zones.reduce().legacy(k.col.ranger)
+			out[i] = k.col.zones.reduce().legacy(&k.col.ranger)
 		}
 	}
 	return out
 }
 
-// fileStatsTable writes the FileStatistics: the legacy field statistics, then the aggregates
-// of every entry (a dictionary of aggregates, a dictionary of sets, the set of each entry and
-// the partial states, each behind its length).
-func (w *Writer) fileStatsTable() flatbuf.Off {
-	b := w.fb
-	var entries [][]fstat
-	fileEntries(w.root, w.schema.root, &entries)
-	var specs []aggSpec
-	var sets [][]uint16
-	entrySets := make([]uint16, len(entries))
-	var partials []byte
+// fileAggs is the aggregates of the file statistics: the dictionary of aggregates, the
+// dictionary of sets, the set of each entry and the partial states, each behind its length.
+type fileAggs struct {
+	specs     []aggSpec
+	sets      [][]uint16
+	entrySets []uint16
+	partials  []byte
+}
+
+func newFileAggs(entries [][]fstat) *fileAggs {
+	a := &fileAggs{entrySets: make([]uint16, len(entries))}
 	for i, set := range entries {
 		ids := make([]uint16, len(set))
 		for j, f := range set {
-			ids[j] = aggIndex(&specs, f.aggSpec)
-			partials = binary.AppendUvarint(partials, uint64(len(f.partial)))
-			partials = append(partials, f.partial...)
+			ids[j] = aggIndex(&a.specs, f.aggSpec)
+			a.partials = binary.AppendUvarint(a.partials, uint64(len(f.partial)))
+			a.partials = append(a.partials, f.partial...)
 		}
-		entrySets[i] = setIndex(&sets, ids)
+		a.entrySets[i] = setIndex(&a.sets, ids)
 	}
-	legacy := legacyStats(w.root)
-	legacyOffs := make([]flatbuf.Off, len(legacy))
-	for i := range legacy {
-		legacyOffs[i] = legacy[i].table(b)
-	}
-	specOffs := make([]flatbuf.Off, len(specs))
-	for i, s := range specs {
+	return a
+}
+
+// tables writes the AggregateSpec and the AggregateSet tables.
+func (a *fileAggs) tables(b *flatbuf.Builder) (specs, sets flatbuf.Off) {
+	specOffs := make([]flatbuf.Off, len(a.specs))
+	for i, s := range a.specs {
 		id := b.String(s.id)
 		var opts flatbuf.Off
 		if len(s.options) > 0 {
@@ -359,19 +358,35 @@ func (w *Writer) fileStatsTable() flatbuf.Off {
 		}
 		specOffs[i] = b.EndTable()
 	}
-	setOffs := make([]flatbuf.Off, len(sets))
-	for i, ids := range sets {
+	setOffs := make([]flatbuf.Off, len(a.sets))
+	for i, ids := range a.sets {
 		v := b.Uint16s(ids)
 		b.StartTable(1)
 		b.Ref(0, v)
 		setOffs[i] = b.EndTable()
 	}
-	fieldStats, aggSpecs, aggSets := b.Offsets(legacyOffs), b.Offsets(specOffs), b.Offsets(setOffs)
-	entryVec, partialVec := b.Uint16s(entrySets), b.Bytes(partials)
+	return b.Offsets(specOffs), b.Offsets(setOffs)
+}
+
+// fileStatsTable writes the FileStatistics: the legacy field statistics, then the aggregates
+// of every entry.
+func (w *Writer) fileStatsTable() flatbuf.Off {
+	b := w.fb
+	var entries [][]fstat
+	fileEntries(w.root, &entries)
+	aggs := newFileAggs(entries)
+	legacy := legacyStats(w.root)
+	legacyOffs := make([]flatbuf.Off, len(legacy))
+	for i := range legacy {
+		legacyOffs[i] = legacy[i].table(b)
+	}
+	specs, sets := aggs.tables(b)
+	fieldStats := b.Offsets(legacyOffs)
+	entryVec, partialVec := b.Uint16s(aggs.entrySets), b.Bytes(aggs.partials)
 	b.StartTable(5)
 	b.Ref(0, fieldStats)
-	b.Ref(1, aggSpecs)
-	b.Ref(2, aggSets)
+	b.Ref(1, specs)
+	b.Ref(2, sets)
 	b.Ref(3, entryVec)
 	b.Ref(4, partialVec)
 	return b.EndTable()

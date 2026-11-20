@@ -56,40 +56,41 @@ var (
 // the column, int32 for Int32; the storage of a date, a time or a timestamp, and uint16 for
 // the bits of a Float16), OfBools, OfStrings or OfBytes for Utf8 and Binary, OfBytes for a
 // UUID, OfDecimals, OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map.
-// Each Write adds rows: a file made of several Write calls has one chunk per call.
+// Each Write adds rows. The rows of a column are cut into chunks that do not depend on how
+// the caller splits them: at multiples of 8,192 rows, about 1 MiB of data a chunk. Each
+// column carries the statistics a reader uses to skip a zone, and a column of few distinct
+// values is written as a dictionary. Write copies the rows into a buffer of a few MiB a
+// column, so they reach the io.Writer when a chunk is full, and at Close.
 //
 // Write and Close are not safe for concurrent use.
 type Writer struct {
-	w      io.Writer
-	err    error // the first error: the writer is closed for writing
-	schema *Schema
-	root   *layoutBuild
-	fb     *flatbuf.Builder
-
-	out       []byte // pending bytes, bounded by smallWrites
-	segs      []byte // the SegmentSpec of every segment, 16 bytes each
-	arrayIDs  []string
+	err       error
+	w         io.Writer
+	schema    *Schema
+	root      *layoutBuild
+	fb        *flatbuf.Builder
+	statsID   string
+	bufs      []buffer
+	blocks    [][]byte
 	layoutIDs []string
-
-	// The flat segment being built.
-	stats   flatbuf.Off // the ArrayStats of the root node, written before it
-	statsID string      // the encoding of the root node
-	depth   int         // the encode calls in progress
-	bufs    []buffer
-	stack   []flatbuf.Off
-	idx     []uint16
-	meta    []byte
-	bspec   []byte
-	blocks  [][]byte
-
-	pos           int64 // the bytes written so far, pending ones included
-	written       int64 // the bytes the io.Writer has taken
-	rows          uint64
-	block         int     // the block of the arena in use
-	used          int     // the bytes of the block in use
-	lenBuf        [4]byte // the length of a flatbuffer, put at the end of its segment
-	opt           WriteOptions
-	started, done bool
+	arrayIDs  []string
+	segs      []byte
+	bspec     []byte
+	out       []byte
+	stack     []flatbuf.Off
+	idx       []uint16
+	meta      []byte
+	depth     int
+	pos       int64
+	written   int64
+	rows      uint64
+	block     int
+	used      int
+	stats     flatbuf.Off
+	lenBuf    [4]byte
+	opt       WriteOptions
+	started   bool
+	done      bool
 }
 
 // buffer is a data buffer of the array being built, and the alignment its first byte needs.
@@ -102,8 +103,8 @@ type buffer struct {
 // when it is nullable) or a column.
 type layoutBuild struct {
 	valid    *validBuild
-	kids     []*layoutBuild
 	col      *column
+	kids     []*layoutBuild
 	isStruct bool
 }
 
@@ -217,7 +218,7 @@ func alignUp(v int64, align int) int64 {
 // Write adds rows to the file: one Data per field of the schema, all of the same length.
 // It returns an error when a Data does not fit its field, and then, or when the io.Writer
 // fails, the writer is closed for writing. Write reads the slices of the Data and does not
-// keep them. The rows are in the io.Writer when it returns.
+// keep them. The rows are in the io.Writer when Close returns, some of them before.
 func (w *Writer) Write(cols ...Data) error {
 	if w.done {
 		return ErrWriterClosed

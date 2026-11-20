@@ -22,10 +22,10 @@ const (
 // piece is a part of the data of a column: a flat chunk, or a dictionary (a run of rows
 // coded against one set of values).
 type piece struct {
+	codes []chunk
 	rows  uint64
-	seg   uint32  // the segment of the chunk, or of the values of the dictionary
-	nvals int     // the values of a dictionary
-	codes []chunk // the chunks of codes of a dictionary
+	nvals int
+	seg   uint32
 }
 
 type chunk struct {
@@ -36,20 +36,20 @@ type chunk struct {
 // column is a column that has no children: the rows that are not in a segment yet, and what
 // has been written of it.
 type column struct {
+	zones  *zoneAcc
+	dict   *dictEnc
+	buf    *body
+	pieces []piece
+	arena  []byte
+	specs  []aggSpec
+	t      Type
 	ranger
-	t        Type
-	buf      *body
-	arena    []byte // the bytes of the strings of buf
-	block    int    // the rows of buf in whole blocks
-	size     int    // the uncompressed bytes of those blocks
-	mode     colMode
-	eligible bool // a dictionary is possible
+	block    int
+	size     int
 	rows     uint64
-	pieces   []piece
-	zones    *zoneAcc // nil when the column has no zone statistics
-	specs    []aggSpec
 	zoneSeg  uint32
-	dict     *dictEnc
+	mode     colMode
+	eligible bool
 }
 
 func newColumn(t Type, zoned bool) *column {

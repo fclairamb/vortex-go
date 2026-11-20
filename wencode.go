@@ -180,18 +180,14 @@ func (w *Writer) encodeBool(d Data, n int) flatbuf.Off {
 // points to.
 func (w *Writer) encodeStrings(d Data) flatbuf.Off {
 	first := len(w.bufs)
-	if d.kind == dStr {
-		writeViews(w, d.strs, d.nulls)
-	} else {
-		writeViews(w, d.bins, d.nulls)
-	}
+	writeViews(w, d.bins, d.nulls)
 	own := len(w.bufs) - first
 	base := len(w.stack)
 	w.validity(d, d.n)
 	return w.node("vortex.varbinview", nil, first, own, base)
 }
 
-func writeViews[S ~string | ~[]byte](w *Writer, vals []S, nulls []bool) {
+func writeViews(w *Writer, vals [][]byte, nulls []bool) {
 	views := w.alloc(16 * len(vals))
 	long := 0
 	for i, v := range vals {
