@@ -69,6 +69,10 @@ Upstream paths are in `~/code/other/vortex`.
   default at 0.93.0 (`encodings/fastlanes/src/bitpacking/plugin/mod.rs:75-88`). Only the
   identifier that is in the edition may be written.
 
+## Resolved open questions
+
+- A Rust program in `tools/vectors/` is allowed if Python cannot reach the encoders: a test tool outside the module, like the Python oracle. (autopilot: recommended answer)
+
 ## Open questions
 
 - **A Rust program in `tools/vectors/`**, if Python cannot reach the encoders.

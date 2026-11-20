@@ -67,6 +67,10 @@ speed numbers. `README.md` still says "design only".
 - That `go doc -all` output is stable between Go 1.26 and 1.27. If not, generate `api.txt`
   with 1.27 only and say so in `make api`.
 
+## Resolved open questions
+
+- Use `github.com/parquet-go/parquet-go`, in `bench/go.mod` only. (autopilot: recommended answer)
+
 ## Open questions
 
 - **Which parquet-go.** Recommended answer: `github.com/parquet-go/parquet-go`, the one

@@ -70,6 +70,10 @@ In `internal/encode`, each with its `estimate` twin, as in the integer encoders 
 - Whether the klauspost encoder's output is read by the Rust `zstd` crate in every mode
   we use: `make interop` proves it.
 
+## Resolved open questions
+
+- No Pco encoder in this version. Compact mode uses `vortex.zstd` for numbers too; the compressor spec measures the file-size cost against the reference. (autopilot: recommended answer)
+
 ## Open questions
 
 - **A Pco encoder.** The reference uses `vortex.pco` for numbers in compact mode.
