@@ -195,10 +195,10 @@ func TestRunErrors(t *testing.T) {
 		files map[string]string
 		doc   DocFunc
 	}{
-		"no example":   {without("example_test.go"), fakeDoc("")},
-		"no readme":    {without("README.md"), fakeDoc("")},
-		"bad readme":   {map[string]string{"example_test.go": exampleSrc, "README.md": "x"}, fakeDoc("")},
-		"doc fails":    {good, func(string) ([]byte, error) { return nil, errors.New("boom") }},
+		"no example": {without("example_test.go"), fakeDoc("")},
+		"no readme":  {without("README.md"), fakeDoc("")},
+		"bad readme": {map[string]string{"example_test.go": exampleSrc, "README.md": "x"}, fakeDoc("")},
+		"doc fails":  {good, func(string) ([]byte, error) { return nil, errors.New("boom") }},
 	} {
 		dir := tree(t, c.files)
 		if _, err := Run(dir, false, c.doc, support); err == nil {

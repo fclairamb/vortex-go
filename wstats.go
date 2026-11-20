@@ -462,7 +462,7 @@ func writtenArrays() []string {
 
 // writtenDTypes lists the extension types the writer makes.
 func writtenDTypes() []string {
-	return []string{"vortex.date", "vortex.time", "vortex.timestamp", "vortex.uuid"}
+	return []string{extDate, extTime, extTimestamp, extUUID}
 }
 
 var (

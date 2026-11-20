@@ -686,15 +686,15 @@ func (w *Writer) dtypeExtension(t Type) flatbuf.Off {
 	storage := Type{kind: storageKind(t), nullable: t.nullable}
 	switch t.kind {
 	case Date:
-		id, meta = "vortex.date", []byte{byte(t.unit)}
+		id, meta = extDate, []byte{byte(t.unit)}
 	case Time:
-		id, meta = "vortex.time", []byte{byte(t.unit)}
+		id, meta = extTime, []byte{byte(t.unit)}
 	case Timestamp:
-		id = "vortex.timestamp"
+		id = extTimestamp
 		meta = binary.LittleEndian.AppendUint16([]byte{byte(t.unit)}, uint16(len(t.zone)))
 		meta = append(meta, t.zone...)
 	default:
-		id = "vortex.uuid"
+		id = extUUID
 		u8 := Uint8Type()
 		storage = Type{kind: FixedSizeList, elem: &u8, size: 16, nullable: t.nullable}
 	}
