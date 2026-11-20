@@ -7,6 +7,7 @@ import (
 	"math"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/fclairamb/vortex-go/internal/fbs"
 )
@@ -43,7 +44,9 @@ type File struct {
 	segments        []fbs.SegmentSpec
 	size            int64
 	numRows         int64
+	gap, maxRead    int64 // how reads are merged, see mergeLimits
 	closeOnce       sync.Once
+	closed          atomic.Bool // set by Close, which the scans check at each batch
 }
 
 // corrupt wraps ErrCorrupt with where and what.
@@ -84,6 +87,7 @@ func Open(r io.ReaderAt, size int64) (*File, error) {
 		return nil, err
 	}
 	f.r = r
+	f.gap, f.maxRead = mergeLimits(r)
 	return f, nil
 }
 
@@ -280,12 +284,13 @@ func (f *File) Schema() *Schema { return f.schema }
 // NumRows returns the number of rows of the file.
 func (f *File) NumRows() int64 { return f.numRows }
 
-// Close closes the file that OpenFile opened. It does nothing for a File made by Open. A
-// second call returns nil.
+// Close closes the file that OpenFile opened: a scan still running returns an error that
+// wraps os.ErrClosed. It does nothing for a File made by Open. A second call returns nil.
 func (f *File) Close() error {
 	var err error
 	f.closeOnce.Do(func() {
 		if f.closer != nil {
+			f.closed.Store(true)
 			err = f.closer.Close()
 		}
 	})

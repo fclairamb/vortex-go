@@ -145,9 +145,20 @@ func scanAll(t *testing.T, f *File, batchRows int) (batches []*Batch, err error)
 		if e != nil {
 			return batches, e
 		}
-		batches = append(batches, b)
+		batches = append(batches, keep(b))
 	}
 	return batches, nil
+}
+
+// keep copies a batch, which is valid for one iteration only.
+func keep(b *Batch) *Batch {
+	out := &Batch{n: b.n}
+	for _, c := range b.cols {
+		a := array.Concat(c.arr.Type, []*array.Array{c.arr, c.arr.Slice(0, 0)})
+		a.Type = c.arr.Type
+		out.cols = append(out.cols, &Column{arr: a, typ: c.typ})
+	}
+	return out
 }
 
 func mustValues[T Number](t *testing.T, c *Column) []T {

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/fclairamb/vortex-go/internal/array"
@@ -111,15 +112,34 @@ func TestNoZoneMapUnderNullableStruct(t *testing.T) {
 	}
 }
 
-// logReader records every read.
+// logReader records every read. It is safe for concurrent use.
 type logReader struct {
 	r    io.ReaderAt
 	offs []int64
+	ends []int64
+	mu   sync.Mutex
 }
 
 func (l *logReader) ReadAt(p []byte, off int64) (int, error) {
+	l.mu.Lock()
 	l.offs = append(l.offs, off)
+	l.ends = append(l.ends, off+int64(len(p)))
+	l.mu.Unlock()
 	return l.r.ReadAt(p, off)
+}
+
+// segments is the number of segments of f that the reads cover, in part or whole.
+func (l *logReader) segments(f *File) int {
+	n := 0
+	for _, s := range f.segments {
+		for i, off := range l.offs {
+			if int64(s.Offset) < l.ends[i] && int64(s.Offset+uint64(s.Length)) > off {
+				n++
+				break
+			}
+		}
+	}
+	return n
 }
 
 func readRange(t *testing.T, f *File, lo, hi, batch int) (*array.Array, []int64) {
@@ -137,7 +157,7 @@ func readRange(t *testing.T, f *File, lo, hi, batch int) (*array.Array, []int64)
 		if err != nil {
 			t.Fatal(err)
 		}
-		parts = append(parts, a)
+		parts = append(parts, a.SliceInto(new(array.Array), 0, n))
 	}
 	return array.Concat(arrayType(f.schema.root), parts), log.offs
 }

@@ -848,11 +848,11 @@ func TestFilterAllocations(t *testing.T) {
 }
 
 // scanAllocs counts the allocations of a scan of the file, and its batches.
-func scanAllocs(t *testing.T, f *File, q Query, batchRows int) (allocs float64, batches int) {
+func scanAllocs(t *testing.T, f *File, q Query, batchRows int, cols ...string) (allocs float64, batches int) {
 	t.Helper()
 	run := func() {
 		batches = 0
-		for _, err := range f.scan(context.Background(), scanOptions{batchRows: batchRows, q: q, columns: []string{"sorted", "random"}}) {
+		for _, err := range f.scan(context.Background(), scanOptions{batchRows: batchRows, q: q, columns: cols}) {
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -865,43 +865,39 @@ func scanAllocs(t *testing.T, f *File, q Query, batchRows int) (allocs float64, 
 
 // perBatch is the allocations a batch costs: the scan of the same rows in batches of 256 and
 // of 512 rows differ only by the number of batches.
-func perBatch(t *testing.T, f *File, q Query) float64 {
+func perBatch(t *testing.T, f *File, q Query, cols ...string) float64 {
 	t.Helper()
-	a1, n1 := scanAllocs(t, f, q, 256)
-	a2, n2 := scanAllocs(t, f, q, 512)
+	if cols == nil {
+		cols = []string{"sorted", "random"}
+	}
+	a1, n1 := scanAllocs(t, f, q, 256, cols...)
+	a2, n2 := scanAllocs(t, f, q, 512, cols...)
 	if n1 <= n2+10 {
 		t.Fatalf("%d and %d batches: too close to tell", n1, n2)
 	}
 	return math.Round((a1 - a2) / float64(n1-n2))
 }
 
-// TestScanAllocationsPerBatch checks that the filter costs nothing per batch: the same scan
-// with a filter that keeps every row allocates as much per batch as one without. What a batch
-// costs is the decoders and the dense batch that is returned (the arrays of the rows kept
-// are new, as the caller may keep a batch).
+// TestScanAllocationsPerBatch checks that a running scan allocates nothing per batch, with or
+// without a filter: the readers, the batch and the rows a filter keeps reuse their memory.
+// What is left is per segment (its read and its decoding) and per scan.
 func TestScanAllocationsPerBatch(t *testing.T) {
 	f, err := open(extraFixture(t, "default_ints.vortex"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := perBatch(t, f, Query{})
-	if got := perBatch(t, f, Query{Filter: Col("sorted").Ge(0)}); got != base {
-		t.Errorf("a filter keeping every row allocates %v times a batch, none %v", got, base)
+	for _, c := range f.Schema().Fields() { // flat, dict, nullable
+		if got := perBatch(t, f, Query{}, c.Name); got != 0 {
+			t.Errorf("a scan of %s allocates %v times a batch", c.Name, got)
+		}
 	}
 	complexAll := And(Or(Col("sorted").Ge(0), Col("random").IsNull()), Not(Col("random").Eq(-5)), Or(Col("sorted").Ge(0), Col("random").Lt(3)))
-	if got := perBatch(t, f, Query{Filter: complexAll}); got != base {
-		t.Errorf("a compound filter allocates %v times a batch, none %v", got, base)
-	}
-	// Keeping some of the rows gathers them: the remaining per-batch allocations, fixed.
-	if got := perBatch(t, f, Query{Filter: Col("random").Lt(0)}); got != gatherAllocs {
-		t.Errorf("a gathering filter allocates %v times a batch, want %v", got, gatherAllocs)
+	for _, e := range []Expr{Col("sorted").Ge(0), complexAll, Col("random").Lt(0), Col("sorted").Lt(20000)} {
+		if got := perBatch(t, f, Query{Filter: e}, "sorted", "random", "low_card", "nullable"); got != 0 {
+			t.Errorf("%s allocates %v times a batch", describe(e), got)
+		}
 	}
 }
-
-// gatherAllocs is the allocations a batch costs once its rows are gathered: the base ones
-// (the decoders, the batch) and, per returned column, the array of the rows kept and its
-// values, which the caller owns and may keep.
-const gatherAllocs = 9
 
 // ----- pruning -----
 
@@ -917,7 +913,7 @@ func countReads(t *testing.T, f *File, q Query, cols ...string) (rows int, reads
 		}
 		rows += b.Len()
 	}
-	return rows, len(log.offs)
+	return rows, log.segments(f)
 }
 
 // sortedFile is a file of {k: i64, v: i64} on chunks*chunkRows rows. k counts from 0 and is

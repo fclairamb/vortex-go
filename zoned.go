@@ -158,12 +158,15 @@ func (f *File) newZoned(
 }
 
 // dict is vortex.dict: the values, then the codes. The values are read once, when the first
-// codes are, and kept.
+// codes are, and kept. The rows are made a chunk of codes at a time, and handed out from it.
 type dict struct {
 	codes  reader
 	f      *File
 	values *layoutNode
 	vals   *array.Array
+	cur    *array.Array // the rows of the current chunk of codes
+	slot   array.Array  // the rows take returns
+	off    int          // the next row of cur
 	opt    array.Options
 	path   string
 	t      array.DType
@@ -215,9 +218,29 @@ func parseDict(meta []byte, parentNullable bool) (array.PType, bool, error) {
 	return array.PType(ptype), nullable, nil
 }
 
-func (d *dict) avail() int { return d.codes.avail() }
+func (d *dict) avail() int {
+	if d.cur != nil {
+		return d.cur.Len - d.off
+	}
+	return d.codes.avail()
+}
 
-func (d *dict) skip(n int) { d.codes.skip(n) }
+func (d *dict) skip(n int) {
+	if d.cur == nil {
+		d.codes.skip(n)
+		return
+	}
+	d.advance(n)
+}
+
+// advance moves past n rows of cur.
+func (d *dict) advance(n int) {
+	if d.off += n; d.off == d.cur.Len {
+		d.cur = nil
+	}
+}
+
+func (d *dict) units(base int, out *[]*unit) int { return d.codes.units(base, out) }
 
 func (d *dict) take(n int) (*array.Array, error) {
 	if d.vals == nil {
@@ -229,14 +252,18 @@ func (d *dict) take(n int) (*array.Array, error) {
 			return nil, err
 		}
 	}
-	codes, err := d.codes.take(n)
-	if err != nil {
-		return nil, err
+	if d.cur == nil {
+		codes, err := d.codes.take(d.codes.avail())
+		if err != nil {
+			return nil, err
+		}
+		if d.cur, err = array.TakeDict(d.vals, codes, d.ptype, d.t); err != nil {
+			return nil, fmt.Errorf("%w: layout: dict: %v", ErrCorrupt, err)
+		}
+		d.off = 0
 	}
-	a, err := array.TakeDict(d.vals, codes, d.ptype, d.t)
-	if err != nil {
-		return nil, fmt.Errorf("%w: layout: dict: %v", ErrCorrupt, err)
-	}
+	a := d.cur.SliceInto(&d.slot, d.off, n)
+	d.advance(n)
 	return a, nil
 }
 
@@ -248,7 +275,7 @@ func readAll(r reader, t array.DType) (*array.Array, error) {
 		if err != nil {
 			return nil, err
 		}
-		parts = append(parts, a)
+		parts = append(parts, a.SliceInto(new(array.Array), 0, n)) // take reuses its array
 	}
 	if len(parts) == 1 {
 		return parts[0], nil

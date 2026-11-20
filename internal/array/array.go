@@ -44,6 +44,8 @@ type Array struct {
 	Len          int
 	// VOff is, for a Variant array, the row of Var that row 0 is.
 	VOff int
+	// vbits holds the Validity of an array made by SliceInto.
+	vbits Bitmap
 }
 
 // Null reports whether row i is null.
@@ -55,15 +57,22 @@ func (a *Array) Null(i int) bool {
 }
 
 // Slice returns the n rows from row off, sharing the memory.
-func (a *Array) Slice(off, n int) *Array {
-	out := *a
+func (a *Array) Slice(off, n int) *Array { return a.SliceInto(new(Array), off, n) }
+
+// SliceInto is Slice into out, which it overwrites and returns. It allocates nothing when out
+// was filled by an earlier SliceInto of an array of the same shape: the children of a struct
+// or of a fixed-size list are sliced into the ones out already has. out must not share any
+// node with a.
+func (a *Array) SliceInto(out *Array, off, n int) *Array {
+	fields, elems := out.Fields, out.Elems
+	*out = *a
 	out.Len = n
 	if a.Skipped != nil {
-		return &out
+		return out
 	}
 	if a.Validity != nil {
-		v := a.Validity.Slice(off)
-		out.Validity = &v
+		out.vbits = a.Validity.Slice(off)
+		out.Validity = &out.vbits
 	}
 	switch a.Type.Kind {
 	case Bool:
@@ -78,14 +87,23 @@ func (a *Array) Slice(off, n int) *Array {
 	case Variant:
 		out.VOff += off
 	case FixedSizeList:
-		out.Elems = a.Elems.Slice(off*a.Type.Size, n*a.Type.Size)
+		if elems == nil {
+			elems = new(Array)
+		}
+		out.Elems = a.Elems.SliceInto(elems, off*a.Type.Size, n*a.Type.Size)
 	case Struct:
-		out.Fields = make([]*Array, len(a.Fields))
+		if cap(fields) < len(a.Fields) {
+			fields = make([]*Array, len(a.Fields))
+		}
+		out.Fields = fields[:len(a.Fields)]
 		for i, f := range a.Fields {
-			out.Fields[i] = f.Slice(off, n)
+			if out.Fields[i] == nil {
+				out.Fields[i] = new(Array)
+			}
+			f.SliceInto(out.Fields[i], off, n)
 		}
 	}
-	return &out
+	return out
 }
 
 // bitWriter appends bits to a growing bitmap.

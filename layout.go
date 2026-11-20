@@ -20,6 +20,9 @@ type reader interface {
 	take(n int) (*array.Array, error)
 	// skip drops the next n rows, n being at most avail(), without reading what only they need.
 	skip(n int)
+	// units appends the flats under the reader to out, with the row of the file they start
+	// at, the reader starting at row base. It returns the rows of the reader.
+	units(base int, out *[]*unit) int
 }
 
 // newReader makes the reader of the rows lo to hi (excluded) of a layout whose rows have
@@ -49,9 +52,7 @@ var layoutReaders = sync.OnceValue(func() map[string]layoutMaker {
 		}
 	}
 	return map[string]layoutMaker{
-		layoutFlat: func(f *File, l *layoutNode, t array.DType, opt array.Options, _ string, lo, hi int) (reader, error) {
-			return f.newFlat(l, t, opt, lo, hi)
-		},
+		layoutFlat:    (*File).newFlat,
 		layoutStruct:  (*File).newStruct,
 		layoutChunked: (*File).newChunked,
 		layoutZoned:   zoned(false),
@@ -81,6 +82,9 @@ var _ = edition.Register(edition.KindLayout, readerLayoutIDs)
 type flat struct {
 	f    *File
 	arr  *array.Array
+	u    *unit // the unit of the scan, nil when the flat is read on its own
+	path string
+	slot array.Array // the rows take returns
 	opt  array.Options
 	t    array.DType
 	seg  uint32
@@ -89,43 +93,94 @@ type flat struct {
 	end  int
 }
 
-func (f *File) newFlat(l *layoutNode, t array.DType, opt array.Options, lo, hi int) (reader, error) {
+func (f *File) newFlat(l *layoutNode, t array.DType, opt array.Options, path string, lo, hi int) (reader, error) {
 	if len(l.segments) != 1 || len(l.children) != 0 {
 		return nil, badLayout("a flat layout has %d segments and %d children, want 1 and 0", len(l.segments), len(l.children))
 	}
-	return &flat{f: f, t: t, opt: opt, seg: l.segments[0], rows: int(l.rowCount), pos: lo, end: hi}, nil
+	if l.rowCount > maxFlatRows {
+		return nil, badLayout("a flat layout of %d rows, at most %d", l.rowCount, maxFlatRows)
+	}
+	return &flat{f: f, t: t, opt: opt, path: path, seg: l.segments[0], rows: int(l.rowCount), pos: lo, end: hi}, nil
 }
+
+// maxFlatRows is the most rows of a flat layout. A flat is decoded whole, so its rows bound
+// the memory of a scan. The reference writer cuts its chunks at 1 MiB, 8 Mi rows of booleans.
+var maxFlatRows uint64 = 1 << 24
 
 func (r *flat) avail() int { return r.end - r.pos }
 
-func (r *flat) skip(n int) { r.pos += n }
+func (r *flat) units(base int, out *[]*unit) int {
+	if r.pos < r.end {
+		r.u = &unit{fl: r, start: base}
+		*out = append(*out, r.u)
+	}
+	return r.end - r.pos
+}
+
+func (r *flat) skip(n int) {
+	r.pos += n
+	r.done()
+}
+
+// done hands the unit back once every row has been taken or skipped.
+func (r *flat) done() {
+	if r.pos == r.end && r.u != nil {
+		r.u.ld.retire(r.u)
+		r.arr = nil
+	}
+}
 
 func (r *flat) take(n int) (*array.Array, error) {
 	if r.arr == nil {
-		spec := r.f.segments[r.seg]
-		buf := make([]byte, spec.Length)
-		if err := readFull(r.f.r, buf, int64(spec.Offset)); err != nil {
-			return nil, err
-		}
-		a, err := array.Decode(buf, r.f.arrayEncodings, r.t, r.rows, r.opt)
+		a, err := r.load()
 		if err != nil {
-			if errors.Is(err, errors.ErrUnsupported) {
-				return nil, fmt.Errorf("vortex: segment at offset %d: %w", spec.Offset, err)
-			}
-			return nil, wrapCorrupt("array", spec.Offset, err)
+			return nil, err
 		}
 		r.arr = a
 	}
-	a := r.arr.Slice(r.pos, n)
+	a := r.arr.SliceInto(&r.slot, r.pos, n)
 	r.pos += n
+	r.done()
 	return a, nil
 }
+
+// load reads and decodes the segment, through the loader of the scan when there is one.
+func (r *flat) load() (*array.Array, error) {
+	if r.u != nil {
+		return r.u.ld.get(r.u)
+	}
+	buf := make([]byte, r.segLen())
+	if err := readFull(r.f.r, buf, int64(r.f.segments[r.seg].Offset)); err != nil {
+		return nil, r.ioErr(err)
+	}
+	return r.decode(buf)
+}
+
+func (r *flat) segLen() int { return int(r.f.segments[r.seg].Length) }
+
+// decode decodes the segment, in buf.
+func (r *flat) decode(buf []byte) (*array.Array, error) {
+	a, err := array.Decode(buf, r.f.arrayEncodings, r.t, r.rows, r.opt)
+	if err != nil {
+		off := r.f.segments[r.seg].Offset
+		if errors.Is(err, errors.ErrUnsupported) {
+			return nil, fmt.Errorf("vortex: column %q: segment at offset %d: %w", r.path, off, err)
+		}
+		return nil, fmt.Errorf("%w: column %q: array at offset %d: %w", ErrCorrupt, r.path, off, err)
+	}
+	return a, nil
+}
+
+// ioErr names the column of a failed read.
+func (r *flat) ioErr(err error) error { return fmt.Errorf("vortex: column %q: %w", r.path, err) }
 
 // structLayout is vortex.struct: the validity when the struct is nullable, then one child
 // per field.
 type structLayout struct {
 	valid  reader
 	fields []reader
+	slot   array.Array // the rows take returns
+	vbits  array.Bitmap
 	t      array.DType
 	left   int
 }
@@ -135,7 +190,18 @@ func (f *File) newStruct(l *layoutNode, t array.DType, opt array.Options, path s
 	if err != nil {
 		return nil, err
 	}
-	return &structLayout{t: t, left: hi - lo, valid: valid, fields: fields}, nil
+	return &structLayout{t: t, left: hi - lo, valid: valid, fields: fields,
+		slot: array.Array{Fields: make([]*array.Array, len(fields))}}, nil
+}
+
+func (s *structLayout) units(base int, out *[]*unit) int {
+	if s.valid != nil {
+		s.valid.units(base, out)
+	}
+	for _, r := range s.fields {
+		r.units(base, out)
+	}
+	return s.left
 }
 
 // structParts makes the readers of the validity (nil when the struct is not nullable) and of
@@ -209,13 +275,15 @@ func (s *structLayout) skip(n int) {
 }
 
 func (s *structLayout) take(n int) (*array.Array, error) {
-	a := &array.Array{Type: s.t, Len: n, Fields: make([]*array.Array, len(s.fields))}
+	a := &s.slot
+	*a = array.Array{Type: s.t, Len: n, Fields: a.Fields}
 	if s.valid != nil {
 		v, err := s.valid.take(n)
 		if err != nil {
 			return nil, err
 		}
-		a.Validity = &v.Bits
+		s.vbits = v.Bits
+		a.Validity = &s.vbits
 	}
 	for i, r := range s.fields {
 		f, err := r.take(n)
@@ -266,6 +334,14 @@ func (c *chunked) avail() int {
 		}
 	}
 	return 0
+}
+
+func (c *chunked) units(base int, out *[]*unit) int {
+	start := base
+	for _, k := range c.chunks {
+		base += k.units(base, out)
+	}
+	return base - start
 }
 
 func (c *chunked) skip(n int) { c.chunks[c.i].skip(n) }

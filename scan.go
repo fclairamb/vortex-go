@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"iter"
 	"math"
+	"os"
 	"slices"
 
 	"github.com/fclairamb/vortex-go/internal/array"
@@ -113,6 +114,21 @@ func (s *source) skipFields(idx []int) {
 	}
 	for _, i := range idx {
 		s.fields[i].skip(s.n)
+	}
+}
+
+// units lists the flats of the readers, the first row being base.
+func (s *source) units(base int, out *[]*unit) {
+	if s.whole != nil {
+		s.whole.units(base, out)
+	}
+	if s.valid != nil {
+		s.valid.units(base, out)
+	}
+	for _, r := range s.fields {
+		if r != nil {
+			r.units(base, out)
+		}
 	}
 }
 
@@ -227,10 +243,12 @@ func (f *File) scan(ctx context.Context, o scanOptions) iter.Seq2[*Batch, error]
 			yield(nil, err)
 			return
 		}
-		s := &scanner{f: f, p: p, batchRows: o.batchRows,
-			arrs: make([]*array.Array, len(f.schema.root.fields)), sel: make([]int, 0, o.batchRows)}
+		ld := newLoader(ctx, f, p, workers())
+		defer ld.close()
+		s := newScanner(f, p, o.batchRows)
 		for pos := p.lo; pos < p.hi; {
-			if err = ctx.Err(); err == nil {
+			ld.recycle() // the consumer is done with the previous batch
+			if err = s.check(ctx); err == nil {
 				var b *Batch
 				var n int
 				b, n, err = s.step(pos)
@@ -247,13 +265,37 @@ func (f *File) scan(ctx context.Context, o scanOptions) iter.Seq2[*Batch, error]
 	}
 }
 
-// scanner reads the batches of a plan.
+// scanner reads the batches of a plan. It owns the batch it returns, which it reuses.
 type scanner struct {
 	f         *File
 	p         *scanPlan
 	arrs      []*array.Array
 	sel       []int
+	batch     Batch
+	store     []Column
+	picked    []picked
 	batchRows int
+}
+
+func newScanner(f *File, p *scanPlan, batchRows int) *scanner {
+	s := &scanner{f: f, p: p, batchRows: batchRows, arrs: make([]*array.Array, len(f.schema.root.fields)),
+		sel: make([]int, 0, batchRows), store: make([]Column, len(p.out)), picked: make([]picked, len(p.out))}
+	s.batch.cols = make([]*Column, len(p.out))
+	for i := range s.store {
+		s.batch.cols[i] = &s.store[i]
+	}
+	return s
+}
+
+// check is the error that stops a scan before its next batch: the context's, or a closed file.
+func (s *scanner) check(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.f.closed.Load() {
+		return fmt.Errorf("vortex: Scan: %w", os.ErrClosed)
+	}
+	return nil
 }
 
 // step reads the rows from pos, up to the next batch: it returns the number of rows it went
@@ -291,65 +333,90 @@ func (s *scanner) step(pos int64) (*Batch, int, error) {
 	if err := p.src.read(p.late, s.arrs); err != nil {
 		return nil, n, err
 	}
-	return s.f.batch(s.arrs, p.out, n, s.sel, p.wantFilter && len(s.sel) < n), n, nil
+	return s.fill(n, p.wantFilter && len(s.sel) < n), n, nil
 }
 
-// batch makes the batch of the columns out of the arrays of a scan, keeping the rows sel of
+// fill makes the batch of the returned columns of the arrays read, keeping the rows sel of
 // them when pick is set.
-func (f *File) batch(arrs []*array.Array, out []int, n int, sel []int, pick bool) *Batch {
-	b := &Batch{n: n, cols: make([]*Column, len(out))}
-	store := make([]Column, len(out)) // one allocation for the columns
+func (s *scanner) fill(n int, pick bool) *Batch {
+	b := &s.batch
+	b.n = n
 	if pick {
-		b.n = len(sel)
+		b.n = len(s.sel)
 	}
-	for i, k := range out {
-		a := arrs[k]
+	for i, k := range s.p.out {
+		a := s.arrs[k]
 		if pick {
-			a = gather(a, sel)
+			a = s.picked[i].gather(a, s.sel)
 		}
-		store[i] = Column{arr: a, typ: f.schema.root.fields[k].Type}
-		b.cols[i] = &store[i]
+		s.store[i] = Column{arr: a, typ: s.f.schema.root.fields[k].Type}
 	}
 	return b
 }
 
 // gather returns the rows sel (ascending) of a, as a new array. The bytes and the elements
 // that rows point to are shared.
-func gather(a *array.Array, sel []int) *array.Array {
-	out := *a
+func gather(a *array.Array, sel []int) *array.Array { return new(picked).gather(a, sel) }
+
+// picked is the rows a filter keeps of an array, in buffers that the next batch reuses.
+type picked struct {
+	arr            array.Array
+	valid          array.Bitmap
+	kids           []picked // the fields of a struct, the elements of a fixed-size list
+	fields         []*array.Array
+	vbytes, bbytes []byte
+	data           []byte
+	starts, ends   []int
+	elems          []int // the elements of the rows kept of a fixed-size list
+}
+
+// gather returns the rows sel (ascending) of a. The bytes and the elements that rows point to
+// are shared. It allocates nothing once its buffers are large enough, except for a Variant.
+func (p *picked) gather(a *array.Array, sel []int) *array.Array {
+	out := &p.arr
+	*out = *a
 	out.Len = len(sel)
 	if a.Skipped != nil {
-		return &out
+		return out
 	}
 	if a.Validity != nil {
-		out.Validity = pickBits(*a.Validity, sel)
+		p.vbytes = pickBits(p.vbytes, *a.Validity, sel)
+		p.valid = array.Bitmap{Bytes: p.vbytes}
+		out.Validity = &p.valid
 	}
 	switch a.Type.Kind {
 	case array.Bool:
-		out.Bits = *pickBits(a.Bits, sel)
+		p.bbytes = pickBits(p.bbytes, a.Bits, sel)
+		out.Bits = array.Bitmap{Bytes: p.bbytes}
 	case array.Prim:
-		out.Data = pickBytes(a.Data, a.Type.PType.Width(), sel)
+		p.data = pickBytes(p.data, a.Data, a.Type.PType.Width(), sel)
+		out.Data = p.data
 	case array.Decimal:
-		out.Data = pickBytes(a.Data, a.Width, sel)
+		p.data = pickBytes(p.data, a.Data, a.Width, sel)
+		out.Data = p.data
 	case array.Utf8, array.Binary, array.List, array.Map:
-		out.Starts, out.Ends = make([]int, len(sel)), make([]int, len(sel))
-		for i, r := range sel {
-			out.Starts[i], out.Ends[i] = a.Starts[r], a.Ends[r]
+		p.starts, p.ends = p.starts[:0], p.ends[:0]
+		for _, r := range sel {
+			p.starts, p.ends = append(p.starts, a.Starts[r]), append(p.ends, a.Ends[r])
 		}
+		out.Starts, out.Ends = p.starts, p.ends
 	case array.FixedSizeList:
 		size := a.Type.Size
-		elems := make([]int, 0, len(sel)*size)
+		p.elems = p.elems[:0]
 		for _, r := range sel {
 			for j := range size {
-				elems = append(elems, r*size+j)
+				p.elems = append(p.elems, r*size+j)
 			}
 		}
-		out.Elems = gather(a.Elems, elems)
+		p.grow(1)
+		out.Elems = p.kids[0].gather(a.Elems, p.elems)
 	case array.Struct:
-		out.Fields = make([]*array.Array, len(a.Fields))
+		p.grow(len(a.Fields))
+		p.fields = append(p.fields[:0], a.Fields...)
 		for i, fld := range a.Fields {
-			out.Fields[i] = gather(fld, sel)
+			p.fields[i] = p.kids[i].gather(fld, sel)
 		}
+		out.Fields = p.fields
 	case array.Variant:
 		var parts []*array.Array
 		for _, r := range sel {
@@ -357,27 +424,36 @@ func gather(a *array.Array, sel []int) *array.Array {
 		}
 		return array.Concat(a.Type, parts)
 	}
-	return &out
+	return out
 }
 
-// pickBits returns the bits sel of b.
-func pickBits(b array.Bitmap, sel []int) *array.Bitmap {
-	w := make([]byte, (len(sel)+7)/8)
+// grow makes sure p has n children.
+func (p *picked) grow(n int) {
+	if len(p.kids) < n {
+		p.kids = make([]picked, n)
+	}
+}
+
+// pickBits returns the bits sel of b, in buf.
+func pickBits(buf []byte, b array.Bitmap, sel []int) []byte {
+	n := (len(sel) + 7) / 8
+	buf = slices.Grow(buf[:0], n)[:n]
+	clear(buf)
 	for i, r := range sel {
 		if b.Get(r) {
-			w[i/8] |= 1 << (i % 8)
+			buf[i/8] |= 1 << (i % 8)
 		}
 	}
-	return &array.Bitmap{Bytes: w}
+	return buf
 }
 
-// pickBytes returns the values sel of an array of values of w bytes.
-func pickBytes(data []byte, w int, sel []int) []byte {
-	out := make([]byte, 0, len(sel)*w)
+// pickBytes returns the values sel of an array of values of w bytes, in buf.
+func pickBytes(buf, data []byte, w int, sel []int) []byte {
+	buf = buf[:0]
 	for _, r := range sel {
-		out = append(out, data[r*w:(r+1)*w]...)
+		buf = append(buf, data[r*w:(r+1)*w]...)
 	}
-	return out
+	return buf
 }
 
 var primOfKind = map[Kind]array.PType{
