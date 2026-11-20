@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile
+.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -57,6 +57,21 @@ bigfile:
 FUZZTIME ?= 30s
 fuzz:
 	go test -run '^$$' -fuzz '^FuzzOpenScan$$' -fuzztime $(FUZZTIME) -fuzzminimizetime 10s .
+
+# The expected values of every release in .cache/fixtures, with the vortex-data of that
+# release (the pinned one when it cannot be installed, see .cache/fixtures/<version>/ORACLE).
+oracle-all:
+	scripts/oracle-all.sh
+
+# Reads the fixtures of every published release and compares them with the oracle. Needs uv
+# and network, takes a few minutes the first time (.cache/ is reused). Not part of check.
+# When it passes, the list of releases and the README line are rewritten.
+compat:
+	scripts/fixtures.sh --all
+	$(MAKE) oracle-all
+	go test -tags compat -run Compat .
+	cp .cache/compat-passed.txt testdata/compat-releases.txt
+	go generate ./...
 
 # Everything a .vortex-version bump needs.
 upstream: fixtures edition oracle

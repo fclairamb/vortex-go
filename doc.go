@@ -7,3 +7,5 @@
 // implemented yet. The goals are in docs/goals.md, the planned interface in docs/interface.md
 // and the test plan in docs/testing.md.
 package vortex
+
+//go:generate go test -run=^TestReadmeCompat$ -update-readme .

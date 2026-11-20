@@ -4,6 +4,10 @@ A pure Go reader and writer for the [Vortex](https://vortex.dev) columnar file f
 
 **Status: design only. Nothing is implemented yet.**
 
+<!-- compat:begin -->
+Reads the fixtures of every published release, 28 of them, from 0.64.0 to 0.93.0, checked every night against the reference reader.
+<!-- compat:end -->
+
 ## Goals
 
 Ranked. The details and the "done when" lists are in [docs/goals.md](docs/goals.md).

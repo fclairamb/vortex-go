@@ -149,7 +149,12 @@ integers), `patched` (patches applied on top of an inner array) and `decimal_byt
   when an identifier of the edition is never met across the corpus. So every decoder has
   run on a file written by the reference writer, and a missing fixture is detected.
 - **Types.** One test per logical type, nullable and not nullable, alone and nested.
-- **Releases.** `make compat` runs the whole corpus of every published release.
+- **Releases.** `make compat` runs the whole corpus of every published release: it fetches
+  them into `.cache/fixtures/<version>/` (`scripts/fixtures.sh --all`), writes the expected
+  values with the `vortex-data` of that release (`scripts/oracle-all.sh`, the pinned one when
+  it cannot be installed, noted in `ORACLE`), then runs `compat_test.go` (build tag `compat`).
+  The nightly job runs it. A file that fails is copied, the smallest one, into
+  `testdata/fixtures/compat/<version>/`.
 - **Writer.** The same table says which encodings the writer emits.
 - **The matrix.** `go generate` writes the support matrix of the README from the table.
   CI fails when it is stale.
@@ -295,6 +300,6 @@ encoding choice to the writer, and upstream's own compatibility check
 | Reference reads our files | `make interop` | yes | planned |
 | File size ratio | `make interop` | yes | planned |
 | Fuzzing, 30 seconds | `make fuzz` | yes | in place |
-| All published releases | `make compat` | nightly | planned |
-| Long fuzzing | `make fuzz FUZZTIME=30m` | nightly | planned |
+| All published releases | `make compat` | nightly | in place |
+| Long fuzzing | `make fuzz FUZZTIME=30m` | nightly | in place |
 | Benchmarks against main | `make bench` | no, posted on the PR | planned |
