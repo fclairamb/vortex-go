@@ -41,10 +41,10 @@ const (
 // different from everything, like in Go.
 //
 // The literals are Go values: any integer or float type, bool, string (for a Utf8 column),
-// []byte (Binary, UUID), Decimal, time.Time (date and timestamp, truncated to the unit of
-// the column) and time.Duration (time). An integer can be compared with a float column. The
-// filter is checked against the schema before any read: a literal that does not fit the
-// column, and for Eq, Ne and In an integer out of the range of the column, are errors.
+// []byte (Binary, UUID), Decimal, time.Time (date and timestamp) and time.Duration (time),
+// compared exactly even when finer than the unit of the column (Eq never matches then). An
+// integer can be compared with a float column. The filter is checked against the schema before
+// any read: a literal that does not fit the column, and for Eq, Ne and In an integer out of the range of the column, are errors.
 type Expr struct{ n *exprNode }
 
 // exprNode is a node of an Expr.
@@ -216,6 +216,7 @@ type lit struct {
 	mag  uint64 // the absolute value of an integer
 	neg  bool
 	bool bool
+	frac bool // a time finer than the unit of the column: mag is the floor
 }
 
 // leaf is a comparison of a column with literals.
@@ -283,6 +284,7 @@ func newLeaf(e *exprNode, root Type) (*leaf, error) {
 		}
 		l.lits = append(l.lits, c)
 	}
+	l.exactTimes()
 	return l, nil
 }
 
@@ -313,12 +315,18 @@ func (l *leaf) resolve(path []string, root Type) (Type, error) {
 func (l *leaf) literal(t Type, v any, strict bool) (lit, bool) {
 	switch x := v.(type) {
 	case time.Time:
-		return intLit(ticksOf(x, t.unit, t.kind == Date)), t.kind == Date || t.kind == Timestamp
+		v, frac := ticksFrac(x, t.unit, t.kind == Date)
+		c := intLit(v)
+		c.frac = frac
+		return c, t.kind == Date || t.kind == Timestamp
 	case time.Duration:
 		if t.kind != Time {
 			return lit{}, false
 		}
-		return intLit(int64(x) / perTick(t.unit)), true
+		per := perTick(t.unit)
+		c := intLit(floorDiv(int64(x), per))
+		c.frac = int64(x)%per != 0
+		return c, true
 	case Decimal:
 		return lit{d: x}, t.kind == KindDecimal
 	case []byte:
@@ -380,23 +388,60 @@ func fits(c *lit, bits int, signed bool) bool {
 	return c.mag < 1<<(bits-1)
 }
 
-// ticksOf is the time in the unit of a date or a timestamp, since the epoch.
-func ticksOf(t time.Time, u Unit, date bool) int64 {
+// floorDiv is a / b rounded towards minus infinity, for b > 0.
+func floorDiv(a, b int64) int64 {
+	q := a / b
+	if a%b < 0 {
+		q--
+	}
+	return q
+}
+
+// ticksFrac is the time in the unit of a date or a timestamp, since the epoch, rounded down,
+// and whether t is finer than the unit (so the value is not exact).
+func ticksFrac(t time.Time, u Unit, date bool) (int64, bool) {
+	sec, nsec := t.Unix(), int64(t.Nanosecond())
 	switch {
 	case date && u == Day:
-		days := t.Unix() / 86400
-		if t.Unix()%86400 < 0 {
-			days--
-		}
-		return days
+		return floorDiv(sec, 86400), sec%86400 != 0 || nsec != 0
 	case u == Second:
-		return t.Unix()
+		return sec, nsec != 0
 	case u == Millisecond:
-		return t.UnixMilli()
+		return sec*1000 + nsec/1e6, nsec%1e6 != 0
 	case u == Microsecond:
-		return t.UnixMicro()
+		return sec*1000000 + nsec/1e3, nsec%1e3 != 0
 	}
-	return t.UnixNano()
+	return t.UnixNano(), false
+}
+
+// exactTimes rewrites the literals finer than the unit of the column, so that the
+// comparisons stay exact on the floor: Eq never matches, Ne matches every value, Lt and Le
+// become Le, and Gt and Ge become Gt.
+func (l *leaf) exactTimes() {
+	if l.kind != valInt {
+		return
+	}
+	switch l.op {
+	case opEq, opNe, opIn:
+		kept := l.lits[:0]
+		for _, c := range l.lits {
+			if !c.frac {
+				kept = append(kept, c)
+			}
+		}
+		l.lits = kept
+		if l.op == opEq {
+			l.op = opIn
+		}
+	case opLt, opLe:
+		if l.lits[0].frac {
+			l.op = opLe
+		}
+	case opGt, opGe:
+		if l.lits[0].frac {
+			l.op = opGt
+		}
+	}
 }
 
 // bind sets the arrays of the column of the batch and of its parents.
@@ -430,23 +475,31 @@ func (l *leaf) eval(i int) tri {
 		}
 		return triFalse
 	}
+	if len(l.lits) == 0 { // Ne of a time finer than the column
+		return triTrue
+	}
 	c, ok := l.compare(a, i, &l.lits[0])
 	if !ok { // NaN
 		return triOf(l.op == opNe)
 	}
-	switch l.op {
+	return triOf(holds(l.op, c))
+}
+
+// holds is whether a comparison operator is true when the value is ordered c against the literal.
+func holds(op exprOp, c int) bool {
+	switch op {
 	case opEq:
-		return triOf(c == 0)
+		return c == 0
 	case opNe:
-		return triOf(c != 0)
+		return c != 0
 	case opLt:
-		return triOf(c < 0)
+		return c < 0
 	case opLe:
-		return triOf(c <= 0)
+		return c <= 0
 	case opGt:
-		return triOf(c > 0)
+		return c > 0
 	}
-	return triOf(c >= 0)
+	return c >= 0
 }
 
 // compare orders the value of row i of a against a literal. It is not ok when a float is NaN.

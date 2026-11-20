@@ -298,6 +298,7 @@ func (s *scanner) step(pos int64) (*Batch, int, error) {
 // them when pick is set.
 func (f *File) batch(arrs []*array.Array, out []int, n int, sel []int, pick bool) *Batch {
 	b := &Batch{n: n, cols: make([]*Column, len(out))}
+	store := make([]Column, len(out)) // one allocation for the columns
 	if pick {
 		b.n = len(sel)
 	}
@@ -306,7 +307,8 @@ func (f *File) batch(arrs []*array.Array, out []int, n int, sel []int, pick bool
 		if pick {
 			a = gather(a, sel)
 		}
-		b.cols[i] = &Column{arr: a, typ: f.schema.root.fields[k].Type}
+		store[i] = Column{arr: a, typ: f.schema.root.fields[k].Type}
+		b.cols[i] = &store[i]
 	}
 	return b
 }

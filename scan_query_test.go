@@ -472,19 +472,19 @@ func TestScanRandomQueries(t *testing.T) {
 	}
 }
 
-// randomQueries runs 200 seeded random queries on the file and checks each against the model.
+// randomQueries runs 200 (80 on big files) seeded random queries on the file and checks each against the model.
 func randomQueries(t *testing.T, f *File, seed uint64) {
 	m := loadModel(f)
 	if m == nil || m.rows == 0 || len(m.paths) == 0 {
 		t.Skip("nothing to decode")
 	}
-	for i := range 200 {
+	queries := 200
+	if m.rows > 1000 { // each query runs four times: fewer on the big files
+		queries = 80
+	}
+	for i := range queries {
 		seed := seed + uint64(i)
 		rng := rand.New(rand.NewPCG(seed, 1))
-		batchRows := []int{maxBatchRows, 1, 7, 1024, 100000}[i%5]
-		if i%5 == 1 && m.rows > 300 {
-			continue // batches of one row: the small files only
-		}
 		// A subset of the columns, in a random order.
 		var cols []string
 		if rng.IntN(3) > 0 {
@@ -513,8 +513,19 @@ func randomQueries(t *testing.T, f *File, seed uint64) {
 		} else {
 			me = modelExpr{eval: func(int) tri { return triTrue }}
 		}
-		if err := runQuery(f, m, q, cols, batchRows, func(r int) bool { return me.eval(r) == triTrue }); err != nil {
-			t.Fatalf("seed %d, batch %d, columns %v, rows %+v, filter %s: %v", seed, batchRows, cols, q.Rows, describe(q.Filter), err)
+		// Every query runs at every batch size: one row, a few, 1,024 and more than a chunk
+		// (the default of 8,192 is the one of the other tests). Small batches on a big file would
+		// take too long, so there the query is limited to a window of 256 rows (one row) or
+		// 2,048 rows (seven).
+		for _, batchRows := range []int{1, 7, 1024, 100000} {
+			qb := q
+			if window := map[int]int{1: 256, 7: 2048}[batchRows]; window > 0 && m.rows > window+44 {
+				start := int64(rng.IntN(m.rows))
+				qb.Rows = Range{Start: start, End: start + int64(window)}
+			}
+			if err := runQuery(f, m, qb, cols, batchRows, func(r int) bool { return me.eval(r) == triTrue }); err != nil {
+				t.Fatalf("seed %d, batch %d, columns %v, rows %+v, filter %s: %v", seed, batchRows, cols, qb.Rows, describe(q.Filter), err)
+			}
 		}
 	}
 }
@@ -772,11 +783,11 @@ func TestLiteralConversions(t *testing.T) {
 		{Day, true, -1}, {Millisecond, true, -3600000}, {Second, false, -3600},
 		{Millisecond, false, -3600000}, {Microsecond, false, -3600000000}, {Nanosecond, false, -3600000000000},
 	} {
-		if got := ticksOf(ts, c.u, c.date); got != c.want {
+		if got, _ := ticksFrac(ts, c.u, c.date); got != c.want {
 			t.Errorf("ticksOf(%v, %v) = %d, want %d", c.u, c.date, got, c.want)
 		}
 	}
-	if got := ticksOf(time.Unix(86400*3+5, 0), Day, true); got != 3 {
+	if got, frac := ticksFrac(time.Unix(86400*3+5, 0), Day, true); got != 3 || !frac {
 		t.Errorf("a day after the epoch = %d", got)
 	}
 	for _, c := range []struct {
@@ -835,6 +846,62 @@ func TestFilterAllocations(t *testing.T) {
 		t.Fatalf("a filtered batch allocates %v times", got)
 	}
 }
+
+// scanAllocs counts the allocations of a scan of the file, and its batches.
+func scanAllocs(t *testing.T, f *File, q Query, batchRows int) (allocs float64, batches int) {
+	t.Helper()
+	run := func() {
+		batches = 0
+		for _, err := range f.scan(context.Background(), scanOptions{batchRows: batchRows, q: q, columns: []string{"sorted", "random"}}) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			batches++
+		}
+	}
+	run()
+	return testing.AllocsPerRun(5, run), batches
+}
+
+// perBatch is the allocations a batch costs: the scan of the same rows in batches of 256 and
+// of 512 rows differ only by the number of batches.
+func perBatch(t *testing.T, f *File, q Query) float64 {
+	t.Helper()
+	a1, n1 := scanAllocs(t, f, q, 256)
+	a2, n2 := scanAllocs(t, f, q, 512)
+	if n1 <= n2+10 {
+		t.Fatalf("%d and %d batches: too close to tell", n1, n2)
+	}
+	return math.Round((a1 - a2) / float64(n1-n2))
+}
+
+// TestScanAllocationsPerBatch checks that the filter costs nothing per batch: the same scan
+// with a filter that keeps every row allocates as much per batch as one without. What a batch
+// costs is the decoders and the dense batch that is returned (the arrays of the rows kept
+// are new, as the caller may keep a batch).
+func TestScanAllocationsPerBatch(t *testing.T) {
+	f, err := open(extraFixture(t, "default_ints.vortex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := perBatch(t, f, Query{})
+	if got := perBatch(t, f, Query{Filter: Col("sorted").Ge(0)}); got != base {
+		t.Errorf("a filter keeping every row allocates %v times a batch, none %v", got, base)
+	}
+	complexAll := And(Or(Col("sorted").Ge(0), Col("random").IsNull()), Not(Col("random").Eq(-5)), Or(Col("sorted").Ge(0), Col("random").Lt(3)))
+	if got := perBatch(t, f, Query{Filter: complexAll}); got != base {
+		t.Errorf("a compound filter allocates %v times a batch, none %v", got, base)
+	}
+	// Keeping some of the rows gathers them: the remaining per-batch allocations, fixed.
+	if got := perBatch(t, f, Query{Filter: Col("random").Lt(0)}); got != gatherAllocs {
+		t.Errorf("a gathering filter allocates %v times a batch, want %v", got, gatherAllocs)
+	}
+}
+
+// gatherAllocs is the allocations a batch costs once its rows are gathered: the base ones
+// (the decoders, the batch) and, per returned column, the array of the rows kept and its
+// values, which the caller owns and may keep.
+const gatherAllocs = 9
 
 // ----- pruning -----
 
@@ -1443,4 +1510,103 @@ func TestZoneFields(t *testing.T) {
 	if n := nullable(array.DType{Kind: array.Ext, Storage: &array.DType{Kind: array.Prim}}); !n.Nullable || !n.Storage.Nullable {
 		t.Error("nullable extension")
 	}
+}
+
+// ----- literals finer than the unit of the column -----
+
+// i64Array is a primitive array of values.
+func i64Array(vals ...int64) *array.Array {
+	a := &array.Array{Type: array.DType{Kind: array.Prim, PType: array.I64}, Len: len(vals), Data: make([]byte, 8*len(vals))}
+	for i, v := range vals {
+		binary.LittleEndian.PutUint64(a.Data[8*i:], uint64(v))
+	}
+	return a
+}
+
+// TestSubUnitLiterals checks every operator, on rows and on zones, against a literal that
+// falls between two ticks of the column: it must give the mathematically right answer.
+func TestSubUnitLiterals(t *testing.T) {
+	// The value of tick x, as a time in nanoseconds since the epoch, for each column.
+	type column struct {
+		name string
+		typ  Type
+		nano func(x int64) int64
+		lit  func(ns int64) any
+	}
+	cols := []column{
+		{"timestamp s", Type{kind: Timestamp, unit: Second}, func(x int64) int64 { return x * 1e9 },
+			func(ns int64) any { return time.Unix(0, ns).UTC() }},
+		{"timestamp ms", Type{kind: Timestamp, unit: Millisecond}, func(x int64) int64 { return x * 1e6 },
+			func(ns int64) any { return time.Unix(0, ns).UTC() }},
+		{"timestamp us", Type{kind: Timestamp, unit: Microsecond}, func(x int64) int64 { return x * 1e3 },
+			func(ns int64) any { return time.Unix(0, ns).UTC() }},
+		{"date day", Type{kind: Date, unit: Day}, func(x int64) int64 { return x * 86400e9 },
+			func(ns int64) any { return time.Unix(0, ns).UTC() }},
+		{"date ms", Type{kind: Date, unit: Millisecond}, func(x int64) int64 { return x * 1e6 },
+			func(ns int64) any { return time.Unix(0, ns).UTC() }},
+		{"time s", Type{kind: Time, unit: Second}, func(x int64) int64 { return x * 1e9 },
+			func(ns int64) any { return time.Duration(ns) }},
+		{"time ms", Type{kind: Time, unit: Millisecond}, func(x int64) int64 { return x * 1e6 },
+			func(ns int64) any { return time.Duration(ns) }},
+	}
+	ops := []struct {
+		name string
+		mk   func(Ref, any) Expr
+		ok   func(c int) bool // c orders the value against the literal
+	}{
+		{"Eq", Ref.Eq, func(c int) bool { return c == 0 }}, {"Ne", Ref.Ne, func(c int) bool { return c != 0 }},
+		{"Lt", Ref.Lt, func(c int) bool { return c < 0 }}, {"Le", Ref.Le, func(c int) bool { return c <= 0 }},
+		{"Gt", Ref.Gt, func(c int) bool { return c > 0 }}, {"Ge", Ref.Ge, func(c int) bool { return c >= 0 }},
+		{"In", func(r Ref, v any) Expr { return r.In(v, v) }, func(c int) bool { return c == 0 }},
+	}
+	for _, col := range cols {
+		root := Type{kind: Struct, fields: []Field{{Name: "t", Type: col.typ}}}
+		tick := col.nano(1)
+		for _, base := range []int64{-3, 0, 4} {
+			for _, off := range []int64{-tick / 2, -1, 0, 1, tick / 2, tick - 1} {
+				if tick == 1 && off != 0 {
+					continue
+				}
+				litNs := col.nano(base) + off
+				for _, op := range ops {
+					e := op.mk(Col("t"), col.lit(litNs))
+					n, err := e.compile(root, make([]bool, 1))
+					if err != nil {
+						t.Fatal(err)
+					}
+					for x := base - 3; x <= base+3; x++ {
+						want := op.ok(cmpNs(col.nano(x), litNs))
+						n.bind([]*array.Array{i64Array(x)})
+						if got := n.eval(0) == triTrue; got != want {
+							t.Errorf("%s %s %v: row %d: got %v, want %v", col.name, op.name, litNs, x, got, want)
+						}
+						// A zone that holds only x is exact; a wider one cannot rule out a match.
+						tbl := &zoneTable{min: i64Array(x), max: i64Array(x), exactBound: true}
+						b := n.leaf.valueBounds(tbl, 0)
+						if b.canTrue != want || b.canFalse == want {
+							t.Errorf("%s %s %v: zone {%d}: bounds %+v, want true=%v", col.name, op.name, litNs, x, b, want)
+						}
+						wide := &zoneTable{min: i64Array(x), max: i64Array(x + 2)}
+						b = n.leaf.valueBounds(wide, 0)
+						for y := x; y <= x+2; y++ {
+							w := op.ok(cmpNs(col.nano(y), litNs))
+							if w && !b.canTrue || !w && !b.canFalse {
+								t.Errorf("%s %s %v: zone [%d,%d]: bounds %+v rule out row %d", col.name, op.name, litNs, x, x+2, b, y)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+func cmpNs(a, b int64) int {
+	switch {
+	case a < b:
+		return -1
+	case a > b:
+		return 1
+	}
+	return 0
 }
