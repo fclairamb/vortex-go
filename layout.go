@@ -171,8 +171,11 @@ func (r *flat) decode(buf []byte) (*array.Array, error) {
 	return a, nil
 }
 
-// ioErr names the column of a failed read.
-func (r *flat) ioErr(err error) error { return fmt.Errorf("%w, column %q", err, r.path) }
+// ioErr names the column and the layout of a failed read, whose offset err gives. The array
+// encoding is in the bytes that could not be read.
+func (r *flat) ioErr(err error) error {
+	return fmt.Errorf("%w, column %q, layout %s", err, r.path, layoutFlat)
+}
 
 // structLayout is vortex.struct: the validity when the struct is nullable, then one child
 // per field.

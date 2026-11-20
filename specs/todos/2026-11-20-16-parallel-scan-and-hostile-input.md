@@ -77,3 +77,19 @@ they are done together. The concurrency is why this spec is on opus.
   and segment source) and `vortex-io/`. Take the idea, not the numbers.
 - That every error path added here is reachable by a test. The coverage gate is 100%: an
   error branch that no damaged file and no I/O fault can trigger is dead code, delete it.
+
+## Resolved open questions
+
+- **The encoding named by a failed read** (autopilot: recommended answer). A read error
+  names the byte offset, the column and the layout (`vortex.flat`, the only layout that
+  reads a segment). The array encoding is not known yet: it lives in the flatbuffer at the
+  end of the segment that failed to read. A decode error names the array encoding (its id,
+  from the footer's array specs), the column and the offset.
+
+## Notes
+
+- No crasher was found by the fuzzer (several 60 to 90 s runs, seeded with every fixture,
+  with the production flat row limit), so `testdata/fuzz/` stays empty.
+- The systematic damage test checks the allocation limit on every damaged copy: the test
+  runs itself in one process per core (`VORTEX_DAMAGE_SHARD`), each measuring its share of
+  the copies one after the other, since Go only counts allocations for the whole process.

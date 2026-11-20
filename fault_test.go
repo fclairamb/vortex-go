@@ -442,7 +442,7 @@ func TestScanErrorNamesColumnEncodingOffset(t *testing.T) {
 	f = reopen(t, raw, plain)
 	f.r = &testutil.FailAt{R: f.r, N: 1, Err: boom}
 	for _, err := range f.Scan(context.Background(), Query{}, "sorted") {
-		if !errors.Is(err, boom) || err.Error() != `vortex: reading at offset 8: boom, column "sorted"` {
+		if !errors.Is(err, boom) || err.Error() != `vortex: reading at offset 8: boom, column "sorted", layout vortex.flat` {
 			t.Fatalf("err = %v", err)
 		}
 	}
