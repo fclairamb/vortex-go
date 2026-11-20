@@ -12,9 +12,9 @@ const pcoValuesPerPage = 8192
 
 // pcoState is the memory of the Pco encoder of an Encoder.
 type pcoState struct {
-	coder pco.Coder
 	vals  []uint64
 	chunk []byte
+	coder pco.Coder
 }
 
 func (e *Encoder) pcoState() *pcoState {

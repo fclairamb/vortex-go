@@ -20,7 +20,7 @@ var encodingIDs = map[string]string{
 	"bitpacked": "fastlanes.bitpacked", "for": "fastlanes.for", "zigzag": "vortex.zigzag",
 	"rle": "fastlanes.rle", "runend": "vortex.runend", "dict": "vortex.dict",
 	"sequence": "vortex.sequence", "constant": "vortex.constant", "masked": "vortex.masked", "sparse": "vortex.sparse",
-	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "fsst": "vortex.fsst", "onpair": "vortex.onpair", "varbin": "vortex.varbin",
+	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "pco": "vortex.pco", "fsst": "vortex.fsst", "onpair": "vortex.onpair", "varbin": "vortex.varbin",
 	"decimal_byte_parts": "vortex.decimal_byte_parts", "datetimeparts": "vortex.datetimeparts",
 	"bytebool": "vortex.bytebool", "chunked": "vortex.chunked",
 }
@@ -42,6 +42,7 @@ func forcedTypes(enc string) []Kind {
 		switch {
 		case enc == "zigzag" && !isSigned, isFloat && slices.Contains([]string{"bitpacked", "for", "sequence"}, enc):
 		case !isFloat && (enc == "alp" || enc == "alprd"):
+		case enc == "pco" && numberWidth(k) == 1: // Pco does not code 8-bit numbers
 		case enc == "fsst" || enc == "onpair" || enc == "varbin" || enc == "decimal_byte_parts" || enc == "datetimeparts" || enc == "bytebool": // not numbers
 		default:
 			out = append(out, k)
@@ -107,6 +108,7 @@ func forcedColumn(enc string, k Kind, n int, withNulls bool) (Type, Data, []val)
 		"dict":     func(i int) int64 { return int64(i % 13) },
 		"sequence": func(i int) int64 { return int64(i*3 + 5) },
 		"zstd":     func(i int) int64 { return int64(i * 37 % 100) },
+		"pco":      func(i int) int64 { return int64(i*37%100) - 20 },
 		"chunked":  func(i int) int64 { return int64(i*37%100) - 20 },
 		"alp":      func(i int) int64 { return int64(i) },
 		"alprd":    func(i int) int64 { return int64(i) },

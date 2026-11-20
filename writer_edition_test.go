@@ -110,11 +110,13 @@ func TestEditionDropsEncodings(t *testing.T) {
 	const rows = 8192
 	r := rand.New(rand.NewPCG(5, 6))
 	seq, runs, vals, same := make([]int64, rows), make([]float64, rows), make([]float64, rows), make([]int64, rows)
+	keys := make([]int64, rows)
 	nulls := make([]bool, rows)
 	for i := range rows {
 		seq[i], same[i], nulls[i] = int64(3*i), 7, i%10 < 3
 		runs[i] = float64(i/4) * 1.37 * 100003
 		vals[i] = float64(r.IntN(50)) / 3
+		keys[i] = int64(1_000_000 + 3*i + r.IntN(3)) // sorted keys: Pco takes their deltas
 	}
 	runRows := runs[:0:0]
 	for i := 0; i < rows; {
@@ -130,11 +132,11 @@ func TestEditionDropsEncodings(t *testing.T) {
 		urls[i] = fmt.Sprintf("https://%s/p/%d?q=%d&ref=%s", hosts[r.IntN(3)], r.IntN(5000), i%7, strings.Repeat("x", r.IntN(10)))
 	}
 	schema := NewSchema(Field{"seq", Int64Type()}, Field{"masked", Int64Type().AsNullable()}, Field{"runs", Float64Type()},
-		Field{"vals", Float64Type()}, Field{"urls", Utf8Type()})
-	data := []Data{Of(seq), Of(same).Nulls(nulls), Of(runRows), Of(vals), OfStrings(urls)}
-	for _, id := range []string{"vortex.sequence", "vortex.masked", "fastlanes.rle", "vortex.zstd", "vortex.onpair"} {
+		Field{"vals", Float64Type()}, Field{"urls", Utf8Type()}, Field{"keys", Int64Type()})
+	data := []Data{Of(seq), Of(same).Nulls(nulls), Of(runRows), Of(vals), OfStrings(urls), Of(keys)}
+	for _, id := range []string{"vortex.sequence", "vortex.masked", "fastlanes.rle", "vortex.zstd", "vortex.onpair", "vortex.pco"} {
 		mode := Default
-		if id == "vortex.zstd" {
+		if id == "vortex.zstd" || id == "vortex.pco" {
 			mode = Compact // only a candidate of the compact level
 		}
 		lowered(t, &testOptions, WriteOptions{Compression: mode})

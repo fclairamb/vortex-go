@@ -159,3 +159,63 @@ func TestWriteModes(t *testing.T) {
 		t.Errorf("climbing prices: mode %d delta %d", ch.mode, ch.delta.kind)
 	}
 }
+
+// TestWriteNoAllocation: a Coder that has coded something codes the same again with no
+// allocation, whatever the mode.
+func TestWriteNoAllocation(t *testing.T) {
+	rng := rand.New(rand.NewPCG(7, 8))
+	for _, tc := range []struct {
+		typ  Type
+		kind string
+	}{{I64, "step"}, {U32, "random"}, {F64, "decimals"}, {F32, "special"}} {
+		c := new(Coder)
+		vals := gen(tc.kind, tc.typ, 20000, rng)
+		call := func() { c.Compress(tc.typ, vals, 8192) }
+		call()
+		if got := testing.AllocsPerRun(5, call); got != 0 {
+			t.Errorf("%s %s: %v allocations", tc.typ, tc.kind, got)
+		}
+	}
+}
+
+// TestWriteSize: the bits of a column that Pco is made for are far fewer than its plain bytes.
+func TestWriteSize(t *testing.T) {
+	rng := rand.New(rand.NewPCG(9, 10))
+	c := new(Coder)
+	for kind, limit := range map[string]int{"step": 100, "sorted": 6000, "same": 100, "decimals": 38000} {
+		vals := gen(kind, F64, 20000, rng)
+		if kind != "decimals" {
+			vals = gen(kind, I64, 20000, rng)
+		}
+		size := 0
+		for _, ch := range c.Compress(map[bool]Type{true: F64, false: I64}[kind == "decimals"], vals, 8192) {
+			size += len(ch.Meta)
+			for _, p := range ch.Pages {
+				size += len(p)
+			}
+		}
+		if size > limit {
+			t.Errorf("%s: %d bytes for 20000 numbers, want at most %d", kind, size, limit)
+		}
+	}
+}
+
+// FuzzWriteRoundTrip codes numbers of any type, in pages of any size, and reads them back.
+func FuzzWriteRoundTrip(f *testing.F) {
+	f.Add(uint8(3), []byte{1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0})
+	f.Add(uint8(0x3a), []byte{0, 0, 0, 0, 0, 0, 0xf8, 0x7f, 0, 0, 0, 0, 0, 0, 0, 0x80})
+	f.Fuzz(func(t *testing.T, sel uint8, data []byte) {
+		typ := allTypes[int(sel&15)%len(allTypes)]
+		w := typ.Bits() / 8
+		vals := make([]uint64, len(data)/w)
+		for i := range vals {
+			for b := 0; b < w; b++ {
+				vals[i] |= uint64(data[i*w+b]) << (8 * b)
+			}
+		}
+		if len(vals) == 0 {
+			return
+		}
+		roundTrip(t, new(Coder), typ, vals, []int{1, 2, 7, 8192}[sel>>6])
+	})
+}

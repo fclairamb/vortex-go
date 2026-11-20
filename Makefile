@@ -63,6 +63,7 @@ bigfile:
 FUZZTIME ?= 30s
 fuzz:
 	go test -run '^$$' -fuzz '^FuzzOpenScan$$' -fuzztime $(FUZZTIME) -fuzzminimizetime 10s .
+	go test -run '^$$' -fuzz '^FuzzWriteRoundTrip$$' -fuzztime $(FUZZTIME) -fuzzminimizetime 10s ./internal/pco
 
 # The expected values of every release in .cache/fixtures, with the vortex-data of that
 # release (the pinned one when it cannot be installed, see .cache/fixtures/<version>/ORACLE).

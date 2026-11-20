@@ -114,15 +114,14 @@ type varEnc struct {
 	offV []uint64
 	ansN []uint8
 	offN []uint8
-	init [interleaving]uint32
 	table
+	init [interleaving]uint32
 }
 
 type seg struct{ start, n int }
 
 // Coder codes numbers. The memory it uses is kept from one call to the next.
 type Coder struct {
-	t      Type
 	w      bitWriter
 	out    []byte
 	marks  []int
@@ -135,12 +134,13 @@ type Coder struct {
 	sorted []uint64
 	segs   []seg
 	sample []seg
-	vars   [2]varEnc
 	// the training of the bins
 	upos []int
 	dp   []float64
 	from []int32
 	cuts []int32
+	vars [2]varEnc
+	t    Type
 }
 
 // Compress codes the numbers vals, the bits of numbers of type t in their low bits, in chunks
@@ -414,17 +414,10 @@ func upper(s []uint64, x uint64) int {
 	return lo
 }
 
-// train makes the bins and the tANS table of the sorted latents s, and returns the bits they
-// are estimated to take.
-func (c *Coder) train(tb *table, s []uint64, nb int) float64 {
+// unoptimized cuts the sorted latents s into bins of about the same number of latents, kept
+// whole around the values that repeat: their bounds are in upos.
+func (c *Coder) unoptimized(s []uint64) {
 	m := len(s)
-	nLog := 0
-	if m > 1 {
-		nLog = bits.Len(uint(m - 1))
-	}
-	est := min(maxANSEst, nLog)
-	meta := float64(est + nb + bits.Len(uint(nb)))
-	// the bins of about the same number of latents, kept whole around the values that repeat
 	c.upos = append(c.upos[:0], 0)
 	last := 0
 	for k := 1; k < maxBins; k++ {
@@ -447,6 +440,19 @@ func (c *Coder) train(tb *table, s []uint64, nb int) float64 {
 		last = p
 	}
 	c.upos = append(c.upos, m)
+}
+
+// train makes the bins and the tANS table of the sorted latents s, and returns the bits they
+// are estimated to take.
+func (c *Coder) train(tb *table, s []uint64, nb int) float64 {
+	m := len(s)
+	nLog := 0
+	if m > 1 {
+		nLog = bits.Len(uint(m - 1))
+	}
+	est := min(maxANSEst, nLog)
+	meta := float64(est + nb + bits.Len(uint(nb)))
+	c.unoptimized(s)
 	// the cut of those that takes the fewest bits
 	nu := len(c.upos) - 1
 	c.dp, c.from = grow(c.dp, nu+1), grow(c.from, nu+1)
