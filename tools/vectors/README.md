@@ -11,7 +11,7 @@ cargo run --release -- ../../testdata/vectors
 ```
 
 Per encoding (`bitpacked`, `for`, `zigzag`, `rle`, `runend`, `dict`, `sequence`, `sparse`,
-`constant`) and per type, a file of vectors, one per line:
+`constant`, `alp`, `alprd`, `fsst`) and per type, a file of vectors, one per line:
 
 - `input`: the values, little-endian hex (`strings`: one hex string per row, for the
   dictionary of strings and binary); `valid`: the validity bitmap, least significant bit
@@ -24,4 +24,11 @@ Per encoding (`bitpacked`, `for`, `zigzag`, `rle`, `runend`, `dict`, `sequence`,
 The inputs come from a seeded generator, so a run gives the same files. Sparse inputs are
 chosen so that the most frequent value is unique: the reference picks among equal counts in
 hash order. `go test ./internal/encode` reads the files (`TestVectorsBytes`,
-`TestVectorsDecode`). Bump the version in `Cargo.toml` with `.vortex-version`.
+`TestVectorsDecode`).
+
+The vectors of floats and strings are `alp` (the exponents given in `params` as `alp_e` and
+`alp_f`, or the ones the search picks, `best`), `alprd` (the search, or a cut given as
+`right_bits` and `dict`) and `fsst` (the table the reference trains, which is in the output:
+the Go test encodes the strings with it and with its own training, and both must give the
+same bytes). Zstd has no vectors: the bytes of a frame depend on the compressor, and the
+reference reader reading ours is what `make interop` checks. Bump the version in `Cargo.toml` with `.vortex-version`.

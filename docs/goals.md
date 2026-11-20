@@ -60,7 +60,24 @@ Writer, done when:
 - The compressor picks encodings per chunk, like the reference one, and our files are at
   most 10% larger than the reference writer's on TPC-H and ClickBench.
 
-The writer does not have to emit every encoding. The reader has to decode every one.
+The writer does not have to emit every encoding. The reader has to decode every one. These
+are decoded and never written, each for a reason:
+
+- `vortex.pco`: no Pco encoder in this version. It is the largest format of the edition, and
+  compact mode uses `vortex.zstd` for numbers instead. The compressor measures what that costs
+  in file size against the reference.
+- `vortex.onpair`: a second string compressor next to FSST. This version writes FSST only; the
+  compressor can add OnPair if it saves bytes on the benchmarks against the reference.
+- `vortex.variant`, `vortex.parquet.variant`: the arrays of the Variant type, which the writer
+  has no column for yet. They are read for the files that other writers make.
+- `vortex.masked`: puts a validity over an array of another encoding. The encoders put the
+  validity on the array itself, so a column never needs it.
+- `vortex.bytebool`: bools one byte each, a wider form of `vortex.bool`, which holds the same
+  values in a bit each.
+
+What the writer does emit, with the encoders of `internal/encode`: bit-packing, frame of
+reference, zigzag, run-length, run-end, dictionary, sequence, constant, sparse, ALP, ALP-RD,
+FSST, decimal byte parts, datetime parts and zstd.
 
 The support matrix in the README is generated from the code, never written by hand.
 
