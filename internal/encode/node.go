@@ -6,6 +6,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"github.com/fclairamb/vortex-go/internal/edition"
 	"github.com/fclairamb/vortex-go/internal/protowire"
 	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
@@ -319,3 +320,14 @@ func (e *Encoder) leafPadded(raw []byte, width int, nulls []bool, rows, padded i
 	n.kid(e.validity(nulls, rows, padded))
 	return n
 }
+
+// Encodings lists the identifiers of the arrays the encoders make.
+func Encodings() []string {
+	return []string{
+		IDPrimitive, IDBool, IDBitPacked, IDFoR, IDRLE, IDZigZag, IDRunEnd, IDDict, IDSequence,
+		IDConstant, IDSparse, IDVarBinView, IDALP, IDALPRD, IDFSST, IDDecimalBytes,
+		IDDateTimeParts, IDZstd,
+	}
+}
+
+var _ = edition.RegisterWritten(edition.KindArray, Encodings)

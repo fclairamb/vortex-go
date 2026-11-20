@@ -8,6 +8,7 @@ import (
 	"slices"
 	"unicode/utf8"
 
+	"github.com/fclairamb/vortex-go/internal/edition"
 	"github.com/fclairamb/vortex-go/internal/protowire"
 )
 
@@ -440,3 +441,33 @@ func zonedMetadata(zoneLen int, specs []aggSpec) []byte {
 	}
 	return meta
 }
+
+// writtenStatistics lists the aggregates the writer puts in the zone maps.
+func writtenStatistics() []string {
+	return []string{aggBoundedMax, aggBoundedMin, aggMax, aggMin, aggNullCount, aggNanCount}
+}
+
+// writtenLayouts lists the layouts the writer makes.
+func writtenLayouts() []string {
+	return []string{"vortex.chunked", "vortex.dict", "vortex.flat", "vortex.struct", "vortex.zoned"}
+}
+
+// writtenArrays lists the arrays the writer makes without an encoder: the plain ones.
+func writtenArrays() []string {
+	return []string{
+		"vortex.bool", "vortex.decimal", "vortex.ext", "vortex.fixed_size_list", "vortex.listview",
+		"vortex.null", "vortex.struct", "vortex.varbinview",
+	}
+}
+
+// writtenDTypes lists the extension types the writer makes.
+func writtenDTypes() []string {
+	return []string{"vortex.date", "vortex.time", "vortex.timestamp", "vortex.uuid"}
+}
+
+var (
+	_ = edition.RegisterWritten(edition.KindAggregate, writtenStatistics)
+	_ = edition.RegisterWritten(edition.KindLayout, writtenLayouts)
+	_ = edition.RegisterWritten(edition.KindArray, writtenArrays)
+	_ = edition.RegisterWritten(edition.KindDType, writtenDTypes)
+)

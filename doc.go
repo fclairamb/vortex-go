@@ -11,3 +11,4 @@
 package vortex
 
 //go:generate go test -run=^TestReadmeCompat$ -update-readme .
+//go:generate go test ./internal/gen -run=^TestGenerate$ -update

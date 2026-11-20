@@ -2,12 +2,6 @@
 
 A pure Go reader and writer for the [Vortex](https://vortex.dev) columnar file format.
 
-**Status: design only. Nothing is implemented yet.**
-
-<!-- compat:begin -->
-Reads the fixtures of every published release, 28 of them, from 0.64.0 to 0.93.0, checked every night against the reference reader.
-<!-- compat:end -->
-
 ## Goals
 
 Ranked. The details and the "done when" lists are in [docs/goals.md](docs/goals.md).
@@ -19,30 +13,127 @@ Ranked. The details and the "done when" lists are in [docs/goals.md](docs/goals.
 5. **Self-contained.** No cgo. The standard library, plus `klauspost/compress` for zstd.
 6. **100% statement coverage.** No exclusion.
 
-## What it will look like
+## Install
 
-```go
-f, err := vortex.OpenFile("trades.vortex")
-if err != nil {
-    return err
-}
-defer f.Close()
-
-type Trade struct {
-    ID    int64   `vortex:"id"`
-    Price float64 `vortex:"price"`
-}
-
-q := vortex.Query{Filter: vortex.Col("price").Gt(100)}
-for t, err := range vortex.Rows[Trade](ctx, f, q) {
-    if err != nil {
-        return err
-    }
-    use(t)
-}
+```bash
+go get github.com/fclairamb/vortex-go
 ```
 
-The full interface is in [docs/interface.md](docs/interface.md).
+Go 1.26 or later. The only dependency is `klauspost/compress`, for zstd.
+
+## Example
+
+Read the rows of a file into structs. This block is copied from `ExampleRows` in
+[example_test.go](example_test.go) by `go generate`, and a test keeps it at 10 lines or fewer.
+
+<!-- example:begin -->
+```go
+f, err := vortex.OpenFile("testdata/fixtures/0.93.0/extra/default_ints.vortex")
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+type Row struct {
+    Sorted sql.Null[int64] `vortex:"sorted"`
+}
+for r, err := range vortex.Rows[Row](context.Background(), f, vortex.Query{Rows: vortex.Range{End: 3}}) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(r.Sorted.V)
+}
+```
+<!-- example:end -->
+
+Columns, filters, and writing (`NewWriter` for columns, `NewRowWriter` for structs) have an
+`Example` function each. The API is in [api.txt](api.txt), the reasons for its shape in
+[docs/interface.md](docs/interface.md).
+
+## Releases read
+
+The files of every published release are read, and checked against the reference reader.
+
+<!-- compat:begin -->
+Reads the fixtures of every published release, 28 of them, from 0.64.0 to 0.93.0, checked every night against the reference reader.
+<!-- compat:end -->
+
+## Support matrix
+
+What the target edition of the pinned release contains, and what this package reads and
+writes. Generated from the decoder and encoder registries, never written by hand.
+
+<!-- matrix:begin -->
+| Kind | Identifier | Read | Written |
+|---|---|---|---|
+| aggregate | `vortex.bounded_max` | yes | yes |
+| aggregate | `vortex.bounded_min` | yes | yes |
+| aggregate | `vortex.max` | yes | yes |
+| aggregate | `vortex.min` | yes | yes |
+| aggregate | `vortex.nan_count` | yes | yes |
+| aggregate | `vortex.null_count` | yes | yes |
+| array | `fastlanes.bitpacked` | yes | yes |
+| array | `fastlanes.for` | yes | yes |
+| array | `fastlanes.rle` | yes | yes |
+| array | `vortex.alp` | yes | yes |
+| array | `vortex.alprd` | yes | yes |
+| array | `vortex.bool` | yes | yes |
+| array | `vortex.bytebool` | yes | no |
+| array | `vortex.chunked` | yes | no |
+| array | `vortex.constant` | yes | yes |
+| array | `vortex.datetimeparts` | yes | yes |
+| array | `vortex.decimal` | yes | yes |
+| array | `vortex.decimal_byte_parts` | yes | yes |
+| array | `vortex.dict` | yes | yes |
+| array | `vortex.ext` | yes | yes |
+| array | `vortex.fixed_size_list` | yes | yes |
+| array | `vortex.fsst` | yes | yes |
+| array | `vortex.list` | yes | no |
+| array | `vortex.listview` | yes | yes |
+| array | `vortex.map` | yes | no |
+| array | `vortex.masked` | yes | no |
+| array | `vortex.null` | yes | yes |
+| array | `vortex.onpair` | yes | no |
+| array | `vortex.parquet.variant` | yes | no |
+| array | `vortex.pco` | yes | no |
+| array | `vortex.primitive` | yes | yes |
+| array | `vortex.runend` | yes | yes |
+| array | `vortex.sequence` | yes | yes |
+| array | `vortex.sparse` | yes | yes |
+| array | `vortex.struct` | yes | yes |
+| array | `vortex.varbin` | yes | no |
+| array | `vortex.varbinview` | yes | yes |
+| array | `vortex.variant` | yes | no |
+| array | `vortex.zigzag` | yes | yes |
+| array | `vortex.zstd` | yes | yes |
+| dtype | `vortex.date` | yes | yes |
+| dtype | `vortex.time` | yes | yes |
+| dtype | `vortex.timestamp` | yes | yes |
+| dtype | `vortex.uuid` | yes | yes |
+| layout | `vortex.chunked` | yes | yes |
+| layout | `vortex.dict` | yes | yes |
+| layout | `vortex.flat` | yes | yes |
+| layout | `vortex.stats` | yes | no |
+| layout | `vortex.struct` | yes | yes |
+| layout | `vortex.zoned` | yes | yes |
+<!-- matrix:end -->
+
+Some identifiers are read and never written, each for a reason: see the writer section of
+[docs/goals.md](docs/goals.md#3-complete).
+
+## Speed
+
+[docs/benchmarks.md](docs/benchmarks.md) has the numbers, the machine and the ratio to
+parquet-go and to the Rust reference. `make bench` runs them.
+
+## Limits
+
+- No query engine: projection and filters only, no joins, no aggregations.
+- No Arrow in the core module, no `preview` or `unstable` edition, no third-party encodings.
+- Our files are not byte-identical to the Rust writer's: the format leaves the choice of
+  encodings to the writer. They are at most 10% larger on TPC-H and ClickBench.
+- No Pco and no OnPair encoder: both are read, neither is written.
+
+See the non-goals in [docs/goals.md](docs/goals.md#non-goals).
 
 ## How it is tested
 

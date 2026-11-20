@@ -138,12 +138,18 @@ func TestSeenCheckCatchesAMissingFixture(t *testing.T) {
 }
 
 func TestSupportedMatchesRegistries(t *testing.T) {
-	var n int
+	var n, written int
 	for _, s := range edition.Supported() {
 		n++
+		if s.Written {
+			written++
+		}
 		if !s.Decoded {
 			t.Errorf("%s %s is not decoded", s.Kind, s.ID)
 		}
+	}
+	if written < 20 {
+		t.Errorf("only %d members are written", written)
 	}
 	if n != len(edition.Members()) {
 		t.Errorf("%d supports for %d members", n, len(edition.Members()))
