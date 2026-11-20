@@ -30,5 +30,9 @@ The vectors of floats and strings are `alp` (the exponents given in `params` as 
 `alp_f`, or the ones the search picks, `best`), `alprd` (the search, or a cut given as
 `right_bits` and `dict`) and `fsst` (the table the reference trains, which is in the output:
 the Go test encodes the strings with it and with its own training, and both must give the
-same bytes). Zstd has no vectors: the bytes of a frame depend on the compressor, and the
+same bytes). `fsst/default_mixed.json` is not a vector: it holds the sizes of what the reference's FSST makes of
+the string columns of the `default_mixed` fixture, for the compression ratio test of the root
+package (`TestFSSTCompressionRatio`). Its strings reach the program in a file: `MIXED_STRINGS_OUT=/tmp/s.json
+go test -run TestFSSTCompressionRatio .` writes it, then `MIXED_STRINGS=/tmp/s.json cargo run
+--release -- ../../testdata/vectors` makes the sizes. Zstd has no vectors: the bytes of a frame depend on the compressor, and the
 reference reader reading ours is what `make interop` checks. Bump the version in `Cargo.toml` with `.vortex-version`.

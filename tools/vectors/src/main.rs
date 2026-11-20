@@ -96,7 +96,7 @@ fn main() {
         let d = dir.join(&name);
         fs::create_dir_all(&d).unwrap();
         for (file, v) in vectors {
-            let s = render(&v);
+            let s = if v.get("vectors").is_some() { render(&v) } else { serde_json::to_string(&v).unwrap() + "\n" };
             fs::write(d.join(format!("{file}.json")), s).unwrap();
         }
     }

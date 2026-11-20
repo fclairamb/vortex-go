@@ -224,6 +224,42 @@ fn fsst_strings(ctx: &Ctx) -> Files {
     files
 }
 
+/// The size of the buffers of a serialized array and of its children.
+fn node_size(v: &Value) -> usize {
+    let own: usize = v["buffers"].as_array().unwrap().iter().map(|b| b.as_str().unwrap().len() / 2).sum();
+    own + v["children"].as_array().unwrap().iter().map(node_size).sum::<usize>()
+}
+
+/// What the reference's FSST makes of the strings of the default_mixed fixture, which the Go test
+/// writes to the file MIXED_STRINGS names (see fsst_mixed_test.go): the sizes of the arrays. It
+/// writes nothing when the variable is not set, and leaves the vectors of the last run.
+fn default_mixed(ctx: &Ctx) -> Option<Files> {
+    let path = std::env::var("MIXED_STRINGS").ok()?;
+    let input: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+    let mut columns = serde_json::Map::new();
+    for (name, rows) in input["strings"].as_object().unwrap() {
+        let valid: Vec<bool> = input["valid"][name].as_array().unwrap().iter().map(|b| b.as_bool().unwrap()).collect();
+        let data: Vec<Vec<u8>> = rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| {
+                let h = h.as_str().unwrap();
+                (0..h.len() / 2).map(|i| u8::from_str_radix(&h[2 * i..2 * i + 2], 16).unwrap()).collect()
+            })
+            .collect();
+        let a: ArrayRef = VarBinViewArray::from_iter_nullable_str(
+            data.iter().zip(&valid).map(|(s, ok)| ok.then(|| std::str::from_utf8(s).unwrap())),
+        )
+        .into_array();
+        let c = fsst_train_compressor(&a, &mut ctx.exec()).unwrap();
+        let x = fsst_compress(&a, &c, &mut ctx.exec()).unwrap();
+        let bytes: usize = data.iter().zip(&valid).filter(|(_, ok)| **ok).map(|(s, _)| s.len()).sum();
+        columns.insert(name.clone(), json!({"rows": data.len(), "bytes": bytes, "reference": node_size(&ctx.dump(&x.into_array()))}));
+    }
+    Some(vec![("default_mixed".to_string(), json!({"columns": columns}))])
+}
+
 pub fn all(ctx: &Ctx) -> Vec<(String, Files)> {
     let f = |enc: &str, per: Vec<(&str, Vec<Value>)>| -> (String, Files) {
         (enc.to_string(), per.into_iter().map(|(t, v)| file(enc, t, v)).collect())
@@ -233,4 +269,12 @@ pub fn all(ctx: &Ctx) -> Vec<(String, Files)> {
         f("alprd", vec![("f32", alprd!(f32, gen32, 32u8, ctx)), ("f64", alprd!(f64, gen64, 64u8, ctx))]),
         ("fsst".to_string(), fsst_strings(ctx)),
     ]
+    .into_iter()
+    .map(|(n, mut files)| {
+        if n == "fsst" {
+            files.extend(default_mixed(ctx).unwrap_or_default());
+        }
+        (n, files)
+    })
+    .collect()
 }
