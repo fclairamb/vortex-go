@@ -253,10 +253,12 @@ func (l *loader) retire(u *unit) {
 	l.retired = append(l.retired, u)
 }
 
-// recycle releases the units retired by the previous batch.
+// recycle releases the units retired by the previous batch, and the rows their flats
+// returned last.
 func (l *loader) recycle() {
 	for _, u := range l.retired {
 		u.release()
+		u.fl.slot = array.Array{}
 	}
 	l.retired = l.retired[:0]
 }

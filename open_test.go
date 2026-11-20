@@ -565,7 +565,8 @@ func TestOpenReadErrors(t *testing.T) {
 	if _, err := Open(bytes.NewReader(raw[:50]), 60); !errors.Is(err, ErrCorrupt) {
 		t.Fatal(err)
 	}
-	if _, err := Open(&shortReader{raw}, 100); !errors.Is(err, ErrCorrupt) {
+	// One that returns a byte less each time, until it returns none and no error.
+	if _, err := Open(&shortReader{raw}, 100); !errors.Is(err, io.ErrNoProgress) {
 		t.Fatal(err)
 	}
 }

@@ -91,16 +91,24 @@ func Open(r io.ReaderAt, size int64) (*File, error) {
 	return f, nil
 }
 
-// readFull reads len(b) bytes at off, a short read being corruption.
+// readFull reads len(b) bytes at off. A reader that returns fewer bytes without an error is
+// called again for the rest; the end of the file before the last byte is corruption.
 func readFull(r io.ReaderAt, b []byte, off int64) error {
-	n, err := r.ReadAt(b, off)
-	if n == len(b) {
-		return nil
+	for done := 0; done < len(b); {
+		n, err := r.ReadAt(b[done:], off+int64(done))
+		done += n
+		switch {
+		case done == len(b):
+		case err == nil && n > 0:
+		case err == nil:
+			return fmt.Errorf("vortex: reading at offset %d: %w", off+int64(done), io.ErrNoProgress)
+		case errors.Is(err, io.EOF):
+			return corrupt(off+int64(done), "file ends before byte %d", off+int64(len(b)))
+		default:
+			return fmt.Errorf("vortex: reading at offset %d: %w", off+int64(done), err)
+		}
 	}
-	if err == nil || errors.Is(err, io.EOF) {
-		return corrupt(off+int64(n), "file ends before byte %d", off+int64(len(b)))
-	}
-	return fmt.Errorf("vortex: reading at offset %d: %w", off, err)
+	return nil
 }
 
 func openTail(r io.ReaderAt, size int64, tail []byte) (*File, error) {

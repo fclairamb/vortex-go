@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream
+.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -47,6 +47,16 @@ ORACLE = uv run --with vortex-data==$$(cat .vortex-version) --with pyarrow pytho
 oracle:
 	$(ORACLE) tools/oracle/genfixtures.py
 	find testdata/fixtures/$$(cat .vortex-version) testdata/fixtures/compat -name '*.vortex' | sort | xargs $(ORACLE) tools/oracle/oracle.py expected
+
+# The 2 million rows file of the peak memory test, in .cache/ (not committed). Needs uv.
+bigfile:
+	$(ORACLE) tools/oracle/genbig.py
+
+# Open and scan arbitrary bytes for FUZZTIME. A crasher lands in testdata/fuzz/, commit it
+# with its fix.
+FUZZTIME ?= 30s
+fuzz:
+	go test -run '^$$' -fuzz '^FuzzOpenScan$$' -fuzztime $(FUZZTIME) .
 
 # Everything a .vortex-version bump needs.
 upstream: fixtures edition oracle
