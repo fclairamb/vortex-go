@@ -378,10 +378,14 @@ type picked struct {
 	elems          []int // the elements of the rows kept of a fixed-size list
 	valid          array.Bitmap
 	arr            array.Array
+	// runs, parts and vdata are a Variant: a part per run of consecutive rows kept.
+	runs  []array.Array
+	parts []*array.Array
+	vdata array.VariantData
 }
 
 // gather returns the rows sel (ascending) of a. The bytes and the elements that rows point to
-// are shared. It allocates nothing once its buffers are large enough, except for a Variant.
+// are shared. It allocates nothing once its buffers are large enough.
 func (p *picked) gather(a *array.Array, sel []int) *array.Array {
 	out := &p.arr
 	*out = *a
@@ -413,13 +417,34 @@ func (p *picked) gather(a *array.Array, sel []int) *array.Array {
 	case array.FixedSizeList, array.Struct:
 		p.gatherNested(a, sel)
 	case array.Variant:
-		var parts []*array.Array
-		for _, r := range sel {
-			parts = append(parts, a.Slice(r, 1))
-		}
-		return array.Concat(a.Type, parts)
+		p.gatherVariant(a, sel)
 	}
 	return out
+}
+
+// gatherVariant makes p.arr the rows sel of a Variant array: a chunked one whose parts are
+// the runs of consecutive rows of sel, sliced from a into buffers p keeps.
+func (p *picked) gatherVariant(a *array.Array, sel []int) {
+	n := 0
+	for i := range sel {
+		if i == 0 || sel[i] != sel[i-1]+1 {
+			n++
+		}
+	}
+	if cap(p.runs) < n {
+		p.runs = make([]array.Array, n)
+	}
+	p.runs, p.parts = p.runs[:n], p.parts[:0]
+	for i, k := 0, 0; i < len(sel); k++ {
+		j := i + 1
+		for j < len(sel) && sel[j] == sel[j-1]+1 {
+			j++
+		}
+		p.parts = append(p.parts, a.SliceInto(&p.runs[k], sel[i], j-i))
+		i = j
+	}
+	p.vdata = array.VariantData{Parts: p.parts}
+	p.arr.Var, p.arr.VOff = &p.vdata, 0
 }
 
 // gatherNested gathers the children of a fixed-size list or of a struct into p.arr.

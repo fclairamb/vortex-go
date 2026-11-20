@@ -1,6 +1,7 @@
 package vortex
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
@@ -55,6 +56,63 @@ func variantFile() []byte {
 				aNode(aVarBinView, []uint16{2}))),
 		abuf{data: bits(true, true, true, false, true)}, views(meta, meta, meta, meta, meta), views(values...))
 	return buildFile(dtype, layoutTab(lFlat, 5, []uint32{0}), arr)
+}
+
+// bigVariantFile is a file of {k: i64, r: i64, v: variant?} on rows rows: k counts from 0, r
+// is (37*k)%100, v is the int8 k%100, null on every seventh row. Each column is one flat
+// segment.
+func bigVariantFile(rows int) []byte {
+	dtype := structType(false, []string{"k", "r", "v"}, prim(7, false), prim(7, false), dtypeTab(11, fbtest.Tab{0: fbtest.U8(1)}))
+	ks, rs := make([]uint64, rows), make([]uint64, rows)
+	valid := make([]bool, rows)
+	metas, values := make([][]byte, rows), make([][]byte, rows)
+	for i := range rows {
+		ks[i], rs[i], valid[i] = uint64(i), uint64(37*i%100), i%7 != 3
+		metas[i], values[i] = []byte{1, 0, 0}, []byte{3 << 2, byte(i % 100)}
+	}
+	v := aSeg(vnode(aParquetVariant, []byte{0x08, 0x01}, nil,
+		aNode(aBool, []uint16{0}),
+		aNode(aVarBinView, []uint16{1}),
+		aNode(aVarBinView, []uint16{2})),
+		abuf{data: bits(valid...)}, views(metas...), views(values...))
+	layout := layoutTab(lStruct, uint64(rows), nil,
+		layoutTab(lFlat, uint64(rows), []uint32{0}), layoutTab(lFlat, uint64(rows), []uint32{1}),
+		layoutTab(lFlat, uint64(rows), []uint32{2}))
+	return buildFile(dtype, layout, primSeg(8, ks...), primSeg(8, rs...), v)
+}
+
+func TestBigVariantFile(t *testing.T) {
+	f, err := open(bigVariantFile(1000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := 0
+	for b, err := range f.Scan(context.Background(), Query{Filter: And(Col("k").Ge(500), Col("r").Lt(50))}, "k", "v") {
+		if err != nil {
+			t.Fatal(err)
+		}
+		ks, err := Values[int64](b.Col(0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, k := range ks {
+			if k < 500 || 37*k%100 >= 50 {
+				t.Fatalf("row %d kept", k)
+			}
+			got, err := b.Col(1).Variant(i)
+			var want any = int64(k % 100)
+			if k%7 == 3 {
+				want = nil
+			}
+			if err != nil || !reflect.DeepEqual(got, want) {
+				t.Fatalf("row %d = %#v, %v, want %#v", k, got, err, want)
+			}
+			n++
+		}
+	}
+	if n != 250 {
+		t.Fatalf("%d rows", n)
+	}
 }
 
 func TestVariantColumn(t *testing.T) {

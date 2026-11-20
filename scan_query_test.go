@@ -897,6 +897,18 @@ func TestScanAllocationsPerBatch(t *testing.T) {
 			t.Errorf("%s allocates %v times a batch", describe(e), got)
 		}
 	}
+	vf, err := open(bigVariantFile(20000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := perBatch(t, vf, Query{}, "k", "v"); got != 0 {
+		t.Errorf("a variant scan allocates %v times a batch", got)
+	}
+	for _, e := range []Expr{Col("k").Ge(0), Col("r").Lt(50), And(Col("k").Lt(15000), Not(Col("r").Eq(3)))} {
+		if got := perBatch(t, vf, Query{Filter: e}, "k", "v"); got != 0 {
+			t.Errorf("a variant scan with %s allocates %v times a batch", describe(e), got)
+		}
+	}
 }
 
 // ----- pruning -----
