@@ -100,8 +100,8 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           git worktree add --detach "$RUNNER_TEMP/main" "origin/$BASE_REF"
-          (cd "$RUNNER_TEMP/main" && go test -run '^$' -bench . -benchmem -count 6 ./... > "$RUNNER_TEMP/old.txt" || true)
-          go test -run '^$' -bench . -benchmem -count 6 ./... > "$RUNNER_TEMP/new.txt"
+          # Interleaved, so that the drift of the runner hits both sides alike.
+          scripts/bench-pr.sh "$RUNNER_TEMP/main" . "$RUNNER_TEMP"
           # go run pkg@version does not touch go.mod: benchstat is not a dependency. The text
           # table goes to the log, the CSV to bench/cmd/benchcomment, which writes the comment.
           benchstat='go run golang.org/x/perf/cmd/benchstat@latest'

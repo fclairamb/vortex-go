@@ -4,7 +4,7 @@
 // find the comment again and edit it instead of adding a new one.
 //
 //	benchstat -format csv main=old.txt PR=new.txt > bench.csv
-//	benchcomment -in bench.csv -head <sha> -base <sha> -base-ref main -repo <url> -run <url> > comment.md
+//	benchcomment -in bench.csv -head <sha> -base <sha> -repo <url> -run <url> [-threshold 5] > comment.md
 package main
 
 import (
@@ -35,10 +35,16 @@ func main() {
 	}
 }
 
-// Meta is what the comment says about the run.
+// Meta is what the comment says about the run, and the noise threshold.
 type Meta struct {
 	Head, Base, BaseRef, Repo, Run string
+	// Threshold, in percent: a significant change smaller than this counts as unchanged. A
+	// shared runner moves by a few percent from one run to the next.
+	Threshold float64
 }
+
+// counts says whether a row is a change: significant for benchstat and above the threshold.
+func (m *Meta) counts(row *Row) bool { return row.Significant && math.Abs(row.Delta) >= m.Threshold }
 
 func run(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("benchcomment", flag.ContinueOnError)
@@ -49,6 +55,7 @@ func run(args []string, out io.Writer) error {
 	fs.StringVar(&m.BaseRef, "base-ref", "main", "name of the base branch")
 	fs.StringVar(&m.Repo, "repo", "", "URL of the repository, for the commit links")
 	fs.StringVar(&m.Run, "run", "", "URL of the workflow run")
+	fs.Float64Var(&m.Threshold, "threshold", 5, "smallest change that counts, in percent")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -236,16 +243,19 @@ func Render(r *Result, m *Meta) string {
 	if m.Run != "" {
 		fmt.Fprintf(&b, " [Run](%s).", m.Run)
 	}
+	if m.Threshold > 0 {
+		fmt.Fprintf(&b, " Changes under %g%% are counted as noise.", m.Threshold)
+	}
 	b.WriteString("\n\n")
 
 	if !r.Compare {
 		fmt.Fprintf(&b, "> [!WARNING]\n> `%s` gave no result, there is nothing to compare with.\n\n", m.BaseRef)
 	} else {
-		summary(&b, r, prefix)
-		changes(&b, r, name)
+		summary(&b, r, m, prefix)
+		changes(&b, r, m, name)
 	}
 
-	all := details(r)
+	all := details(r, m)
 	if b.Len()+len(all) > maxBody {
 		all = "_Every result is in the log of the run: it does not fit in a comment._\n"
 	}
@@ -264,13 +274,13 @@ func commit(m *Meta, sha string) string {
 	return fmt.Sprintf("[`%s`](%s/commit/%s)", short, m.Repo, sha)
 }
 
-func summary(b *strings.Builder, r *Result, prefix func(string) string) {
+func summary(b *strings.Builder, r *Result, m *Meta, prefix func(string) string) {
 	b.WriteString("| Metric | Geomean | Better | Worse | Unchanged |\n|---|---:|---:|---:|---:|\n")
 	for _, t := range r.Tables {
 		var up, down, same int
 		for _, row := range t.Rows {
 			switch {
-			case !row.Significant:
+			case !m.counts(&row):
 				same++
 			case better(t.Unit, row.Delta):
 				up++
@@ -279,7 +289,7 @@ func summary(b *strings.Builder, r *Result, prefix func(string) string) {
 			}
 		}
 		geo := t.Geomean
-		if v, err := strconv.ParseFloat(strings.TrimSuffix(geo, "%"), 64); err == nil && math.Abs(v) >= 1 {
+		if v, err := strconv.ParseFloat(strings.TrimSuffix(geo, "%"), 64); err == nil && math.Abs(v) >= max(m.Threshold, 1) {
 			geo = mark(t.Unit, v) + " " + geo
 		}
 		fmt.Fprintf(b, "| %s%s | %s | %s | %s | %d |\n", prefix(t.Pkg), t.Unit, geo, count(up), count(down), same)
@@ -306,9 +316,9 @@ type change struct {
 	row Row
 }
 
-// changes lists the significant ones, the regressions first, the largest first. The throughputs
+// changes lists the ones that count, the regressions first, the largest first. The throughputs
 // mirror sec/op and are left out.
-func changes(b *strings.Builder, r *Result, name func(*Table, Row) string) {
+func changes(b *strings.Builder, r *Result, m *Meta, name func(*Table, Row) string) {
 	var worse, good []change
 	for _, t := range r.Tables {
 		if higherIsBetter(t.Unit) {
@@ -316,7 +326,7 @@ func changes(b *strings.Builder, r *Result, name func(*Table, Row) string) {
 		}
 		for _, row := range t.Rows {
 			switch {
-			case !row.Significant:
+			case !m.counts(&row):
 			case better(t.Unit, row.Delta):
 				good = append(good, change{t, row})
 			default:
@@ -351,7 +361,7 @@ func changes(b *strings.Builder, r *Result, name func(*Table, Row) string) {
 	section("Better", good)
 }
 
-func details(r *Result) string {
+func details(r *Result, m *Meta) string {
 	var b strings.Builder
 	prefix := pkgPrefix(r)
 	b.WriteString("<details><summary>Every result</summary>\n\n")
@@ -361,8 +371,10 @@ func details(r *Result) string {
 		for _, row := range t.Rows {
 			d := "~"
 			switch {
-			case row.Significant:
+			case m.counts(&row):
 				d = fmt.Sprintf("%s %+.2f%%", mark(t.Unit, row.Delta), row.Delta)
+			case row.Significant:
+				d = fmt.Sprintf("%+.2f%%", row.Delta)
 			case !row.HasOld:
 				d = "new"
 			case !row.HasNew:
