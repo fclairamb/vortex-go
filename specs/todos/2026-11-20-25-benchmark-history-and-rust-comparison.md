@@ -106,3 +106,9 @@ duration of a run goes in the PR description.
   a pull request for every commit, and a results commit per merge would be noise.
 - **Threads.** Recommended answer: publish both, 1 thread and all cores. One thread shows
   the decoders, all cores shows the scan pipeline.
+
+## Resolved open questions
+
+- Rust is measured natively, with a Cargo project in this repository; Rust is needed in `bench.yml` only, never in `go test ./...` or `make check`. (autopilot: recommended answer)
+- The history lives on the `bench-data` branch. (autopilot: recommended answer)
+- Publish both thread counts: 1 thread and all cores. (autopilot: recommended answer)

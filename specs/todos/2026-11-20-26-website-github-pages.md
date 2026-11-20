@@ -94,3 +94,8 @@ library and how it compares, especially in terms of performance, to the rust ver
   describes. Recommended answer: build everything, leave the deploy off. Florent turns it
   on when he makes the repository public.
 - **A custom domain.** Recommended answer: none, `https://fclairamb.github.io/vortex-go/`.
+
+## Resolved open questions
+
+- Build everything, leave the deploy off while the repository is private; Florent turns it on when he makes it public. (autopilot: recommended answer)
+- No custom domain: `https://fclairamb.github.io/vortex-go/`. (autopilot: recommended answer)

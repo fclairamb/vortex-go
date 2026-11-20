@@ -46,3 +46,8 @@ what the coverage is, which Go version is needed or where the reference document
   added with the first release.
 - **Go Report Card.** It is not on solidping's README. Recommended answer: keep it, it is
   the usual badge of a Go library.
+
+## Resolved open questions
+
+- No release badge for now; add it with the first release. (autopilot: recommended answer)
+- Keep the Go Report Card badge. (autopilot: recommended answer)
