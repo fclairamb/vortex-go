@@ -2,6 +2,7 @@ package compress
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -182,6 +183,64 @@ func nullsOf(r *rand.Rand, n int, kind int) []bool {
 	return out
 }
 
+// TestNeverLargerTyped checks that decimals, timestamps and booleans are never larger than plain.
+func TestNeverLargerTyped(t *testing.T) {
+	for _, mode := range []Mode{Default, Compact} {
+		c := New(mode)
+		for _, n := range []int{1, 7, 300, 5000} {
+			r := rand.New(rand.NewPCG(7, uint64(n)))
+			for kind := range 4 {
+				nulls := nullsOf(r, n, kind)
+				// decimals of 4 bytes spanning the i32 range, and of 16 bytes holding small values
+				raw := make([]byte, 4*n)
+				for i := range n {
+					binary.LittleEndian.PutUint32(raw[4*i:], r.Uint32())
+				}
+				raw[0], raw[1], raw[2], raw[3] = 0, 0, 0, 0x80
+				if n > 1 {
+					raw[4], raw[5], raw[6], raw[7] = 0xff, 0xff, 0xff, 0x7f
+				}
+				c.Reset()
+				if got := c.Decimals(raw, 4, nulls); got != nil &&
+					cost(got) >= nodeOverhead+bufferOverhead+len(raw)+validityCost(nulls, n) {
+					t.Errorf("decimals %d %d: %d bytes", n, kind, cost(got))
+				}
+				raw16 := make([]byte, 16*n)
+				for i := range n {
+					raw16[16*i] = byte(r.IntN(100))
+				}
+				c.Reset()
+				if got := c.Decimals(raw16, 16, nulls); got != nil &&
+					cost(got) >= nodeOverhead+bufferOverhead+len(raw16)+validityCost(nulls, n) {
+					t.Errorf("decimals16 %d %d: %d bytes", n, kind, cost(got))
+				}
+				for _, ticks := range []int64{encode.TicksSecond, encode.TicksMilli, encode.TicksNano} {
+					v := make([]int64, n)
+					for i := range v {
+						v[i] = int64(r.Uint64() >> 1)
+						if i%3 == 0 {
+							v[i] = int64(i) * 86_400 * ticks
+						}
+					}
+					c.Reset()
+					if got := c.Timestamps(v, nulls, ticks); got != nil && cost(got) >= numberCost(v, nulls) {
+						t.Errorf("timestamps %d %d %d: %d bytes", n, kind, ticks, cost(got))
+					}
+				}
+				bs := make([]bool, n)
+				for i := range bs {
+					bs[i] = r.IntN(2) == 0
+				}
+				c.Reset()
+				if got := c.Bools(bs, nulls); got != nil &&
+					cost(got) >= nodeOverhead+bufferOverhead+(n+7)/8+validityCost(nulls, n) {
+					t.Errorf("bools %d %d: %d bytes", n, kind, cost(got))
+				}
+			}
+		}
+	}
+}
+
 // TestNeverLarger compresses columns of every type, with and without nulls, in both modes:
 // the result is never larger than the plain array, and the same input gives the same bytes.
 func TestNeverLarger(t *testing.T) {
@@ -318,7 +377,7 @@ func TestDecimalsTimestampsBools(t *testing.T) {
 			t.Errorf("timestamps of %d ticks: %s, want %s", tc.ticks, got, tc.want)
 		}
 	}
-	if got := tree(c.Bools([]bool{true, true}, nil)); got != encode.IDConstant {
+	if got := tree(c.Bools(slices.Repeat([]bool{true}, 100), nil)); got != encode.IDConstant {
 		t.Errorf("bools: %s", got)
 	}
 	if got := c.Bools([]bool{true, false}, nil); got != nil {

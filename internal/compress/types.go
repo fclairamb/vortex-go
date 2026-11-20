@@ -105,6 +105,9 @@ func (c *Compressor) Decimals(raw []byte, width int, nulls []bool) *encode.Node 
 		return nil
 	}
 	c.kid(c.top().child(sDecimal), n, 0, intOf(n.Kids[0].Bufs[0].Align))
+	if cost(n) >= nodeOverhead+bufferOverhead+len(raw)+validityCost(nulls, len(raw)/width) {
+		return nil
+	}
 	return n
 }
 
@@ -131,5 +134,8 @@ func (c *Compressor) Timestamps(v []int64, nulls []bool, ticks int64) *encode.No
 // Bools is the compressed array of booleans, or nil for the plain array: a constant, or nothing.
 func (c *Compressor) Bools(v, nulls []bool) *encode.Node {
 	n, _ := encode.ConstantBools(c.e, v, nulls)
+	if n != nil && cost(n) >= nodeOverhead+bufferOverhead+(len(v)+7)/8+validityCost(nulls, len(v)) {
+		return nil
+	}
 	return n
 }
