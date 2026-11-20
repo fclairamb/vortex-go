@@ -232,6 +232,8 @@ func forceNumber[T encode.Number](e *encode.Encoder, name string, v []T, nulls [
 	switch name {
 	case "zstd":
 		return encode.Zstd(e, v, nulls)
+	case "pco":
+		return encode.Pco(e, v, nulls)
 	case "rle":
 		return encode.RLE(e, v, nulls)
 	case "runend":

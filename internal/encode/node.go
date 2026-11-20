@@ -37,6 +37,7 @@ const (
 	IDDecimalBytes  = "vortex.decimal_byte_parts"
 	IDDateTimeParts = "vortex.datetimeparts"
 	IDZstd          = "vortex.zstd"
+	IDPco           = "vortex.pco"
 )
 
 // The numbers of the PType enum of the metadata messages.
@@ -117,6 +118,7 @@ func (n *Node) Size() int {
 type Encoder struct {
 	fs      *fsstState
 	op      *onPairState
+	pc      *pcoState
 	zenc    *zstd.Encoder
 	arena   []byte
 	pool    []*Node
@@ -332,7 +334,7 @@ func Encodings() []string {
 	return []string{
 		IDPrimitive, IDBool, IDBitPacked, IDFoR, IDRLE, IDZigZag, IDRunEnd, IDDict, IDSequence,
 		IDConstant, IDMasked, IDSparse, IDVarBin, IDVarBinView, IDALP, IDALPRD, IDFSST, IDOnPair, IDDecimalBytes,
-		IDDateTimeParts, IDZstd, IDByteBool, IDChunked,
+		IDDateTimeParts, IDZstd, IDPco, IDByteBool, IDChunked,
 	}
 }
 

@@ -165,6 +165,7 @@ func intCands(c *Compressor, st intStats, x at, p PType, rows int, signed bool) 
 	l.add(sDict, cascade && x.parent != sDict && valid)
 	l.add(sRunEnd, cascade && runs)
 	l.add(sRLE, cascade && runs && !c.limit.NoRLE)
+	l.add(sPco, valid && c.pco(p.Width()))
 	l.add(sZstd, c.zstd())
 	return l
 }
@@ -189,6 +190,8 @@ func applyInt[T encode.Int](c *Compressor, x at, p PType, s scheme, v []T, nulls
 		n = encode.Dict(x.e, v, nulls)
 	case sSparse:
 		n, _ = encode.Sparse(x.e, v, nulls)
+	case sPco:
+		n = encode.Pco(x.e, v, nulls)
 	default:
 		n = encode.Zstd(x.e, v, nulls)
 	}
@@ -211,6 +214,7 @@ func floats[T encode.Float](c *Compressor, x at, p PType, v []T, nulls []bool) *
 	l.add(sDict, cascade && x.parent != sDict && valid > 0)
 	l.add(sSparse, x.parent != sSparse && valid > 0 && 10*(len(v)-valid) > 9*len(v)) // dominated by nulls
 	l.add(sRLE, cascade && valid > 0 && len(v) >= runThreshold*runs && x.parent != sRLE && !c.limit.NoRLE)
+	l.add(sPco, valid > 0 && c.pco(p.Width()))
 	l.add(sZstd, c.zstd())
 	apply := func(x at, s scheme, v []T, nulls []bool) *encode.Node { return applyFloat(c, x, p, s, v, nulls) }
 	return pick(c, x, v, nulls, &l, numberCost[T], sampleNumbers[T], apply)
@@ -243,6 +247,8 @@ func applyFloat[T encode.Float](c *Compressor, x at, p PType, s scheme, v []T, n
 		n, _ = encode.Sparse(x.e, v, nulls) // there is a valid value
 	case sRLE:
 		n = encode.RLE(x.e, v, nulls)
+	case sPco:
+		n = encode.Pco(x.e, v, nulls)
 	default:
 		n = encode.Zstd(x.e, v, nulls)
 	}

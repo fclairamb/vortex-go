@@ -23,7 +23,7 @@ func intEsts[T Int]() map[string]est {
 }
 
 func numberEsts[T Number]() map[string]est {
-	return map[string]est{
+	m := map[string]est{
 		"rle": func(_ *Encoder, s []byte, nulls []bool, rows, _ int) int {
 			return EstimateRLE(unsafex.Slice[T](s), nulls, rows)
 		},
@@ -43,6 +43,10 @@ func numberEsts[T Number]() map[string]est {
 			return EstimateZstd(e, unsafex.Slice[T](s), nulls, rows)
 		},
 	}
+	m["pco"] = func(e *Encoder, s []byte, nulls []bool, rows, _ int) int {
+		return EstimatePco(e, unsafex.Slice[T](s), nulls, rows)
+	}
+	return m
 }
 
 func floatEsts[T Float]() map[string]est {
@@ -109,13 +113,13 @@ func widthFor(name string, p string, par vparams) int {
 // TestEstimate checks that the estimate of every encoder is within 5% of the size it makes, on
 // the whole data and on a quarter of it.
 func TestEstimate(t *testing.T) {
-	estimateEncoders(t, rand.New(rand.NewPCG(8, 9)), func(name string) bool { return !floatOnly(name) && name != "zstd" }, within)
+	estimateEncoders(t, rand.New(rand.NewPCG(8, 9)), func(name string) bool { return !floatOnly(name) && name != "zstd" && name != "pco" }, within)
 }
 
 // TestEstimateFloatsAndZstd is the same for the encoders of floats and zstd, which have a
 // tolerance of 10%.
 func TestEstimateFloatsAndZstd(t *testing.T) {
-	estimateEncoders(t, rand.New(rand.NewPCG(10, 11)), func(name string) bool { return floatOnly(name) || name == "zstd" },
+	estimateEncoders(t, rand.New(rand.NewPCG(10, 11)), func(name string) bool { return floatOnly(name) || name == "zstd" || name == "pco" },
 		// 10%, or a frame header when the whole is a few bytes
 		func(got, want int) bool { return 10*abs(got-want) <= want || abs(got-want) <= 32 })
 }
@@ -190,7 +194,7 @@ func checkEstimate(t *testing.T, e, c *Encoder, p, name, kind string, raw []byte
 	if nulls != nil {
 		qn = nulls[:quarter]
 	}
-	if name == "zstd" && quarter-countTrue(qn) < 1024 {
+	if (name == "zstd" || name == "pco") && quarter-countTrue(qn) < 1024 {
 		return // a sample too small for a compressor to learn from
 	}
 	e.Reset()

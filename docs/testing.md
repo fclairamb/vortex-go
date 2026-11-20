@@ -209,7 +209,9 @@ integers), `patched` (patches applied on top of an inner array) and `decimal_byt
   decoder must give back the input. `tools/vectors` (Rust, outside the module) writes
   them for bit-packing (with its patches and its best width), FoR, zigzag, RLE, run-end,
   dictionary, sequence, constant and sparse; `make vectors` regenerates them, the tests of
-  `internal/encode` read them. ALP and FSST are not covered yet.
+  `internal/encode` read them. ALP and FSST are not covered yet. Pco has no vector of ours:
+  its stream is valid Pco, not the crate's, so its tests write then read with our decoder
+  (`internal/pco`), and `make interop` has the reference read a forced `pco` file per type.
 - **Edition conformance.** Every identifier found in a file we wrote is in the target edition.
 - **Size.** On the TPC-H and ClickBench datasets, our file is at most 1.10 times the size
   of the reference writer's. The measured ratio is committed and can only go down.
