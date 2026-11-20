@@ -76,8 +76,8 @@ type Node struct {
 	Meta  []byte
 	Bufs  []Buf
 	Kids  []*Node
-	bufs  [3]Buf
 	grown []Buf
+	bufs  [3]Buf
 }
 
 func (n *Node) add(data []byte, align int) {
@@ -109,6 +109,8 @@ func (n *Node) Size() int {
 // Encoder holds the memory of the nodes that the encoders make, and what they need to work.
 // The zero value is not usable: call New.
 type Encoder struct {
+	fs      *fsstState
+	zenc    *zstd.Encoder
 	arena   []byte
 	pool    []*Node
 	tmp     []byte
@@ -118,14 +120,12 @@ type Encoder struct {
 	count   []int32
 	tab     []int32
 	flagBuf []bool
-	hist    [65]int
 	u16s    []uint16
 	groups  []rdGroup
-	fs      *fsstState
-	zenc    *zstd.Encoder
 	seed    maphash.Seed
 	off     int
 	used    int
+	hist    [65]int
 }
 
 // New returns an Encoder.

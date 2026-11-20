@@ -195,20 +195,7 @@ func alpRDParts[F Float, U uint32 | uint64](e *Encoder, v []F, nulls []bool, d r
 		node.kid(packedPos)
 		node.kid(e.leaf(unsafex.Bytes(vals), 2, nil, misses))
 	}
-	e.tmp2 = e.tmp2[:0]
-	for _, p := range d.patterns[:d.len] {
-		e.tmp2 = protowire.AppendVarint(e.tmp2, uint64(p))
-	}
-	m := protowire.AppendUint(e.tmp[:0], 1, uint64(d.rightBits))
-	m = protowire.AppendUint(m, 2, uint64(d.len))
-	m = protowire.AppendBytes(m, 3, e.tmp2)
-	m = protowire.AppendUint(m, 4, pU16)
-	if misses > 0 {
-		e.tmp2 = protowire.AppendUint(protowire.AppendUint(e.tmp2[:0], 1, uint64(misses)), 3, pU64)
-		m = protowire.AppendBytes(m, 5, e.tmp2)
-	}
-	e.tmp = m
-	node.Meta = e.keep(m)
+	node.Meta = e.keep(e.rdMeta(d, misses))
 	return node
 }
 
@@ -233,4 +220,23 @@ func EstimateALPRD[F Float](e *Encoder, sample []F, nulls []bool, rows int) int 
 		size += (misses+blockSize-1)/blockSize*128*rdBitWidth(uint64(last)) + 2*misses
 	}
 	return size
+}
+
+// rdMeta is the metadata of an ALP-RD array: the cut, the dictionary, the type of the left
+// parts and the patches of the ones that are not in it.
+func (e *Encoder) rdMeta(d rdDict, misses int) []byte {
+	e.tmp2 = e.tmp2[:0]
+	for _, p := range d.patterns[:d.len] {
+		e.tmp2 = protowire.AppendVarint(e.tmp2, uint64(p))
+	}
+	m := protowire.AppendUint(e.tmp[:0], 1, uint64(d.rightBits))
+	m = protowire.AppendUint(m, 2, uint64(d.len))
+	m = protowire.AppendBytes(m, 3, e.tmp2)
+	m = protowire.AppendUint(m, 4, pU16)
+	if misses > 0 {
+		e.tmp2 = protowire.AppendUint(protowire.AppendUint(e.tmp2[:0], 1, uint64(misses)), 3, pU64)
+		m = protowire.AppendBytes(m, 5, e.tmp2)
+	}
+	e.tmp = m
+	return m
 }

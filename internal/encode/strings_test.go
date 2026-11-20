@@ -209,10 +209,10 @@ func TestFSSTOffsetsWidth(t *testing.T) {
 	if fsstMaxEscape*(1<<30) <= math.MaxInt32 || fsstMaxEscape*(1<<30-1) > math.MaxInt32 {
 		t.Fatal("the threshold of the wide offsets is not 1 GiB")
 	}
-	e := New()
-	s := e.fsstState()
-	if s.n != 0 {
-		t.Log("a table in use")
+	for total, want := range map[int]int{0: 4, 1 << 20: 4, 1<<30 - 1: 4, 1 << 30: 8} {
+		if got, _ := fsstOffsetWidth(total); got != want {
+			t.Fatalf("%d bytes: offsets of %d bytes, want %d", total, got, want)
+		}
 	}
 }
 
@@ -266,6 +266,20 @@ func TestZstdFrames(t *testing.T) {
 		}
 	}
 	checkDecode(t, n, array.I32, unsafex.Bytes(v), nulls)
+}
+
+// TestZstdStringFrames: strings are cut in frames of 8192 values too, whatever their size.
+func TestZstdStringFrames(t *testing.T) {
+	e := New()
+	vals := make([][]byte, 20_000)
+	for i := range vals {
+		vals[i] = fmt.Appendf(nil, "value %d", i%300)
+	}
+	n := ZstdBytes(e, vals, nil)
+	if len(n.Bufs) != 3 {
+		t.Fatalf("%d frames, want 3", len(n.Bufs))
+	}
+	checkStrings(t, n, vals, nil)
 }
 
 func TestZstdNoValue(t *testing.T) {

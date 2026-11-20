@@ -49,13 +49,16 @@ type fsstCand struct {
 
 // fsstState is what the training and the encoding of FSST need, in the memory of an Encoder.
 type fsstState struct {
+	c2     []int32 // the counts of the pairs of codes, 512 by 512
+	cands  []fsstCand
+	table  []int32
+	lines  [][]byte
+	sample [][]byte
+
 	// the table of the encoder: the symbols and their lengths by code, and the lookups
-	sym       [fsstMaxSymbols]uint64
-	length    [fsstMaxSymbols]uint8
-	n         int
-	hasSuffix uint8
-	two       [1 << 16]uint16
-	pht       [fsstHashSlots]fsstEntry
+	sym [fsstMaxSymbols]uint64
+	two [1 << 16]uint16
+	pht [fsstHashSlots]fsstEntry
 
 	// the table being built, as the training makes it
 	bsym  [511]uint64
@@ -63,19 +66,16 @@ type fsstState struct {
 	btwo  [1 << 16]uint16
 	bpht  [fsstHashSlots]fsstEntry
 	bhist [8]int
-	bn    int
 
 	// the counts of the training
 	c1    [512]int32
-	c2    []int32
 	idx1  [8]uint64
 	pairs [512][8]uint64
 
-	cands   []fsstCand
-	table   []int32
-	lines   [][]byte
-	sample  [][]byte
-	symbols []byte
+	n         int
+	bn        int
+	length    [fsstMaxSymbols]uint8
+	hasSuffix uint8
 }
 
 func fsstHash(v uint64) uint64 { return v*2971215073 ^ v>>15 }
@@ -189,7 +189,8 @@ func (s *fsstState) clearBuilt() {
 
 // longest is the code of the longest symbol the table being built has at the start of word.
 func (s *fsstState) longest(word uint64) uint16 {
-	if e := &s.bpht[fsstHash(word&0xffffff)&(fsstHashSlots-1)]; e.code != fsstUnused && word&(math.MaxUint64>>e.ignored) == e.sym {
+	e := &s.bpht[fsstHash(word&0xffffff)&(fsstHashSlots-1)]
+	if e.code != fsstUnused && word&(math.MaxUint64>>e.ignored) == e.sym {
 		return e.code
 	}
 	if t := s.btwo[word&0xffff]; t&511 >= fsstCodeBase {
@@ -365,9 +366,7 @@ func (s *fsstState) makeSample(lines [][]byte, total int) [][]byte {
 				break
 			}
 		}
-		if line == nil {
-			break
-		}
+		// a sample is taken from 16 KB at least: some line is not empty
 		chunks := 1 + (len(line)-1)/fsstSampleLine
 		rnd = fsstHash(rnd)
 		chunk := fsstSampleLine * int(rnd%uint64(chunks))
@@ -517,7 +516,8 @@ func (s *fsstState) compress(src, out []byte) int {
 			pos += 2
 			continue
 		}
-		if p := &s.pht[fsstHash(word&0xffffff)&(fsstHashSlots-1)]; p.code != fsstUnused && word&(math.MaxUint64>>p.ignored) == p.sym {
+		p := &s.pht[fsstHash(word&0xffffff)&(fsstHashSlots-1)]
+		if p.code != fsstUnused && word&(math.MaxUint64>>p.ignored) == p.sym {
 			out[o] = uint8(p.code)
 			o++
 			pos += int(p.code >> fsstLenShift)
@@ -576,10 +576,7 @@ func (e *Encoder) fsstColumn(ls lineSet, nulls []bool, rows int, train bool) *No
 			total += len(ls.get(i))
 		}
 	}
-	ow, optype := 4, pI32
-	if fsstMaxEscape*total > math.MaxInt32 {
-		ow, optype = 8, pI64
-	}
+	ow, optype := fsstOffsetWidth(total)
 	ulen, offs := e.alloc(4*rows), e.alloc(ow*(rows+1))
 	codes := e.alloc(fsstMaxEscape * total)
 	o := 0
@@ -606,6 +603,15 @@ func (e *Encoder) fsstColumn(ls lineSet, nulls []bool, rows int, train bool) *No
 	e.tmp = putUint(putUint(e.tmp[:0], 1, pI32), 2, uint64(optype))
 	n.Meta = e.keep(e.tmp)
 	return n
+}
+
+// fsstOffsetWidth is the bytes and the PType number of the offsets of the codes of total bytes
+// of strings: i32, or i64 when the codes, at most twice as many bytes, could pass 2 GiB.
+func fsstOffsetWidth(total int) (width, ptype int) {
+	if fsstMaxEscape*total > math.MaxInt32 {
+		return 8, pI64
+	}
+	return 4, pI32
 }
 
 // trainOn trains the table on the valid strings.
@@ -646,9 +652,6 @@ func (e *Encoder) estimateFSST(ls lineSet, nulls []bool, rows int) int {
 			out += s.compress(ls.get(i), e.tmp)
 		}
 	}
-	ow := 4
-	if fsstMaxEscape*scale(total, n, rows) > math.MaxInt32 {
-		ow = 8
-	}
+	ow, _ := fsstOffsetWidth(scale(total, n, rows))
 	return scale(out, n, rows) + 4*rows + ow*(rows+1) + 9*s.n + validBytes(nulls, rows)
 }

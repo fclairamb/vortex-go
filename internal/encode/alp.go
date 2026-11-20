@@ -79,7 +79,7 @@ func floatBits[F Float](x F) uint64 {
 // saturate converts x to an integer like Rust's `as`: a NaN is 0, and what is out of range is
 // the nearest limit.
 func saturate[F Float, I alpInt](x F) I {
-	if x != x {
+	if math.IsNaN(float64(x)) {
 		return 0
 	}
 	lim := F(math.Ldexp(1, 8*unsafex.Size[I]()-1))
@@ -105,9 +105,10 @@ func sweet[F Float]() F {
 
 // alpEncodeOne is the integer of v under the exponents, whether it decodes back to v or not.
 func alpEncodeOne[F Float, I alpInt](v F, x Exponents) I {
-	// the explicit conversion keeps the compiler from fusing the product and the sum
-	y := F(v*pow10[F](x.E)*ipow10[F](x.F)) + sweet[F]()
-	return saturate[F, I](F(y) - sweet[F]())
+	// the conversion is what keeps the compiler from fusing the product and the sum: the sum
+	// would not be rounded to the float, and the integer would not be the reference's
+	scaled := F(v * pow10[F](x.E) * ipow10[F](x.F)) //nolint:unconvert // see above
+	return saturate[F, I](scaled + sweet[F]() - sweet[F]())
 }
 
 // alpDecodeOne is the float of an integer under the exponents.
@@ -182,9 +183,9 @@ func alpEstimateWithin[F Float, I alpInt](values []F, x Exponents, limit int) (i
 	patches := 0
 	for _, v := range values {
 		n := alpEncodeOne[F, I](v, x)
-		all, hasAll = widen(all, hasAll, n)
+		all, hasAll = widen(all, hasAll, n), true
 		if floatBits(alpDecodeOne[F, I](n, x)) == floatBits(v) {
-			kept, hasKept = widen(kept, hasKept, n)
+			kept, hasKept = widen(kept, hasKept, n), true
 			continue
 		}
 		patches++
@@ -206,11 +207,11 @@ func alpEstimateWithin[F Float, I alpInt](values []F, x Exponents, limit int) (i
 }
 
 // widen adds n to the running (min, max) of the integers seen.
-func widen[I alpInt](b [2]I, has bool, n I) ([2]I, bool) {
+func widen[I alpInt](b [2]I, has bool, n I) [2]I {
 	if !has {
-		return [2]I{n, n}, true
+		return [2]I{n, n}
 	}
-	return [2]I{min(b[0], n), max(b[1], n)}, true
+	return [2]I{min(b[0], n), max(b[1], n)}
 }
 
 // ALP is the ALP encoding of the floats of v, at the exponents BestExponents finds: the

@@ -18,12 +18,9 @@ const zstdValuesPerFrame = 8192
 // compression states makes a running Encoder allocate nothing.
 func (e *Encoder) zstdEncoder() *zstd.Encoder {
 	if e.zenc == nil {
-		z, err := zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedDefault),
-			zstd.WithEncoderConcurrency(1), zstd.WithEncoderCRC(false), zstd.WithZeroFrames(false))
-		if err != nil { // the options are constants
-			panic(err)
-		}
-		e.zenc = z
+		// the options are constants: they cannot fail
+		e.zenc, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedDefault),
+			zstd.WithEncoderConcurrency(1), zstd.WithEncoderCRC(false))
 	}
 	return e.zenc
 }
@@ -47,7 +44,9 @@ func Zstd[T Number](e *Encoder, v []T, nulls []bool) *Node {
 		}
 	}
 	// a frame is zstdValuesPerFrame values: the sizes are in bytes, the values counted by value
-	return e.zstdNode(raw, valid, nulls, len(v), func(frame int) int { return min(zstdValuesPerFrame, valid-frame*zstdValuesPerFrame) * w })
+	return e.zstdNode(raw, valid, nulls, len(v), func(frame int) int {
+		return min(zstdValuesPerFrame, valid-frame*zstdValuesPerFrame) * w
+	})
 }
 
 // ZstdBytes is the zstd encoding of the byte slices of vals.
@@ -108,7 +107,8 @@ func (e *Encoder) zstdNode(raw []byte, valid int, nulls []bool, rows int, frameB
 		dst := e.alloc(len(src) + len(src)>>10 + 64)
 		out := enc.EncodeAll(src, dst[:0])
 		node.add(out, 1)
-		e.tmp2 = putUint(protowire.AppendUint(e.tmp2[:0], 1, uint64(size)), 2, uint64(min(zstdValuesPerFrame, valid-f*zstdValuesPerFrame)))
+		values := min(zstdValuesPerFrame, valid-f*zstdValuesPerFrame)
+		e.tmp2 = putUint(protowire.AppendUint(e.tmp2[:0], 1, uint64(size)), 2, uint64(values))
 		meta = protowire.AppendBytes(meta, 2, e.tmp2)
 	}
 	node.kid(e.validity(nulls, rows, rows))

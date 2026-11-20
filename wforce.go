@@ -103,11 +103,7 @@ func (w *Writer) encodeForcedTimestamps(t Type, d Data) (flatbuf.Off, bool) {
 	}
 	ticks := map[Unit]int64{Second: encode.TicksSecond, Millisecond: encode.TicksMilli,
 		Microsecond: encode.TicksMicro, Nanosecond: encode.TicksNano}[t.unit]
-	node, ok := encode.DateTimeParts(w.enc, unsafex.Slice[int64](d.raw), d.nulls, ticks)
-	if !ok {
-		w.setErr(fmt.Errorf("vortex: Write: the %s encoding cannot take %s", w.force, d.describe()))
-		return 0, false
-	}
+	node, _ := encode.DateTimeParts(w.enc, unsafex.Slice[int64](d.raw), d.nulls, ticks) // the units are the 4 ticks
 	return w.emit(node), true
 }
 
