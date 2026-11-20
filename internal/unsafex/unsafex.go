@@ -83,3 +83,13 @@ func PutNullFunc[V any](rows reflect.Value, off, offValid uintptr, get func(i in
 		}
 	}
 }
+
+// Bytes returns the memory of v as bytes, sharing it. The values are in the byte order of the
+// machine: callers only use it for little-endian files.
+func Bytes[T Number](v []T) []byte {
+	if len(v) == 0 {
+		return nil
+	}
+	var zero T
+	return unsafe.Slice((*byte)(unsafe.Pointer(&v[0])), len(v)*int(unsafe.Sizeof(zero)))
+}

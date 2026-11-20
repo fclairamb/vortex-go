@@ -140,3 +140,21 @@ func TestPutKeepsPointersAlive(t *testing.T) {
 	}
 	Put(reflect.ValueOf([]putRow(nil)), 0, []int64{1})
 }
+
+func TestBytes(t *testing.T) {
+	v := []uint32{0x04030201, 0x08070605}
+	b := Bytes(v)
+	if !bytes.Equal(b, []byte{1, 2, 3, 4, 5, 6, 7, 8}) {
+		t.Fatal(b)
+	}
+	b[0] = 9 // shares the memory
+	if v[0] != 0x04030209 {
+		t.Fatal(v)
+	}
+	if Bytes([]int8{}) != nil || Bytes[float64](nil) != nil {
+		t.Fatal("an empty slice has no bytes")
+	}
+	if got := Bytes([]float64{1}); len(got) != 8 {
+		t.Fatal(len(got))
+	}
+}

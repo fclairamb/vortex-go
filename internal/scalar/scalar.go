@@ -3,6 +3,7 @@ package scalar
 import (
 	"errors"
 	"fmt"
+	"math"
 	"unicode/utf8"
 
 	"github.com/fclairamb/vortex-go/internal/protowire"
@@ -145,4 +146,53 @@ func decodeList(b []byte, depth int) ([]Value, error) {
 		out = append(out, v)
 	}
 	return out, it.Err()
+}
+
+// Encode returns the ScalarValue message of v: the inverse of Decode. A Bool is always
+// written, so that false is not an empty message.
+func Encode(v *Value) ([]byte, error) {
+	return encode(nil, v, 0)
+}
+
+func encode(b []byte, v *Value, depth int) ([]byte, error) {
+	if depth > maxDepth {
+		return nil, fmt.Errorf("scalar: lists nested deeper than %d", maxDepth)
+	}
+	num := int(v.Kind)
+	switch v.Kind {
+	case Null:
+		return protowire.AppendUint(b, num, 0), nil
+	case Bool:
+		var u uint64
+		if v.Bool {
+			u = 1
+		}
+		return protowire.AppendUint(b, num, u), nil
+	case Int:
+		return protowire.AppendSint(b, num, v.Int), nil
+	case Uint, F16:
+		return protowire.AppendUint(b, num, v.Uint), nil
+	case F32:
+		return protowire.AppendFixed32(b, num, math.Float32bits(v.F32)), nil
+	case F64:
+		return protowire.AppendFixed64(b, num, math.Float64bits(v.F64)), nil
+	case String:
+		if !utf8.ValidString(v.Str) {
+			return nil, errors.New("scalar: string value is not valid UTF-8")
+		}
+		return protowire.AppendBytes(b, num, []byte(v.Str)), nil
+	case Bytes:
+		return protowire.AppendBytes(b, num, v.Bytes), nil
+	case List:
+		var list []byte
+		for i := range v.List {
+			el, err := encode(nil, &v.List[i], depth+1)
+			if err != nil {
+				return nil, err
+			}
+			list = protowire.AppendBytes(list, 1, el)
+		}
+		return protowire.AppendBytes(b, num, list), nil
+	}
+	return nil, ErrNoKind
 }

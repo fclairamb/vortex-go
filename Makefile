@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat
+.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -72,6 +72,18 @@ compat:
 	go test -tags compat -run Compat .
 	cp .cache/compat-passed.txt testdata/compat-releases.txt
 	go generate ./...
+
+# The reference reader opens the files our writer makes, and gets the values we wrote. The
+# Go test writes the files and the canonical hashes of its source data into .cache/interop,
+# the oracle checks them with the pinned vortex-data and with the latest release. Needs uv
+# and network.
+INTEROP = .cache/interop
+interop:
+	rm -rf $(INTEROP)
+	mkdir -p $(INTEROP)
+	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^TestInterop$$' -count=1 .
+	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)
+	uv run --with vortex-data --with pyarrow python tools/oracle/oracle.py check $(INTEROP)
 
 # Everything a .vortex-version bump needs.
 upstream: fixtures edition oracle

@@ -192,3 +192,47 @@ func PackedFixed64(b []byte) ([]uint64, error) {
 	}
 	return out, nil
 }
+
+// AppendVarint appends v as a varint.
+func AppendVarint(b []byte, v uint64) []byte {
+	for v >= 0x80 {
+		b = append(b, byte(v)|0x80)
+		v >>= 7
+	}
+	return append(b, byte(v))
+}
+
+// AppendZigzag appends v as a sint64 varint.
+func AppendZigzag(b []byte, v int64) []byte {
+	return AppendVarint(b, uint64(v<<1)^uint64(v>>63))
+}
+
+func appendTag(b []byte, num int, t Type) []byte {
+	return AppendVarint(b, uint64(num)<<3|uint64(t))
+}
+
+// AppendUint appends field num as a varint, even when v is zero.
+func AppendUint(b []byte, num int, v uint64) []byte {
+	return AppendVarint(appendTag(b, num, Varint), v)
+}
+
+// AppendSint appends field num as a zigzag varint (sint64), even when v is zero.
+func AppendSint(b []byte, num int, v int64) []byte {
+	return AppendZigzag(appendTag(b, num, Varint), v)
+}
+
+// AppendFixed32 appends field num as a fixed32.
+func AppendFixed32(b []byte, num int, v uint32) []byte {
+	return binary.LittleEndian.AppendUint32(appendTag(b, num, Fixed32), v)
+}
+
+// AppendFixed64 appends field num as a fixed64.
+func AppendFixed64(b []byte, num int, v uint64) []byte {
+	return binary.LittleEndian.AppendUint64(appendTag(b, num, Fixed64), v)
+}
+
+// AppendBytes appends field num as a length-delimited value: bytes, a string or a message.
+func AppendBytes(b []byte, num int, v []byte) []byte {
+	b = AppendVarint(appendTag(b, num, Bytes), uint64(len(v)))
+	return append(b, v...)
+}

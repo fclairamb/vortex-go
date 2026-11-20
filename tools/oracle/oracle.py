@@ -3,7 +3,7 @@
 expected values the Go tests compare against.
 
     uv run --with vortex-data==$(cat .vortex-version) --with pyarrow python tools/oracle/oracle.py expected FILE...
-    uv run ... python tools/oracle/oracle.py check DIR        (later spec, exits 2)
+    uv run ... python tools/oracle/oracle.py check DIR
 
 The canonical hash is defined in docs/testing.md, section 1. The output has no timestamp
 and sorted keys, so running it twice gives byte-identical files.
@@ -363,14 +363,60 @@ def write_expected(path):
         fh.write("\n")
 
 
+def check(folder):
+    """Opens every <name>.vortex of the folder that has a <name>.hashes.json with the
+    reference reader, and compares the row count and, per column path, the null count and
+    the canonical hash with the ones the writer computed from its own source data. Returns
+    the number of files that differ (or cannot be read), 2 when there is no file to check."""
+    import glob
+    import os
+    paths = sorted(glob.glob(os.path.join(folder, "*.vortex")))
+    paths = [p for p in paths if os.path.exists(p[:-len(".vortex")] + ".hashes.json")]
+    if not paths:
+        sys.stderr.write("oracle check: no .vortex file with a .hashes.json in %s\n" % folder)
+        return 2
+    bad = 0
+    for path in paths:
+        name = os.path.basename(path)
+        with open(path[:-len(".vortex")] + ".hashes.json", encoding="utf-8") as fh:
+            want = json.load(fh)
+        try:
+            got = expected(path)
+        except BaseException as e:  # the reference reader refuses the file (a Rust panic is one)
+            if isinstance(e, KeyboardInterrupt):
+                raise
+            sys.stderr.write("FAIL %s: the reference reader failed: %s\n" % (name, str(e).replace("\n", " ")))
+            bad += 1
+            continue
+        problems = []
+        if got["rows"] != want["rows"]:
+            problems.append("rows: got %d, want %d" % (got["rows"], want["rows"]))
+        for col in sorted(set(got["columns"]) | set(want["columns"])):
+            g, w = got["columns"].get(col), want["columns"].get(col)
+            if g is None or w is None:
+                problems.append("column %s: %s" % (col, "missing from the file" if g is None else "not expected"))
+            elif g["nulls"] != w["nulls"] or g["sha256"] != w["sha256"]:
+                problems.append("column %s: nulls %s/%s, sha256 %s/%s (got/want)" % (
+                    col, g["nulls"], w["nulls"], g["sha256"][:12], w["sha256"][:12]))
+        if "schema" in want and got["schema"] != want["schema"]:
+            problems.append("schema: got %s, want %s" % (json.dumps(got["schema"], sort_keys=True),
+                                                         json.dumps(want["schema"], sort_keys=True)))
+        if problems:
+            bad += 1
+            sys.stderr.write("FAIL %s:\n  %s\n" % (name, "\n  ".join(problems)))
+        else:
+            print("ok   %s" % name)
+    print("%d file(s), %d failed, vortex-data %s" % (len(paths), bad, getattr(vx, "__version__", "?")))
+    return bad
+
+
 def main(argv):
     if len(argv) >= 2 and argv[1] == "expected" and len(argv) > 2:
         for p in argv[2:]:
             write_expected(p)
         return 0
     if len(argv) == 3 and argv[1] == "check":
-        sys.stderr.write("oracle check: not implemented yet (the writer spec adds it)\n")
-        return 2
+        return min(check(argv[2]), 255)
     sys.stderr.write("usage: oracle.py expected FILE... | oracle.py check DIR\n")
     return 2
 

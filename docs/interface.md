@@ -4,7 +4,10 @@ This is the planned public API. Implemented so far: `Open`, `OpenFile`, `Schema`
 `NumRows`, `Close`, `Type`, `Kind`, `Field`, the errors, and `Scan` with `Query` (empty, and
 `columns` must be empty), `Batch`, `Column` (`Type`, `Null`, `Bool`, `Field`), `Values` and
 `Number`, for numbers, booleans, structs and the storage of dates, times and timestamps, and
-`Rows`, which reads a file into Go structs.
+`Rows`, which reads a file into Go structs, and `NewWriter` with `Writer`, `Data`, `Of`,
+`OfBools`, `OfStrings`, `OfBytes`, `OfDecimals`, `OfNulls`, `OfStruct`, `OfList`,
+`WriteOptions` and the schema constructors (plain arrays only, `Compression` has no effect
+yet). `NewRowWriter` is not there yet.
 
 Once the code exists, the source of truth becomes `api.txt` (the output of `go doc -all`,
 checked by CI) and this file only keeps the reasons.
@@ -101,7 +104,21 @@ func (w *Writer) Close() error
 func Of[T Number](v []T) Data         // also OfBools, OfStrings, OfBytes, OfDecimals
 func OfStruct(fields ...Data) Data
 func OfList(offsets []int, elems Data) Data
+func OfNulls(n int) Data              // a column of the null type
 func (d Data) Nulls(null []bool) Data // marks the null rows, for any Data
+var ErrWriterClosed error             // Write after Close
+
+// Schema constructors, plain functions. The kinds have the names Int8, Utf8, Date...
+// already, so the constructors carry a Type suffix.
+func NewSchema(fields ...Field) *Schema
+func Int8Type() Type // ... Int16Type to Float64Type, BoolType, Utf8Type, BinaryType, NullType, UUIDType
+func DecimalOf(precision, scale int) Type
+func ListOf(elem Type) Type
+func FixedSizeListOf(elem Type, n int) Type
+func MapOf(key, value Type) Type
+func StructOf(fields ...Field) Type
+func DateType(u Unit) Type; func TimeType(u Unit) Type; func TimestampType(u Unit, zone string) Type
+func (t Type) AsNullable() Type
 
 type WriteOptions struct{ Compression Compression } // Default, Compact, None
 
@@ -113,6 +130,24 @@ func (d Decimal) Int64() (v int64, ok bool)
 func (d Decimal) Big() *big.Int
 func (d Decimal) Text(scale int) string
 ```
+
+## Writing
+
+- **One `Data` per field, the physical shape; the schema gives the logical type.**
+  `Of[int64]` for a timestamp (the storage), `Of[uint16]` for the bits of a `Float16`,
+  `OfBytes` of 16 bytes each for a UUID, `OfList(offsets, elems)` for a list, a fixed-size
+  list (regular offsets) and a map (`elems` is `OfStruct(keys, values)`).
+- **Errors name the field** (`a.b` for a struct field, `a[]` for the elements of a list) and
+  close the writer for writing. A schema that cannot be written (decimal precision 0, a date in
+  seconds, a variant) is reported by the first `Write` or `Close`, since `NewWriter` returns
+  no error.
+- **A non-nullable field takes no validity.** The reference reader rejects a validity child
+  on a non-nullable dtype, so `Nulls` on such a field is an error when a row is null.
+- **Chunks.** Each `Write` of one row or more adds a chunk to every column; a column with a
+  single chunk is a flat layout. A file with no row has one empty chunk. A struct needs one
+  field at least to have a length.
+- **Lists are `vortex.listview`**, maps are `vortex.map` over a listview of structs: it is
+  the canonical form, and the one a map requires.
 
 ## Opening, schema and errors
 
@@ -142,8 +177,8 @@ var ErrNotVortex, ErrUnsupportedVersion, ErrCorrupt error // test with errors.Is
 ```
 
 - **`Type` is a value with unexported fields**, compared with `Equal`, not `==`: it holds
-  nested types. An accessor of another kind returns the zero value. The writer spec adds
-  the constructors.
+  nested types. An accessor of another kind returns the zero value. The constructors are in
+  the writing section.
 - **`Null` types are always nullable.** The oracle reports them so.
 - **Errors carry the byte offset.** `ErrNotVortex`: bad magic at either end, or fewer
   than 12 bytes. `ErrUnsupportedVersion`: a version other than 1. `ErrCorrupt`: anything

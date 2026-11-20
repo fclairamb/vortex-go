@@ -226,3 +226,103 @@ func (s *Schema) Field(name string) (Field, bool) {
 
 // String returns the root struct, like Type.String.
 func (s *Schema) String() string { return s.root.String() }
+
+// NewSchema returns the schema with these fields, in this order: the root struct of a file.
+// The fields are copied. A schema is checked by NewWriter, which reports a bad one with the
+// error of its first Write.
+func NewSchema(fields ...Field) *Schema {
+	return &Schema{root: Type{kind: Struct, fields: slices.Clone(fields)}}
+}
+
+// The type constructors. They are named after the kind with a Type suffix, because the
+// kinds themselves (Int32, Utf8...) are the constants of Kind.
+
+func primitiveType(k Kind) Type { return Type{kind: k} }
+
+// Int8Type is the type of 8-bit signed integers.
+func Int8Type() Type { return primitiveType(Int8) }
+
+// Int16Type is the type of 16-bit signed integers.
+func Int16Type() Type { return primitiveType(Int16) }
+
+// Int32Type is the type of 32-bit signed integers.
+func Int32Type() Type { return primitiveType(Int32) }
+
+// Int64Type is the type of 64-bit signed integers.
+func Int64Type() Type { return primitiveType(Int64) }
+
+// Uint8Type is the type of 8-bit unsigned integers.
+func Uint8Type() Type { return primitiveType(Uint8) }
+
+// Uint16Type is the type of 16-bit unsigned integers.
+func Uint16Type() Type { return primitiveType(Uint16) }
+
+// Uint32Type is the type of 32-bit unsigned integers.
+func Uint32Type() Type { return primitiveType(Uint32) }
+
+// Uint64Type is the type of 64-bit unsigned integers.
+func Uint64Type() Type { return primitiveType(Uint64) }
+
+// Float16Type is the type of half floats. Its values are written as their 16 bits, with
+// Of[uint16].
+func Float16Type() Type { return primitiveType(Float16) }
+
+// Float32Type is the type of 32-bit floats.
+func Float32Type() Type { return primitiveType(Float32) }
+
+// Float64Type is the type of 64-bit floats.
+func Float64Type() Type { return primitiveType(Float64) }
+
+// BoolType is the type of booleans.
+func BoolType() Type { return primitiveType(Bool) }
+
+// Utf8Type is the type of UTF-8 strings.
+func Utf8Type() Type { return primitiveType(Utf8) }
+
+// BinaryType is the type of byte strings.
+func BinaryType() Type { return primitiveType(Binary) }
+
+// NullType is the type whose values are all null. It is always nullable.
+func NullType() Type { return Type{kind: Null, nullable: true} }
+
+// UUIDType is the type of 16-byte identifiers.
+func UUIDType() Type { return primitiveType(UUID) }
+
+// DecimalOf is the decimal type of the given precision (1 to 76 digits) and scale (at most
+// the precision).
+func DecimalOf(precision, scale int) Type {
+	return Type{kind: KindDecimal, precision: uint8(precision), scale: int8(scale)}
+}
+
+// ListOf is the type of variable-length lists of elem.
+func ListOf(elem Type) Type { return Type{kind: List, elem: &elem} }
+
+// FixedSizeListOf is the type of lists of exactly n elem.
+func FixedSizeListOf(elem Type, n int) Type {
+	return Type{kind: FixedSizeList, elem: &elem, size: uint32(n)}
+}
+
+// MapOf is the type of maps from key to value. A key is not nullable.
+func MapOf(key, value Type) Type { return Type{kind: Map, elem: &key, value: &value} }
+
+// StructOf is the type of structs with these fields. The fields are copied.
+func StructOf(fields ...Field) Type { return Type{kind: Struct, fields: slices.Clone(fields)} }
+
+// DateType is the type of dates: a count of Day or Millisecond since 1970-01-01.
+func DateType(unit Unit) Type { return Type{kind: Date, unit: unit} }
+
+// TimeType is the type of times of day: a count of Second, Millisecond, Microsecond or
+// Nanosecond since midnight.
+func TimeType(unit Unit) Type { return Type{kind: Time, unit: unit} }
+
+// TimestampType is the type of instants: a count of unit since 1970-01-01T00:00:00Z. The zone
+// is a name like "UTC", empty for none.
+func TimestampType(unit Unit, zone string) Type {
+	return Type{kind: Timestamp, unit: unit, zone: zone}
+}
+
+// AsNullable returns the type, nullable.
+func (t Type) AsNullable() Type {
+	t.nullable = true
+	return t
+}

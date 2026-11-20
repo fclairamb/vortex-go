@@ -6,9 +6,10 @@ Open and OpenFile read the trailer, the footer and the schema of a file.
 Scan reads columns of numbers, booleans, strings, binaries, decimals, lists,
 maps and structs, batch by batch, for the columns, the row range and the filter
 of a Query, and skips what the statistics of the file rule out. Rows reads the
-same rows into Go structs. Writing files is not implemented yet. The goals are
-in docs/goals.md, the planned interface in docs/interface.md and the test plan
-in docs/testing.md.
+same rows into Go structs. NewWriter writes a file from a Schema and Data,
+one Write per chunk of rows, with plain arrays only for now. The goals are in
+docs/goals.md, the planned interface in docs/interface.md and the test plan in
+docs/testing.md.
 
 VARIABLES
 
@@ -25,6 +26,9 @@ var (
 
 var ErrDecimalRange = errors.New("vortex: decimal out of the range of 256 bits")
     ErrDecimalRange reports a value that does not fit in 256 bits.
+
+var ErrWriterClosed = errors.New("vortex: the writer is closed")
+    ErrWriterClosed is returned by Write after Close.
 
 
 FUNCTIONS
@@ -136,6 +140,66 @@ func (c *Column) Variant(i int) (any, error)
     the result is a copy, valid after the batch. An error means the value of the
     file is damaged. It panics when the column is not a Variant, and when i is
     out of range.
+
+type Compression uint8
+    Compression is how much effort the writer spends to make the file smaller.
+
+const (
+	// Default is the level to use when there is no reason to pick another.
+	Default Compression = iota
+	// Compact favors a small file over the time to write it.
+	Compact
+	// None writes the values as they are.
+	None
+)
+    The compression levels. Every level writes plain arrays for now.
+
+type Data struct {
+	// Has unexported fields.
+}
+    Data is the values of one column, in the shape Go holds them. Build one with
+    Of, OfBools, OfStrings, OfBytes, OfDecimals, OfNulls, OfStruct or OfList.
+    Which Data a column takes is set by its type, see Writer. A Data refers to
+    the slices it was made from: the writer reads them during Write and keeps no
+    reference afterwards.
+
+func Of[T Number](v []T) Data
+    Of is the values of a column of numbers: Int8 to Float64, the storage of
+    a date, a time or a timestamp (int32 for a date in days and for a time
+    in seconds or milliseconds, else int64), and the 16 bits of a Float16 as
+    uint16.
+
+func OfBools(v []bool) Data
+    OfBools is the values of a bool column.
+
+func OfBytes(v [][]byte) Data
+    OfBytes is the values of a binary or utf8 column, and of a uuid column,
+    whose values are 16 bytes each.
+
+func OfDecimals(v []Decimal) Data
+    OfDecimals is the values of a decimal column: the unscaled values.
+
+func OfList(offsets []int, elems Data) Data
+    OfList is the values of a list, a fixed-size list or a map column. Row i is
+    the elements offsets[i] to offsets[i+1] of elems, so offsets has one more
+    value than there are rows and never decreases. For a fixed-size list the
+    offsets are regular, 0, size, 2*size... For a map elems is OfStruct(keys,
+    values).
+
+func OfNulls(n int) Data
+    OfNulls is a column of the null type: n rows, all null.
+
+func OfStrings(v []string) Data
+    OfStrings is the values of a utf8 or binary column.
+
+func OfStruct(fields ...Data) Data
+    OfStruct is the values of a struct column: one Data per field, of the same
+    length.
+
+func (d Data) Nulls(null []bool) Data
+    Nulls returns the Data with these rows marked null: null[i] is true when row
+    i is null. It has as many values as the Data has rows. A column that is not
+    nullable takes none.
 
 type Decimal struct {
 	// Has unexported fields.
@@ -336,6 +400,11 @@ type Schema struct {
 }
     Schema is the schema of a file: the fields of its root struct.
 
+func NewSchema(fields ...Field) *Schema
+    NewSchema returns the schema with these fields, in this order: the root
+    struct of a file. The fields are copied. A schema is checked by NewWriter,
+    which reports a bad one with the error of its first Write.
+
 func (s *Schema) Field(name string) (Field, bool)
     Field returns the first field with this name.
 
@@ -351,6 +420,86 @@ type Type struct {
     Type is a logical type. It is a value: compare two of them with Equal,
     not with ==. An accessor that does not apply to the kind of the type returns
     the zero value.
+
+func BinaryType() Type
+    BinaryType is the type of byte strings.
+
+func BoolType() Type
+    BoolType is the type of booleans.
+
+func DateType(unit Unit) Type
+    DateType is the type of dates: a count of Day or Millisecond since
+    1970-01-01.
+
+func DecimalOf(precision, scale int) Type
+    DecimalOf is the decimal type of the given precision (1 to 76 digits) and
+    scale (at most the precision).
+
+func FixedSizeListOf(elem Type, n int) Type
+    FixedSizeListOf is the type of lists of exactly n elem.
+
+func Float16Type() Type
+    Float16Type is the type of half floats. Its values are written as their 16
+    bits, with Of[uint16].
+
+func Float32Type() Type
+    Float32Type is the type of 32-bit floats.
+
+func Float64Type() Type
+    Float64Type is the type of 64-bit floats.
+
+func Int16Type() Type
+    Int16Type is the type of 16-bit signed integers.
+
+func Int32Type() Type
+    Int32Type is the type of 32-bit signed integers.
+
+func Int64Type() Type
+    Int64Type is the type of 64-bit signed integers.
+
+func Int8Type() Type
+    Int8Type is the type of 8-bit signed integers.
+
+func ListOf(elem Type) Type
+    ListOf is the type of variable-length lists of elem.
+
+func MapOf(key, value Type) Type
+    MapOf is the type of maps from key to value. A key is not nullable.
+
+func NullType() Type
+    NullType is the type whose values are all null. It is always nullable.
+
+func StructOf(fields ...Field) Type
+    StructOf is the type of structs with these fields. The fields are copied.
+
+func TimeType(unit Unit) Type
+    TimeType is the type of times of day: a count of Second, Millisecond,
+    Microsecond or Nanosecond since midnight.
+
+func TimestampType(unit Unit, zone string) Type
+    TimestampType is the type of instants: a count of unit since
+    1970-01-01T00:00:00Z. The zone is a name like "UTC", empty for none.
+
+func UUIDType() Type
+    UUIDType is the type of 16-byte identifiers.
+
+func Uint16Type() Type
+    Uint16Type is the type of 16-bit unsigned integers.
+
+func Uint32Type() Type
+    Uint32Type is the type of 32-bit unsigned integers.
+
+func Uint64Type() Type
+    Uint64Type is the type of 64-bit unsigned integers.
+
+func Uint8Type() Type
+    Uint8Type is the type of 8-bit unsigned integers.
+
+func Utf8Type() Type
+    Utf8Type is the type of UTF-8 strings.
+
+func (t Type) AsNullable() Type
+    AsNullable returns the type, nullable.
 
 func (t Type) Elem() Type
     Elem is the element type of a list or a fixed-size list.
@@ -419,4 +568,40 @@ type VariantDecimal struct {
 
 func (d VariantDecimal) String() string
     String prints the decimal, like Decimal.Text with the scale of the value.
+
+type WriteOptions struct {
+	Compression Compression
+}
+    WriteOptions are the options of a Writer.
+
+type Writer struct {
+	// Has unexported fields.
+}
+    Writer writes a Vortex file. It needs an io.Writer and never seeks.
+
+    A column takes the Data its type calls for: Of for the numbers (the Go
+    type is the one of the column, int32 for Int32; the storage of a date,
+    a time or a timestamp, and uint16 for the bits of a Float16), OfBools,
+    OfStrings or OfBytes for Utf8 and Binary, OfBytes for a UUID, OfDecimals,
+    OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map. Each
+    Write adds rows: a file made of several Write calls has one chunk per call.
+
+    Write and Close are not safe for concurrent use.
+
+func NewWriter(w io.Writer, s *Schema, o WriteOptions) *Writer
+    NewWriter returns a Writer of a file with this schema. Nothing is written
+    until the first Write or Close. A schema that cannot be written (a decimal
+    of precision 0, say) is reported by the first Write or Close.
+
+func (w *Writer) Close() error
+    Close writes the footer. The writer is closed for writing, and w is left
+    open. A file with no row has one empty chunk. A second Close returns nil;
+    Close returns the error that closed the writer for writing, if any.
+
+func (w *Writer) Write(cols ...Data) error
+    Write adds rows to the file: one Data per field of the schema, all of
+    the same length. It returns an error when a Data does not fit its field,
+    and then, or when the io.Writer fails, the writer is closed for writing.
+    Write reads the slices of the Data and does not keep them. The rows are in
+    the io.Writer when it returns.
 

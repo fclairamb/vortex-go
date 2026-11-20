@@ -36,6 +36,15 @@ jobs:
         if: matrix.lint
         run: make fuzz
 
+      # The reference reader opens the files our writer makes, with the pinned vortex-data and
+      # with the latest release.
+      - uses: astral-sh/setup-uv@v7
+        if: matrix.lint
+
+      - name: Reference reads our files
+        if: matrix.lint
+        run: make interop
+
       # Codecov shows the coverage on the PR. It never fails the job: the gate
       # above does. Skipped on fork PRs, which have no access to the secret.
       - name: Upload coverage to Codecov
