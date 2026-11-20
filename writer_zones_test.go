@@ -103,6 +103,7 @@ func leUint64(b []byte) uint64 {
 }
 
 func TestLayoutOfAColumn(t *testing.T) {
+	lowered(t, &testOptions, WriteOptions{Compression: None}) // the probe without a compressor
 	const rows = 20_000
 	ids, few, uniq := make([]int32, rows), make([]string, rows), make([]string, rows)
 	for i := range ids {
@@ -613,7 +614,8 @@ func TestWideRows(t *testing.T) {
 		if err := wr.Close(); err != nil {
 			t.Fatal(err)
 		}
-		// A block is 16 MB; what is buffered is a block plus the copy that makes a chunk.
+		// A block is 16 MB; what is buffered is a block, and the compressor of the chunk
+		// needs room for its FSST codes, up to twice its strings.
 		if peak > bound {
 			t.Fatalf("the heap peaks at %d MB", peak>>20)
 		}
@@ -627,5 +629,5 @@ func TestWideRows(t *testing.T) {
 	if got := chunkRows(f, 0); !slices.Equal(got, []uint64{8192, 8192, 20_000 - 2*8192}) {
 		t.Fatalf("chunks of %v rows", got)
 	}
-	write(io.Discard, 60_000, 96<<20)
+	write(io.Discard, 60_000, 112<<20)
 }

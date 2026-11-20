@@ -192,7 +192,7 @@ func TestLimits(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.setup(t)
-			w := NewWriter(io.Discard, NewSchema(tc.field), WriteOptions{})
+			w := NewWriter(io.Discard, NewSchema(tc.field), WriteOptions{Compression: None})
 			err := w.Write(tc.data)
 			if err == nil {
 				err = w.Close()

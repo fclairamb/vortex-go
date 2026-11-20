@@ -81,6 +81,11 @@ func (w *Writer) encode(t Type, d Data, n int) flatbuf.Off {
 }
 
 func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
+	if w.depth == 1 && (w.hasPre || w.comp != nil) {
+		if off, ok := w.encodeCompressed(t, d); ok {
+			return off
+		}
+	}
 	switch t.kind {
 	case Null:
 		return w.node("vortex.null", nil, len(w.bufs), 0, len(w.stack))

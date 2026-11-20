@@ -83,3 +83,55 @@ func Constant[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 	n.add(e.keep(e.tmp), 1)
 	return n, true
 }
+
+// The fields of the ScalarValue message of strings and bytes.
+const (
+	scalarString = 7
+	scalarBytes  = 8
+)
+
+// ConstantBytes is Constant for byte slices: the value is a string when utf8 is set, else bytes.
+func ConstantBytes(e *Encoder, v [][]byte, nulls []bool, utf8 bool) (*Node, bool) {
+	if len(v) == 0 || hasNull(nulls) && !allNull(nulls) {
+		return nil, false
+	}
+	n := e.node(IDConstant)
+	if hasNull(nulls) {
+		e.tmp = protowire.AppendUint(e.tmp[:0], scalarNull, 0)
+		n.add(e.keep(e.tmp), 1)
+		return n, true
+	}
+	for _, x := range v[1:] {
+		if string(x) != string(v[0]) {
+			return nil, false
+		}
+	}
+	field := scalarBytes
+	if utf8 {
+		field = scalarString
+	}
+	e.tmp = protowire.AppendBytes(e.tmp[:0], field, v[0])
+	n.add(e.keep(e.tmp), 1)
+	return n, true
+}
+
+// ConstantBools is Constant for booleans.
+func ConstantBools(e *Encoder, v []bool, nulls []bool) (*Node, bool) {
+	if len(v) == 0 || hasNull(nulls) && !allNull(nulls) {
+		return nil, false
+	}
+	n := e.node(IDConstant)
+	if hasNull(nulls) {
+		e.tmp = protowire.AppendUint(e.tmp[:0], scalarNull, 0)
+		n.add(e.keep(e.tmp), 1)
+		return n, true
+	}
+	for _, x := range v[1:] {
+		if x != v[0] {
+			return nil, false
+		}
+	}
+	e.tmp = protowire.AppendUint(e.tmp[:0], scalarBool, uint64(boolInt(v[0])))
+	n.add(e.keep(e.tmp), 1)
+	return n, true
+}

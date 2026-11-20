@@ -125,6 +125,7 @@ type Encoder struct {
 	seed    maphash.Seed
 	off     int
 	used    int
+	need    int // the bytes asked of the arena since the last Reset
 	hist    [65]int
 }
 
@@ -132,14 +133,22 @@ type Encoder struct {
 func New() *Encoder { return &Encoder{seed: maphash.MakeSeed()} }
 
 // Reset frees the nodes and buffers of the earlier calls, which must not be used any more.
-func (e *Encoder) Reset() { e.off, e.used = 0, 0 }
+// When they did not fit the arena, it is replaced by one that holds them all, so that the
+// same calls fit it next time, in one block.
+func (e *Encoder) Reset() {
+	if e.need > len(e.arena) {
+		e.arena = make([]byte, e.need)
+	}
+	e.off, e.used, e.need = 0, 0, 0
+}
 
 // alloc returns n zeroed bytes, aligned on 8 bytes, that live until the next Reset. A buffer
 // that is too small is replaced by a larger one: the slices already given out stay valid.
 func (e *Encoder) alloc(n int) []byte {
 	e.off = (e.off + 7) &^ 7
+	e.need += (n + 7) &^ 7
 	if e.off+n > len(e.arena) {
-		e.arena = make([]byte, max(2*len(e.arena), e.off+n+64))
+		e.arena = make([]byte, max(n, 64<<10))
 		e.off = 0
 	}
 	b := e.arena[e.off : e.off+n : e.off+n]

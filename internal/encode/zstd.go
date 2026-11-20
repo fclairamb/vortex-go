@@ -19,8 +19,10 @@ const zstdValuesPerFrame = 8192
 func (e *Encoder) zstdEncoder() *zstd.Encoder {
 	if e.zenc == nil {
 		// the options are constants: they cannot fail
+		// a single segment declares its content size, which the reference needs, even for the
+		// frames of under 256 bytes that the encoder writes without it otherwise
 		e.zenc, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstd.SpeedDefault),
-			zstd.WithEncoderConcurrency(1), zstd.WithEncoderCRC(false))
+			zstd.WithEncoderConcurrency(1), zstd.WithEncoderCRC(false), zstd.WithSingleSegment(true))
 	}
 	return e.zenc
 }

@@ -81,7 +81,7 @@ INTEROP = .cache/interop
 interop:
 	rm -rf $(INTEROP)
 	mkdir -p $(INTEROP)
-	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^TestInterop$$' -count=1 .
+	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestSizeRatios)$$' -count=1 .
 	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)
 	uv run --with vortex-data --with pyarrow python tools/oracle/oracle.py check $(INTEROP)
 

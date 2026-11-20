@@ -153,13 +153,19 @@ func addInteropStrings(fields []Field, data []Data, hashes map[string]hashEntry,
 	return fields, data
 }
 
-// writeInterop writes a file with one Write per size, and its hashes.
+// interopModes are the compression levels each file of writeInterop is written in, and the
+// suffix of their names.
+var interopModes = []struct {
+	suffix string
+	c      Compression
+}{{"", Default}, {"_compact", Compact}, {"_none", None}}
+
+// writeInterop writes a file with one Write per size, and its hashes, in each compression level.
 func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 	t.Helper()
 	g := &gen{r: rand.New(rand.NewPCG(11, uint64(len(file)))), inDay: strings.HasPrefix(file, "inday_")}
-	var buf bytes.Buffer
-	w := NewWriter(&buf, NewSchema(fields...), WriteOptions{})
 	all := make([][]val, len(fields))
+	var writes [][]Data
 	total := 0
 	for _, n := range sizes {
 		cols := make([]Data, len(fields))
@@ -168,13 +174,8 @@ func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 			cols[i], vals = g.make(f.Type, n)
 			all[i] = append(all[i], vals...)
 		}
-		if err := w.Write(cols...); err != nil {
-			t.Fatalf("%s: %v", file, err)
-		}
+		writes = append(writes, cols)
 		total += n
-	}
-	if err := w.Close(); err != nil {
-		t.Fatalf("%s: %v", file, err)
 	}
 	hashes := map[string]hashEntry{}
 	for i, f := range fields {
@@ -184,10 +185,27 @@ func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, file+".vortex"), buf.Bytes(), 0o644); err != nil {
+	for _, m := range interopModes {
+		var buf bytes.Buffer
+		w := NewWriter(&buf, NewSchema(fields...), WriteOptions{Compression: m.c})
+		for _, cols := range writes {
+			if err := w.Write(cols...); err != nil {
+				t.Fatalf("%s: %v", file, err)
+			}
+		}
+		if err := w.Close(); err != nil {
+			t.Fatalf("%s: %v", file, err)
+		}
+		writeInteropFile(t, dir, file+m.suffix, buf.Bytes(), out)
+	}
+}
+
+// writeInteropFile writes a file and its hashes into the folder of the oracle.
+func writeInteropFile(t testing.TB, dir, file string, data, hashes []byte) {
+	if err := os.WriteFile(filepath.Join(dir, file+".vortex"), data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, file+".hashes.json"), out, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, file+".hashes.json"), hashes, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
