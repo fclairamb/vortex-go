@@ -1,39 +1,20 @@
 package array
 
-import (
-	"fmt"
-
-	"github.com/fclairamb/vortex-go/internal/protowire"
-)
+import "fmt"
 
 // decodeDict decodes vortex.dict: metadata {values_len, codes_ptype, is_nullable_codes?,
 // all_values_referenced?}, children the codes and the values. A null code is a null row. The
 // values are decoded once, whatever the number of rows.
 func decodeDict(n *Node, t DType, rows int) (*Array, error) {
-	var valuesLen, codesType, nullable uint64
-	nullableSet := false
-	it := protowire.NewIter(n.Metadata())
-	for it.Next() {
-		if it.Type() != protowire.Varint {
-			continue
-		}
-		switch it.Num() {
-		case 1:
-			valuesLen = it.Uint()
-		case 2:
-			codesType = it.Uint()
-		case 3:
-			nullable, nullableSet = it.Uint(), true
-		}
-	}
-	if err := it.Err(); err != nil {
-		return nil, err
-	}
-	vlen, err := count("values_len", valuesLen)
+	meta, err := readMessage(n.Metadata())
 	if err != nil {
 		return nil, err
 	}
-	p, err := intType("codes_ptype", codesType)
+	vlen, err := count("values_len", meta.varint[1])
+	if err != nil {
+		return nil, err
+	}
+	p, err := intType("codes_ptype", meta.varint[2])
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +22,8 @@ func decodeDict(n *Node, t DType, rows int) (*Array, error) {
 		return nil, fmt.Errorf("expected no buffer and 2 children, got %d and %d", n.NumBuffers(), n.NumChildren())
 	}
 	ct := DType{Kind: Prim, PType: p, Nullable: t.Nullable}
-	if nullableSet {
-		ct.Nullable = nullable != 0
+	if meta.hasVarint[3] {
+		ct.Nullable = meta.varint[3] != 0
 	}
 	codes, err := n.Child(0, ct, rows)
 	if err != nil {

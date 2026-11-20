@@ -1,10 +1,6 @@
 package array
 
-import (
-	"fmt"
-
-	"github.com/fclairamb/vortex-go/internal/protowire"
-)
+import "fmt"
 
 // patches are values that replace the ones of another array: Values[k] is the value at row
 // Index[k] - offset.
@@ -26,40 +22,25 @@ type patchesMeta struct {
 // parsePatchesMeta reads {len, offset, indices_ptype, chunk_offsets_len?, chunk_offsets_ptype?,
 // offset_within_chunk?}.
 func parsePatchesMeta(b []byte) (m patchesMeta, err error) {
-	var length, offset, indices, chunkType uint64
-	it := protowire.NewIter(b)
-	for it.Next() {
-		if it.Type() != protowire.Varint {
-			continue
-		}
-		switch it.Num() {
-		case 1:
-			length = it.Uint()
-		case 2:
-			offset = it.Uint()
-		case 3:
-			indices = it.Uint()
-		case 5:
-			chunkType, m.chunkOffsets = it.Uint(), true
-		}
-	}
-	if err = it.Err(); err != nil {
+	f, err := readMessage(b)
+	if err != nil {
 		return m, err
 	}
-	if m.length, err = count("patches len", length); err != nil {
+	if m.length, err = count("patches len", f.varint[1]); err != nil {
 		return m, err
 	}
-	if m.offset, err = count("patches offset", offset); err != nil {
+	if m.offset, err = count("patches offset", f.varint[2]); err != nil {
 		return m, err
 	}
-	if m.indices, err = intType("patches indices_ptype", indices); err != nil {
+	if m.indices, err = intType("patches indices_ptype", f.varint[3]); err != nil {
 		return m, err
 	}
 	if m.indices.Signed() {
 		return m, fmt.Errorf("patch indices are %s, not unsigned", m.indices)
 	}
+	m.chunkOffsets = f.hasVarint[5]
 	if m.chunkOffsets {
-		_, err = intType("patches chunk_offsets_ptype", chunkType)
+		_, err = intType("patches chunk_offsets_ptype", f.varint[5])
 	}
 	return m, err
 }

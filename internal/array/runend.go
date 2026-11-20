@@ -36,18 +36,28 @@ func decodeRunEnd(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, fmt.Errorf("values: %w", err)
 	}
+	idx, err := runIndex(ends, offset, rows)
+	if err != nil {
+		return nil, err
+	}
+	return withType(take(values, idx), t), nil
+}
+
+// runIndex is, for rows rows from position offset, the index of the run each one is in. The
+// ends must strictly increase, and the last one cover the rows.
+func runIndex(ends []int, offset, rows int) ([]int, error) {
 	for i := 1; i < len(ends); i++ {
 		if ends[i] <= ends[i-1] {
 			return nil, fmt.Errorf("run end %d is %d, after %d", i, ends[i], ends[i-1])
 		}
 	}
+	idx := make([]int, rows)
 	if rows == 0 {
-		return withType(take(values, nil), t), nil
+		return idx, nil
 	}
 	if len(ends) == 0 || ends[len(ends)-1] < offset+rows {
 		return nil, fmt.Errorf("the runs end before row %d", offset+rows)
 	}
-	idx := make([]int, rows)
 	run := sort.SearchInts(ends, offset+1) // the first run that ends after offset
 	for i := range idx {
 		for ends[run] <= offset+i {
@@ -55,5 +65,5 @@ func decodeRunEnd(n *Node, t DType, rows int) (*Array, error) {
 		}
 		idx[i] = run
 	}
-	return withType(take(values, idx), t), nil
+	return idx, nil
 }

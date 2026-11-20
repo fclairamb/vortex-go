@@ -14,6 +14,7 @@ var specs = []string{
 	"vortex.null", "vortex.bool", "vortex.primitive", "vortex.struct", "vortex.chunked",
 	"vortex.constant", "vortex.ext", "vortex.masked", "vortex.bytebool", "vortex.alp",
 	"vortex.varbin", "vortex.varbinview", "vortex.list", "vortex.listview", "vortex.fixed_size_list", "vortex.map", "vortex.decimal",
+	"fastlanes.bitpacked", "fastlanes.for", "fastlanes.rle", "vortex.zigzag", "vortex.sequence", "vortex.runend", "vortex.dict", "vortex.sparse",
 }
 
 const (
@@ -34,6 +35,14 @@ const (
 	eFSL
 	eMap
 	eDecimal
+	eBitPacked
+	eFoR
+	eRLE
+	eZigZag
+	eSequence
+	eRunEnd
+	eDict
+	eSparse
 )
 
 var (

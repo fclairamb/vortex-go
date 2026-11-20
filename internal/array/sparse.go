@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/fclairamb/vortex-go/internal/protowire"
 	"github.com/fclairamb/vortex-go/internal/scalar"
 )
 
@@ -12,21 +11,14 @@ import (
 // ScalarValue of the type of the array, null if the type is nullable), children the indices
 // and the values of the patches. A row is the fill value unless a patch is at its index.
 func decodeSparse(n *Node, t DType, rows int) (*Array, error) {
-	var patchMsg []byte
-	hasPatches := false
-	it := protowire.NewIter(n.Metadata())
-	for it.Next() {
-		if it.Num() == 1 && it.Type() == protowire.Bytes {
-			patchMsg, hasPatches = it.Bytes(), true
-		}
-	}
-	if err := it.Err(); err != nil {
+	meta, err := readMessage(n.Metadata())
+	if err != nil {
 		return nil, err
 	}
-	if !hasPatches {
+	if !meta.hasBlob[1] {
 		return nil, errors.New("has no patches in its metadata")
 	}
-	m, err := parsePatchesMeta(patchMsg)
+	m, err := parsePatchesMeta(meta.blob[1])
 	if err != nil {
 		return nil, err
 	}

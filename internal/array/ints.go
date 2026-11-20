@@ -21,6 +21,33 @@ func varints(meta []byte, n int) ([]uint64, error) {
 	return out, it.Err()
 }
 
+// message is the fields 1 to 7 of a protobuf message that are varints, and the ones that are
+// length-delimited. Fields of other numbers are skipped.
+type message struct {
+	blob               [8][]byte
+	varint             [8]uint64
+	hasVarint, hasBlob [8]bool
+}
+
+// readMessage reads the fields of a protobuf message.
+func readMessage(meta []byte) (message, error) {
+	var m message
+	it := protowire.NewIter(meta)
+	for it.Next() {
+		num := it.Num()
+		if num < 1 || num > 7 {
+			continue
+		}
+		switch it.Type() {
+		case protowire.Varint:
+			m.varint[num], m.hasVarint[num] = it.Uint(), true
+		case protowire.Bytes:
+			m.blob[num], m.hasBlob[num] = it.Bytes(), true
+		}
+	}
+	return m, it.Err()
+}
+
 // intType checks that v, a PType of a metadata, is an integer type.
 func intType(what string, v uint64) (PType, error) {
 	if v > uint64(I64) {

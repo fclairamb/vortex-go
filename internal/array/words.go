@@ -19,13 +19,8 @@ func bitsOf[T word]() int {
 	return n
 }
 
-// unsignedOf is the unsigned type of the same width as the integer type p.
-func unsignedOf(p PType) PType {
-	if p.Signed() {
-		return p - I8 + U8
-	}
-	return p
-}
+// unsignedOf is the unsigned type of the same width as the signed integer type p.
+func unsignedOf(p PType) PType { return p - I8 + U8 }
 
 // intPrim checks that t is an integer type, and returns its width in bytes.
 func intPrim(t DType) (int, error) {
@@ -95,7 +90,9 @@ func mapWords[T word](dst, src []byte, op func([]T)) {
 }
 
 // mapInts applies op, per integer width, to the values of src, into a new slice.
-func mapInts(src []byte, width int, op8 func([]uint8), op16 func([]uint16), op32 func([]uint32), op64 func([]uint64)) []byte {
+func mapInts(
+	src []byte, width int, op8 func([]uint8), op16 func([]uint16), op32 func([]uint32), op64 func([]uint64),
+) []byte {
 	dst := make([]byte, len(src))
 	switch width {
 	case 1:
