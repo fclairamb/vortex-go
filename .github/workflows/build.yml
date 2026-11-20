@@ -49,6 +49,12 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         if: matrix.lint
 
+      # The size gate (TestSizeRatios) reads the TPC-H and ClickBench files of the reference,
+      # which live in .cache/fixtures and are not committed (about 5 MB, a few seconds).
+      - name: Dataset fixtures
+        if: matrix.lint
+        run: make fixtures
+
       - name: Reference reads our files
         if: matrix.lint
         run: make interop
