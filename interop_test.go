@@ -119,6 +119,11 @@ func writeInteropEncoders(t *testing.T, dir string) {
 			fields, data = addInteropMasked(fields, data, hashes, n)
 		case "dict", "fsst", "zstd", "varbin":
 			fields, data = addInteropStrings(fields, data, hashes, n)
+		case "bytebool", "chunked":
+			fields, data = addInteropBools(fields, data, hashes, n)
+			if enc == "chunked" {
+				fields, data = addInteropStrings(fields, data, hashes, n)
+			}
 		case "decimal_byte_parts", "datetimeparts":
 			fields, data = addInteropParts(enc, fields, data, hashes, n)
 		}
@@ -211,6 +216,21 @@ func addInteropStrings(fields []Field, data []Data, hashes map[string]hashEntry,
 	for _, ty := range []Type{Utf8Type().AsNullable(), BinaryType().AsNullable()} {
 		name := "strings_" + ty.String()
 		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins).Nulls(nulls))
+		hashColumn(hashes, name, ty, vals)
+	}
+	return fields, data
+}
+
+// addInteropBools adds the booleans, with and without nulls, to the columns of a file.
+func addInteropBools(fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
+	for _, withNulls := range []bool{false, true} {
+		ty := BoolType()
+		if withNulls {
+			ty = ty.AsNullable()
+		}
+		d, vals := boolsOf(n, withNulls)
+		name := fmt.Sprintf("bool_%v", withNulls)
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
 		hashColumn(hashes, name, ty, vals)
 	}
 	return fields, data

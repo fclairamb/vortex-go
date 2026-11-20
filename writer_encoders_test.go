@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/fclairamb/vortex-go/internal/edition"
@@ -21,6 +22,7 @@ var encodingIDs = map[string]string{
 	"sequence": "vortex.sequence", "constant": "vortex.constant", "masked": "vortex.masked", "sparse": "vortex.sparse",
 	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "fsst": "vortex.fsst", "varbin": "vortex.varbin",
 	"decimal_byte_parts": "vortex.decimal_byte_parts", "datetimeparts": "vortex.datetimeparts",
+	"bytebool": "vortex.bytebool", "chunked": "vortex.chunked",
 }
 
 func numberTypes() map[Kind]Type {
@@ -40,7 +42,7 @@ func forcedTypes(enc string) []Kind {
 		switch {
 		case enc == "zigzag" && !isSigned, isFloat && slices.Contains([]string{"bitpacked", "for", "sequence"}, enc):
 		case !isFloat && (enc == "alp" || enc == "alprd"):
-		case enc == "fsst" || enc == "varbin" || enc == "decimal_byte_parts" || enc == "datetimeparts": // not numbers
+		case enc == "fsst" || enc == "varbin" || enc == "decimal_byte_parts" || enc == "datetimeparts" || enc == "bytebool": // not numbers
 		default:
 			out = append(out, k)
 		}
@@ -105,6 +107,7 @@ func forcedColumn(enc string, k Kind, n int, withNulls bool) (Type, Data, []val)
 		"dict":     func(i int) int64 { return int64(i % 13) },
 		"sequence": func(i int) int64 { return int64(i*3 + 5) },
 		"zstd":     func(i int) int64 { return int64(i * 37 % 100) },
+		"chunked":  func(i int) int64 { return int64(i*37%100) - 20 },
 		"alp":      func(i int) int64 { return int64(i) },
 		"alprd":    func(i int) int64 { return int64(i) },
 		"constant": func(int) int64 { return 42 },
@@ -244,6 +247,60 @@ func TestForcedEncodings(t *testing.T) {
 	}
 }
 
+// boolsOf makes n booleans, and the rows they stand for.
+func boolsOf(n int, withNulls bool) (Data, []val) {
+	bools := make([]bool, n)
+	nulls := make([]bool, n)
+	vals := make([]val, n)
+	for i := range bools {
+		bools[i] = i%3 != 0
+		nulls[i] = withNulls && i%4 == 1
+		vals[i] = val{b: []byte{boolByte(bools[i] && !nulls[i])}, null: nulls[i]}
+	}
+	d := OfBools(bools)
+	if withNulls {
+		d = d.Nulls(nulls)
+	}
+	return d, vals
+}
+
+// TestForcedBoolsAndChunks: booleans as bytes and as chunks, and strings as chunks, with and
+// without nulls, from one row to more than 8,192.
+func TestForcedBoolsAndChunks(t *testing.T) {
+	for _, enc := range []string{"bytebool", "chunked"} {
+		for _, withNulls := range []bool{false, true} {
+			for _, n := range []int{0, 1, 2, 3, 100, 8193} {
+				ty := BoolType()
+				if withNulls {
+					ty = ty.AsNullable()
+				}
+				d, vals := boolsOf(n, withNulls)
+				if n > 0 && withNulls && n < 5 {
+					continue // no null among so few rows
+				}
+				checkForced(t, enc, ty, d, vals, n)
+			}
+		}
+	}
+	strs := make([]string, 400)
+	bins := make([][]byte, 400)
+	nulls := make([]bool, 400)
+	vals := make([]val, 400)
+	for i := range strs {
+		strs[i] = strings.Repeat("x", i%20)
+		bins[i] = []byte(strs[i])
+		nulls[i] = i%7 == 2
+		vals[i] = val{b: bins[i], null: nulls[i]}
+	}
+	checkForced(t, "chunked", Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 200, 200)
+	checkForced(t, "chunked", BinaryType(), OfBytes(bins), vals[:0:0], 0)
+	// every row of a part null, and a column of one row
+	all := []bool{true, true, true, true, true, true}
+	checkForced(t, "chunked", Int32Type().AsNullable(), Of([]int32{1, 2, 3, 4, 5, 6}).Nulls(all),
+		[]val{{null: true}, {null: true}, {null: true}, {null: true}, {null: true}, {null: true}}, 6)
+	checkForced(t, "chunked", Int32Type(), Of([]int32{9}), []val{{b: rawOf(int32(9))}}, 1)
+}
+
 func TestForcedLargeColumn(t *testing.T) {
 	for _, enc := range []string{"bitpacked", "rle", "runend", "dict", "for", "sparse"} {
 		ty, d, vals := forcedColumn(enc, Int32, 20000, enc != "bitpacked")
@@ -337,15 +394,16 @@ func TestForcedErrors(t *testing.T) {
 		ty  Type
 		d   Data
 	}{
-		"not a sequence":     {"sequence", Int32Type(), Of([]int32{1, 5, 2})},
-		"not a constant":     {"constant", Int32Type(), Of([]int32{1, 5, 2})},
-		"negative":           {"bitpacked", Int32Type(), Of([]int32{1, -5, 2})},
-		"zigzag of unsigned": {"zigzag", Uint32Type(), Of([]uint32{1})},
-		"sequence of floats": {"sequence", Float64Type(), Of([]float64{1, 2})},
-		"all equal sparse":   {"sparse", Int32Type(), Of([]int32{})},
-		"unknown":            {"nothing", Int32Type(), Of([]int32{1})},
-		"alp of integers":    {"alp", Int32Type(), Of([]int32{1})},
-		"alprd of no row":    {"alprd", Float64Type(), Of([]float64{})},
+		"not a sequence":      {"sequence", Int32Type(), Of([]int32{1, 5, 2})},
+		"not a constant":      {"constant", Int32Type(), Of([]int32{1, 5, 2})},
+		"negative":            {"bitpacked", Int32Type(), Of([]int32{1, -5, 2})},
+		"zigzag of unsigned":  {"zigzag", Uint32Type(), Of([]uint32{1})},
+		"sequence of floats":  {"sequence", Float64Type(), Of([]float64{1, 2})},
+		"all equal sparse":    {"sparse", Int32Type(), Of([]int32{})},
+		"bytebool of numbers": {"bytebool", Int32Type(), Of([]int32{1})},
+		"unknown":             {"nothing", Int32Type(), Of([]int32{1})},
+		"alp of integers":     {"alp", Int32Type(), Of([]int32{1})},
+		"alprd of no row":     {"alprd", Float64Type(), Of([]float64{})},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -382,5 +440,38 @@ func TestForcedMaskedBoolsThatDiffer(t *testing.T) {
 	}
 	if slices.Contains(f.arrayEncodings, encodingIDs["masked"]) {
 		t.Fatalf("the file has %v, with a masked constant", f.arrayEncodings)
+	}
+}
+
+// TestNeverBytesNorChunks: a file written without force, in any mode, has neither vortex.bytebool
+// nor the array vortex.chunked.
+func TestNeverBytesNorChunks(t *testing.T) {
+	bd, _ := boolsOf(3000, true)
+	for _, c := range []Compression{Default, Compact, None} {
+		var buf bytes.Buffer
+		s := NewSchema(Field{"b", BoolType().AsNullable()}, Field{"i", Int32Type()})
+		w := NewWriter(&buf, s, WriteOptions{Compression: c})
+		nums := make([]int32, 3000)
+		for i := range nums {
+			nums[i] = int32(i)
+		}
+		if err := w.Write(bd, Of(nums)); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		f, err := Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readBack(f, BoolType().AsNullable()); err != nil || len(f.arrayEncodings) == 0 {
+			t.Fatalf("%v, encodings %v", err, f.arrayEncodings)
+		}
+		for _, id := range []string{"vortex.bytebool", "vortex.chunked"} {
+			if slices.Contains(f.arrayEncodings, id) {
+				t.Fatalf("compression %v: the file has %s", c, id)
+			}
+		}
 	}
 }

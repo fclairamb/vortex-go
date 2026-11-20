@@ -27,6 +27,8 @@ const (
 	IDSparse     = "vortex.sparse"
 	IDVarBin     = "vortex.varbin"
 	IDVarBinView = "vortex.varbinview"
+	IDByteBool   = "vortex.bytebool"
+	IDChunked    = "vortex.chunked"
 
 	IDALP           = "vortex.alp"
 	IDALPRD         = "vortex.alprd"
@@ -328,7 +330,7 @@ func Encodings() []string {
 	return []string{
 		IDPrimitive, IDBool, IDBitPacked, IDFoR, IDRLE, IDZigZag, IDRunEnd, IDDict, IDSequence,
 		IDConstant, IDMasked, IDSparse, IDVarBin, IDVarBinView, IDALP, IDALPRD, IDFSST, IDDecimalBytes,
-		IDDateTimeParts, IDZstd,
+		IDDateTimeParts, IDZstd, IDByteBool, IDChunked,
 	}
 }
 

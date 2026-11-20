@@ -89,8 +89,13 @@ are decoded and never written, each for a reason:
   compressor can add OnPair if it saves bytes on the benchmarks against the reference.
 - `vortex.variant`, `vortex.parquet.variant`: the arrays of the Variant type, which the writer
   has no column for yet. They are read for the files that other writers make.
-- `vortex.bytebool`: bools one byte each, a wider form of `vortex.bool`, which holds the same
-  values in a bit each.
+
+Two arrays are written only when a test forces them, and no compressor picks them:
+`vortex.bytebool` (bools one byte each, a wider form of `vortex.bool`, which holds the same
+values in a bit each) and the array `vortex.chunked` (several arrays end to end: the
+reference makes an array canonical before it compresses it, and the writer cuts its own
+chunks, one array per flat segment). Writing them brings no byte and no speed. It brings the
+proof, by the reference reader, that the bytes written for them are right.
 
 What the writer does emit, with the encoders of `internal/encode`: bit-packing, frame of
 reference, zigzag, run-length, run-end, dictionary, sequence, constant, masked (a constant under a validity), sparse, ALP, ALP-RD,

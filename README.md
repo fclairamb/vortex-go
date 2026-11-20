@@ -86,8 +86,8 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.alp` | yes | yes |
 | array | `vortex.alprd` | yes | yes |
 | array | `vortex.bool` | yes | yes |
-| array | `vortex.bytebool` | yes | no |
-| array | `vortex.chunked` | yes | no |
+| array | `vortex.bytebool` | yes | yes |
+| array | `vortex.chunked` | yes | yes |
 | array | `vortex.constant` | yes | yes |
 | array | `vortex.datetimeparts` | yes | yes |
 | array | `vortex.decimal` | yes | yes |

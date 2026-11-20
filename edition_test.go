@@ -320,6 +320,9 @@ func writtenFiles(t *testing.T) map[string]map[string]string {
 		case "datetimeparts":
 			ty = TimestampType(Microsecond, "")
 			d, _ = (&gen{r: rand.New(rand.NewPCG(1, 1))}).make(ty, 200)
+		case "bytebool":
+			ty = BoolType()
+			d = OfBools([]bool{true, false, true})
 		default:
 			ks := forcedTypes(enc)
 			ty, d, _ = forcedColumn(enc, ks[len(ks)-1], 100, enc == "masked")
