@@ -49,7 +49,7 @@ type onPairState struct {
 	rng       uint64
 	w0, w1    [onPairMaxTokens]uint64 // the words of the bytes of each token
 	ends      [onPairMaxTokens + 1]uint32
-	lens      [onPairLensSlots]uint32 // bit l of the entry of a hash of two bytes is set when a token of l bytes starts with them
+	lens      [onPairLensSlots]uint32 // bit l is set when a token of l bytes starts with the two bytes of the slot
 	single    [256]uint16
 	slots     [onPairSlots]uint16 // the id + 1 of the token of each slot of a hash of its words
 	rank      [onPairMaxTokens]uint16
