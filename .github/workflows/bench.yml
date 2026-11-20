@@ -1,9 +1,8 @@
 name: Bench
 
 # The benchmark numbers of every merge to main, with the Rust reference measured on the same
-# machine: bench.json is appended to history.jsonl on the bench-data branch. The repository is
-# private, so its Actions minutes are counted: one run per merge, 15 minutes at most, no
-# schedule. On a pull request that touches the benchmarks the job runs without the push. It is
+# machine: bench.json is appended to history.jsonl on the bench-data branch. One run per merge,
+# 15 minutes at most, no schedule. On a pull request that touches the benchmarks the job runs without the push. It is
 # never a required check.
 on:
   push:

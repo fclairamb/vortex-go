@@ -2,10 +2,8 @@ name: Pages
 
 # The website of website/, with the benchmark numbers of the bench-data branch filled in. The build
 # runs on every pull request that touches the site, and uploads _site as an artifact. The deploy
-# runs on a push to main and after a run of Bench, and only when the repository variable PAGES is
-# "on": the repository is private, and Pages puts the site on the public Internet. Without the
-# variable the deploy job is skipped, not red. To turn it on: Settings > Pages > Source "GitHub
-# Actions", then the variable PAGES=on.
+# runs on a push to main and after a run of Bench, to https://fclairamb.github.io/vortex-go/
+# (Settings > Pages > Source "GitHub Actions").
 on:
   push:
     branches: [main]
@@ -80,7 +78,7 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name != 'pull_request' && vars.PAGES == 'on'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-26.04
     permissions:
       pages: write

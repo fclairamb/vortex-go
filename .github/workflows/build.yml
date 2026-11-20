@@ -1,7 +1,10 @@
 name: Build
 
+# A branch is built through its pull request, not twice. main is built on every merge: the
+# README badge and the Codecov base come from it.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
