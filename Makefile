@@ -46,7 +46,7 @@ edition:
 ORACLE = uv run --with vortex-data==$$(cat .vortex-version) --with pyarrow python
 oracle:
 	$(ORACLE) tools/oracle/genfixtures.py
-	find testdata/fixtures/$$(cat .vortex-version) -name '*.vortex' | sort | xargs $(ORACLE) tools/oracle/oracle.py expected
+	find testdata/fixtures/$$(cat .vortex-version) testdata/fixtures/compat -name '*.vortex' | sort | xargs $(ORACLE) tools/oracle/oracle.py expected
 
 # Everything a .vortex-version bump needs.
 upstream: fixtures edition oracle

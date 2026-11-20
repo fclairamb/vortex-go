@@ -1,0 +1,71 @@
+{
+  "columns": {
+    "a": {
+      "first": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "last": [
+        "45",
+        "46",
+        "47",
+        "48",
+        "49"
+      ],
+      "nulls": 0,
+      "sha256": "f324a1556d9d8b7cdf2d2f167d0aa5d8a1d74bcc7fc1c97e540dd565848d4cc0"
+    },
+    "s": {
+      "first": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "last": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4"
+      ],
+      "nulls": 0,
+      "sha256": "cc558c6f7a362ccb962ead5d7f1b3bcfd24bc64031b4d7567137b2ceae4901a9"
+    }
+  },
+  "encodings": [
+    "fastlanes.bitpacked.v2",
+    "vortex.constant",
+    "vortex.dict",
+    "vortex.fsst",
+    "vortex.sequence",
+    "vortex.shared",
+    "vortex.struct"
+  ],
+  "rows": 2000,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i64"
+        },
+        "name": "a"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "s"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

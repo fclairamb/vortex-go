@@ -115,6 +115,104 @@ def default_mixed(r):
     return pa.table(cols)
 
 
+# The logical types of docs/interface.md that pyarrow can write, by name. Variant cannot.
+def _scalar_types():
+    return {
+        "null": pa.null(), "bool": pa.bool_(),
+        "i8": pa.int8(), "i16": pa.int16(), "i32": pa.int32(), "i64": pa.int64(),
+        "u8": pa.uint8(), "u16": pa.uint16(), "u32": pa.uint32(), "u64": pa.uint64(),
+        "f16": pa.float16(), "f32": pa.float32(), "f64": pa.float64(),
+        "decimal": pa.decimal128(10, 2), "utf8": pa.string(), "binary": pa.binary(),
+        "date": pa.date32(), "time": pa.time64("us"), "timestamp": pa.timestamp("us", "UTC"),
+        "uuid": pa.uuid(),
+    }
+
+
+def _value(t, i, nullable):
+    """A value of type t for row i. A nullable type gets a null every fourth row."""
+    if nullable and i % 4 == 3:
+        return None
+    if pa.types.is_null(t):
+        return None
+    if pa.types.is_boolean(t):
+        return i % 2 == 0
+    if pa.types.is_integer(t):
+        return i % 100
+    if pa.types.is_floating(t):
+        return i / 4
+    if pa.types.is_decimal(t):
+        return decimal.Decimal("%d.25" % i)
+    if pa.types.is_string(t):
+        return "s%d" % i
+    if pa.types.is_binary(t):
+        return bytes([i % 256]) * 3
+    if pa.types.is_date(t):
+        return datetime.date(2020, 1, 1) + datetime.timedelta(days=i)
+    if pa.types.is_time(t):
+        return datetime.time(i % 24, i % 60)
+    if pa.types.is_timestamp(t):
+        return datetime.datetime(2026, 11, 20, 0, 0, i, tzinfo=datetime.timezone.utc)
+    if isinstance(t, pa.UuidType):
+        return uuid.UUID(int=i * 7919 + 1, version=4).bytes
+    if pa.types.is_fixed_size_list(t):
+        return [_value(t.value_field.type, i + j, t.value_field.nullable) for j in range(t.list_size)]
+    if pa.types.is_list(t):
+        return [_value(t.value_field.type, i + j, t.value_field.nullable) for j in range(i % 3 + 1)]
+    if pa.types.is_map(t):
+        return [("k%d" % i, _value(t.item_type, i, t.item_field.nullable))]
+    if pa.types.is_struct(t):
+        return {f.name: _value(f.type, i, f.nullable) for f in t}
+    raise ValueError(t)
+
+
+def _array(t, nullable, start, count):
+    """count values of type t, from row start. A uuid has no Python-values constructor."""
+    vals = [_value(t, start + i, nullable) for i in range(count)]
+    if isinstance(t, pa.UuidType):
+        return pa.ExtensionArray.from_storage(t, pa.array(vals, pa.binary(16)))
+    return pa.array(vals, t)
+
+
+def _column(t, typ, nullable, n):
+    """The column of n rows of typ: t itself, a struct of t, or a list of t."""
+    if typ is t:
+        return _array(t, nullable, 0, n)
+    if pa.types.is_struct(typ):
+        return pa.StructArray.from_arrays([_array(t, nullable, 0, n)], fields=list(typ))
+    lengths = [i % 3 for i in range(n)]
+    offsets = pa.array([0] + [sum(lengths[: i + 1]) for i in range(n)], pa.int32())
+    return pa.ListArray.from_arrays(offsets, _array(t, nullable, 0, sum(lengths)), type=typ)
+
+
+def types_matrix(r):
+    """Every logical type, nullable and not, alone, in a struct and in a list."""
+    types = _scalar_types()
+    for nullable in (False, True):
+        tag = "n" if nullable else "r"
+        types["list_" + tag] = pa.list_(pa.field("item", pa.int32(), nullable=nullable))
+        types["fsl_" + tag] = pa.list_(pa.field("item", pa.int32(), nullable=True), 3)  # pyarrow pads a null row with null items
+        types["map_" + tag] = pa.map_(pa.string(), pa.field("v", pa.int32(), nullable=nullable))
+        types["struct_" + tag] = pa.struct([pa.field("v", pa.int32(), nullable=nullable)])
+    n = 12
+    fields, cols = [], []
+    for name, t in types.items():
+        for nullable in (False, True):
+            if pa.types.is_null(t) and not nullable:
+                continue
+            tag = "n" if nullable else "r"
+            alone = pa.field("%s_%s" % (name, tag), t, nullable=nullable)
+            inner = pa.field("x", t, nullable=nullable)
+            items = pa.field("item", t, nullable=nullable)
+            for f, typ in (
+                (alone, t),
+                (pa.field("in_struct_%s_%s" % (name, tag), pa.struct([inner]), nullable=False), pa.struct([inner])),
+                (pa.field("in_list_%s_%s" % (name, tag), pa.list_(items), nullable=False), pa.list_(items)),
+            ):
+                fields.append(f)
+                cols.append(_column(t, typ, nullable, n))
+    return pa.Table.from_arrays(cols, schema=pa.schema(fields))
+
+
 def compact(path, array):
     vx.io.VortexWriteOptions.compact().write(array, path)
 
@@ -124,6 +222,7 @@ FIXTURES = [
     ("onpair.vortex", onpair, "vortex.onpair"),
     ("masked.vortex", masked, "vortex.masked"),
     ("uuid.vortex", uuid_table, None),
+    ("types_matrix.vortex", types_matrix, None),
     ("empty.vortex", empty, None),
     ("wide.vortex", wide, None),
     ("default_ints.vortex", default_ints, "vortex.dict"),
