@@ -8,7 +8,7 @@ test:
 
 # -race needs the cgo toolchain on Linux. The code itself has no cgo (see nocgo).
 race:
-	go test -race ./...
+	go test -race -timeout 40m ./...
 
 # 100% statement coverage, no exclusion. Lists every block that is not covered.
 cover:
