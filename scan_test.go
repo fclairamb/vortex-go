@@ -18,7 +18,7 @@ import (
 // The footer lists of the hand-built files.
 var (
 	testArraySpecs  = []string{"vortex.primitive", "vortex.bool", "vortex.struct", "vortex.chunked", "vortex.alp"}
-	testLayoutSpecs = []string{"vortex.flat", "vortex.struct", "vortex.chunked", "vortex.zoned"}
+	testLayoutSpecs = []string{"vortex.flat", "vortex.struct", "vortex.chunked", "vortex.zoned", "vortex.list", "vortex.stats", "vortex.dict"}
 )
 
 const (
@@ -34,6 +34,9 @@ const (
 	lStruct
 	lChunked
 	lZoned
+	lList
+	lStats
+	lDict
 )
 
 // abuf is a data buffer of a serialized array.
@@ -316,7 +319,7 @@ func TestScanLayoutErrors(t *testing.T) {
 		layout fbtest.Tab
 		want   string
 	}{
-		{"unsupported layout", dtype, layoutTab(lZoned, 1, nil), `unsupported layout "vortex.zoned"`},
+		{"unsupported layout", dtype, layoutTab(lList, 1, nil), `unsupported layout "vortex.list"`},
 		{"flat with two segments", dtype, layoutTab(lFlat, 1, []uint32{0, 0}), "2 segments and 0 children"},
 		{"flat with a child", dtype, layoutTab(lFlat, 1, []uint32{0}, flat), "1 segments and 1 children"},
 		{"struct with a missing field", dtype, layoutTab(lStruct, 1, nil), "0 children for 1 fields"},
@@ -325,8 +328,8 @@ func TestScanLayoutErrors(t *testing.T) {
 		{"chunks of another size", dtype, layoutTab(lStruct, 3, nil, layoutTab(lChunked, 3, nil, flat)), "chunked children have 1 rows"},
 		{"chunk rows overflow", dtype, layoutTab(lStruct, 0, nil, layoutTab(lChunked, 0, nil,
 			layoutTab(lFlat, 1<<63, []uint32{0}), layoutTab(lFlat, 1<<63, []uint32{0}))), "overflow"},
-		{"unsupported chunk", dtype, layoutTab(lChunked, 1, nil, layoutTab(lZoned, 1, nil)), "vortex.zoned"},
-		{"unsupported validity", nested, layoutTab(lStruct, 1, nil, layoutTab(lStruct, 1, nil, layoutTab(lZoned, 1, nil), flat)), "vortex.zoned"},
+		{"unsupported chunk", dtype, layoutTab(lChunked, 1, nil, layoutTab(lList, 1, nil)), "vortex.list"},
+		{"unsupported validity", nested, layoutTab(lStruct, 1, nil, layoutTab(lStruct, 1, nil, layoutTab(lList, 1, nil), flat)), "vortex.list"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

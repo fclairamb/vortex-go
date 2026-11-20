@@ -13,6 +13,8 @@ import random
 import re
 import sys
 import uuid
+import datetime
+import decimal
 
 import pyarrow as pa
 import vortex as vx
@@ -74,13 +76,59 @@ def wide(r):
     return pa.table(cols)
 
 
-# name, builder, encoding it must contain (None: no requirement)
+def default_ints(r):
+    n = 30000
+    return pa.table({
+        "sorted": list(range(1000, 1000 + n)),
+        "low_card": [r.choice([3, 5, 8, 13, 21, 34, 55, 89]) * 1000 for _ in range(n)],
+        "random": [r.randrange(-512, 512) for _ in range(n)],
+        "nullable": [r.randrange(300) if r.random() < 0.8 else None for _ in range(n)],
+        # Constant lists: 4.8 MB of values that compress to nothing. The writer chunks a
+        # column by its uncompressed size, so this is what makes a vortex.chunked layout.
+        "bulk": pa.array([[7] * 40 for _ in range(n)], pa.list_(pa.int32())),
+    })
+
+
+def default_mixed(r):
+    n = 30000
+    base = datetime.datetime(2026, 1, 1)
+    cols = {
+        "sorted": list(range(1000, 1000 + n)),
+        "low_card": [r.choice([3, 5, 8, 13, 21, 34, 55, 89]) * 1000 for _ in range(n)],
+        "random": [r.randrange(-8, 8) for _ in range(n)],
+        "nullable": [r.randrange(8) if r.random() < 0.8 else None for _ in range(n)],
+        "float": [r.randrange(16) / 4 for _ in range(n)],
+        "str_low": [r.choice(["red", "green", "blue", "amber"]) for _ in range(n)],
+        "str_high": [("row-%02d-acme-" % r.randrange(16)).ljust(80, "x") for _ in range(n)],
+        "flag": [r.random() < 0.3 for _ in range(n)],
+        "price": pa.array([decimal.Decimal(r.randrange(16)) / 100 for _ in range(n)],
+                          pa.decimal128(12, 2)),
+        "ts": pa.array([base + datetime.timedelta(seconds=7 * i) for i in range(n)],
+                       pa.timestamp("us")),
+        "rec": pa.array(
+            [{"a": r.randrange(4), "b": "s%d" % r.randrange(4)} if r.random() < 0.9 else None
+             for _ in range(n)],
+            pa.struct([("a", pa.int32()), ("b", pa.string())])),
+        "tags": pa.array([[7] * 40 for _ in range(n)],
+                         pa.list_(pa.int32())),
+    }
+    return pa.table(cols)
+
+
+def compact(path, array):
+    vx.io.VortexWriteOptions.compact().write(array, path)
+
+
+# name, builder, encoding it must contain (None: no requirement), writer (None: default)
 FIXTURES = [
     ("onpair.vortex", onpair, "vortex.onpair"),
     ("masked.vortex", masked, "vortex.masked"),
     ("uuid.vortex", uuid_table, None),
     ("empty.vortex", empty, None),
     ("wide.vortex", wide, None),
+    ("default_ints.vortex", default_ints, "vortex.dict"),
+    ("default_mixed.vortex", default_mixed, "vortex.dict"),
+    ("default_compact.vortex", default_mixed, None, compact),
 ]
 
 # Not producible from Python. What was tried is the record the completeness spec reads.
@@ -112,10 +160,13 @@ def main():
     out = os.path.join(ROOT, "testdata", "fixtures", version, "extra")
     os.makedirs(out, exist_ok=True)
     missing = []
-    for name, build, want in FIXTURES:
+    for name, build, want, *writer in FIXTURES:
         path = os.path.join(out, name)
         if not os.path.exists(path):
-            vx.io.VortexWriteOptions.default().write(vx.array(build(rng())), path)
+            if writer:
+                writer[0](path, vx.array(build(rng())))
+            else:
+                vx.io.VortexWriteOptions.default().write(vx.array(build(rng())), path)
         if want and want not in encodings(path):
             os.remove(path)
             missing.append((name, want, "the default writer did not emit it for the data of "

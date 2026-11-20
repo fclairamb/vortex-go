@@ -33,7 +33,7 @@ func (f *File) Scan(ctx context.Context, _ Query, columns ...string) iter.Seq2[*
 
 func (f *File) scan(ctx context.Context, o scanOptions) iter.Seq2[*Batch, error] {
 	return func(yield func(*Batch, error) bool) {
-		rd, err := f.newReader(f.layout, arrayType(f.schema.root), o.array)
+		rd, err := f.newReader(f.layout, arrayType(f.schema.root), o.array, "", 0, int(f.layout.rowCount))
 		if err != nil {
 			yield(nil, err)
 			return
