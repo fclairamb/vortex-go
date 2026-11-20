@@ -146,3 +146,45 @@ func ExampleNewRowWriter_readBack() {
 	// a 10.50 true [x y]
 	// b 2.99 false []
 }
+
+// Read columns, batch by batch, without structs. Values copies a numeric column into a slice.
+func ExampleFile_Scan() {
+	f, err := vortex.OpenFile("testdata/fixtures/0.93.0/extra/default_ints.vortex")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer f.Close()
+	for b, err := range f.Scan(context.Background(), vortex.Query{Rows: vortex.Range{End: 4}}, "sorted") {
+		if err != nil {
+			log.Fatal(err)
+		}
+		v, err := vortex.Values[int64](b.Col(0))
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(b.Len(), v)
+	}
+	// Output: 4 [1000 1001 1002 1003]
+}
+
+// Write columns: a schema, then one Write per chunk with a Data per column.
+func ExampleNewWriter() {
+	s := vortex.NewSchema(
+		vortex.Field{Name: "id", Type: vortex.Int64Type()},
+		vortex.Field{Name: "name", Type: vortex.Utf8Type()},
+	)
+	var buf bytes.Buffer
+	w := vortex.NewWriter(&buf, s, vortex.WriteOptions{})
+	if err := w.Write(vortex.Of([]int64{1, 2, 3}), vortex.OfStrings([]string{"a", "b", "c"})); err != nil {
+		log.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		log.Fatal(err)
+	}
+	f, err := vortex.Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(f.NumRows(), f.Schema())
+	// Output: 3 struct{id: i64, name: utf8}
+}
