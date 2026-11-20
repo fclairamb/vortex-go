@@ -109,6 +109,9 @@ func arrayType(t Type) array.DType {
 	case Date, Time, Timestamp:
 		d.Kind = array.Ext
 		d.Storage = &array.DType{Kind: array.Prim, PType: storage(t), Nullable: t.nullable}
+		if t.kind == Timestamp {
+			d.Storage.Ticks = ticksPerSecond[t.unit]
+		}
 	default:
 		if p, ok := primOfKind[t.kind]; ok {
 			d.Kind, d.PType = array.Prim, p
@@ -118,6 +121,9 @@ func arrayType(t Type) array.DType {
 	}
 	return d
 }
+
+// ticksPerSecond is the ticks of a second, by time unit.
+var ticksPerSecond = map[Unit]int32{Nanosecond: 1e9, Microsecond: 1e6, Millisecond: 1e3, Second: 1}
 
 // storage is the primitive type that holds a date, a time or a timestamp.
 func storage(t Type) array.PType {

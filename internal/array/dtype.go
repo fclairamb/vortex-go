@@ -87,6 +87,8 @@ type DType struct {
 	PType  PType
 	// Nullable is whether the array may hold nulls.
 	Nullable bool
+	// Ticks is, on the storage of a timestamp, the number of ticks of its unit in a second.
+	Ticks int32
 }
 
 // String describes the type in a message.

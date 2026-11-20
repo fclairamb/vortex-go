@@ -12,9 +12,10 @@ import (
 // The array specs of the hand-built segments, as a footer would list them.
 var specs = []string{
 	"vortex.null", "vortex.bool", "vortex.primitive", "vortex.struct", "vortex.chunked",
-	"vortex.constant", "vortex.ext", "vortex.masked", "vortex.bytebool", "vortex.alp",
+	"vortex.constant", "vortex.ext", "vortex.masked", "vortex.bytebool", "vortex.fsst",
 	"vortex.varbin", "vortex.varbinview", "vortex.list", "vortex.listview", "vortex.fixed_size_list", "vortex.map", "vortex.decimal",
 	"fastlanes.bitpacked", "fastlanes.for", "fastlanes.rle", "vortex.zigzag", "vortex.sequence", "vortex.runend", "vortex.dict", "vortex.sparse",
+	"vortex.alp", "vortex.alprd", "vortex.decimal_byte_parts", "vortex.datetimeparts",
 }
 
 const (
@@ -27,7 +28,7 @@ const (
 	eExt
 	eMasked
 	eByteBool
-	eAlp
+	eFsst
 	eVarBin
 	eVarBinView
 	eList
@@ -43,6 +44,10 @@ const (
 	eRunEnd
 	eDict
 	eSparse
+	eAlp
+	eAlpRD
+	eDecParts
+	eDateParts
 )
 
 var (

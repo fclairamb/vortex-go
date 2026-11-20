@@ -17,7 +17,7 @@ import (
 
 // The footer lists of the hand-built files.
 var (
-	testArraySpecs  = []string{"vortex.primitive", "vortex.bool", "vortex.struct", "vortex.chunked", "vortex.alp"}
+	testArraySpecs  = []string{"vortex.primitive", "vortex.bool", "vortex.struct", "vortex.chunked", "vortex.fsst"}
 	testLayoutSpecs = []string{"vortex.flat", "vortex.struct", "vortex.chunked", "vortex.zoned", "vortex.list", "vortex.stats", "vortex.dict"}
 )
 
@@ -358,7 +358,7 @@ func TestScanSegmentErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = scanAll(t, f, 8)
-	if !errors.Is(err, errors.ErrUnsupported) || errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "vortex.alp") {
+	if !errors.Is(err, errors.ErrUnsupported) || errors.Is(err, ErrCorrupt) || !strings.Contains(err.Error(), "vortex.fsst") {
 		t.Fatalf("err = %v", err)
 	}
 	// A segment that is no array is corrupt.
