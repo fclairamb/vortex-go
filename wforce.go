@@ -19,7 +19,7 @@ func (w *Writer) encodeForced(d Data, n int) flatbuf.Off {
 		w.enc = encode.New()
 	}
 	var node *encode.Node
-	if w.force == "chunked" {
+	if w.force == forceChunked {
 		node = w.chunkedNumbers(d, n)
 		return w.emit(node)
 	}
@@ -73,7 +73,7 @@ func (w *Writer) encodeForcedStrings(t Type, d Data) (flatbuf.Off, bool) {
 		if t.kind == Binary {
 			return w.emit(encode.VarBinBytes(w.enc, d.bins, d.nulls)), true
 		}
-	case "chunked":
+	case forceChunked:
 		return w.emit(w.chunked(d.n, func(lo, hi int) *encode.Node {
 			return encode.VarBinBytes(w.enc, d.bins[lo:hi], sliceNulls(d.nulls, lo, hi))
 		})), true
@@ -88,7 +88,7 @@ func (w *Writer) encodeForcedStrings(t Type, d Data) (flatbuf.Off, bool) {
 // encodeForcedBools is the array of the booleans d as a constant under a validity, when that is
 // the encoding forced and the values fit.
 func (w *Writer) encodeForcedBools(d Data) (flatbuf.Off, bool) {
-	if w.depth != 1 || (w.force != forceMasked && w.force != "bytebool" && w.force != "chunked") {
+	if w.depth != 1 || (w.force != forceMasked && w.force != "bytebool" && w.force != forceChunked) {
 		return 0, false
 	}
 	if w.enc == nil {
@@ -97,7 +97,7 @@ func (w *Writer) encodeForcedBools(d Data) (flatbuf.Off, bool) {
 	switch w.force {
 	case "bytebool":
 		return w.emit(encode.ByteBool(w.enc, d.bools, d.nulls)), true
-	case "chunked":
+	case forceChunked:
 		return w.emit(w.chunked(len(d.bools), func(lo, hi int) *encode.Node {
 			return encode.Bools(w.enc, d.bools[lo:hi], sliceNulls(d.nulls, lo, hi))
 		})), true
@@ -151,8 +151,7 @@ func (w *Writer) encodeForcedTimestamps(t Type, d Data) (flatbuf.Off, bool) {
 // when there are rows enough.
 func (w *Writer) chunked(n int, part func(lo, hi int) *encode.Node) *encode.Node {
 	cuts := [4]int{0, n / 3, n / 3, n}
-	var parts []*encode.Node
-	var rows []int
+	parts, rows := make([]*encode.Node, 0, 3), make([]int, 0, 3)
 	for i := range 3 {
 		parts = append(parts, part(cuts[i], cuts[i+1]))
 		rows = append(rows, cuts[i+1]-cuts[i])
@@ -252,3 +251,6 @@ func forceNumber[T encode.Number](e *encode.Encoder, name string, v []T, nulls [
 
 // forceMasked forces a constant under a validity.
 const forceMasked = "masked"
+
+// forceChunked forces a vortex.chunked array.
+const forceChunked = "chunked"
