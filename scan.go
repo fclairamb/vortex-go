@@ -370,18 +370,20 @@ func (s *scanner) fill(n int, pick bool) *Batch {
 
 // picked is the rows a filter keeps of an array, in buffers that the next batch reuses.
 type picked struct {
-	kids           []picked // the fields of a struct, the elements of a fixed-size list
-	fields         []*array.Array
-	vbytes, bbytes []byte
-	data           []byte
-	starts, ends   []int
-	elems          []int // the elements of the rows kept of a fixed-size list
-	valid          array.Bitmap
-	arr            array.Array
+	data   []byte
+	kids   []picked // the fields of a struct, the elements of a fixed-size list
+	fields []*array.Array
+	vbytes []byte
+	bbytes []byte
+	starts []int
+	ends   []int
+	elems  []int // the elements of the rows kept of a fixed-size list
 	// runs, parts and vdata are a Variant: a part per run of consecutive rows kept.
 	runs  []array.Array
 	parts []*array.Array
+	valid array.Bitmap
 	vdata array.VariantData
+	arr   array.Array
 }
 
 // gather returns the rows sel (ascending) of a. The bytes and the elements that rows point to
