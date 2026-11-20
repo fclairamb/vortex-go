@@ -75,3 +75,7 @@ Upstream paths are in `~/code/other/vortex/vortex-array/src/arrays/`.
   the null slots hold (`decimal_null_slots` has non-zero values in null slots: they must
   not reach the hash).
 - Whether `keys_sorted` of the map type changes anything for a reader.
+
+## Resolved open questions
+
+- `extra/uuid` needs the `vortex.zoned` layout, which arrives in spec 08. Its harness check moves there (autopilot: recommended answer). `keys_sorted` changes nothing for a reader, and `vortex.map` has no metadata.

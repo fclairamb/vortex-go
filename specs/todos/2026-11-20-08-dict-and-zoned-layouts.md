@@ -62,6 +62,7 @@ Upstream paths are in `~/code/other/vortex/vortex-layout/src/layouts/`.
   with one child, a code past the values, row counts that do not add up.
 - A `vortex.stats` layout: hand-built here from a `default_ints` column (same children,
   the older metadata). The compat spec reads real ones from older releases.
+- Carried over from spec 06 (autopilot): `extra/uuid` passes the harness once `vortex.zoned` reads. Remove its `"uuid": "vortex.zoned"` entry from `pending` in `corpus_test.go` and check the UUID column against the oracle. Until now only a hand-built UUID column has been tested.
 
 ## To verify
 
