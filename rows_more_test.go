@@ -3,6 +3,8 @@ package vortex
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
 	"reflect"
 	"runtime"
 	"slices"
@@ -741,5 +743,40 @@ func TestRowsConcurrentLoops(t *testing.T) {
 	wg.Wait()
 	if sums[0] != sums[1] || sums[0] == 0 {
 		t.Fatalf("sums %v", sums)
+	}
+}
+
+// TestRowsDecimalPrecisionEdge checks the edge of the int64 rule: a decimal of precision 18
+// fits in an int64 field and is read with its unscaled values, one of precision 19 or 20 does not.
+func TestRowsDecimalPrecisionEdge(t *testing.T) {
+	f := openFixture(t, fixtureDir+"decimal_wide_storage.vortex")
+	b := allBatch(t, f)
+	c := colByName(f, b, "i128_p18_s2")
+	if c.Type().Precision() != 18 {
+		t.Fatalf("precision %d, want 18", c.Type().Precision())
+	}
+	type row struct {
+		D int64 `vortex:"i128_p18_s2"`
+	}
+	rows := readRows[row](t, f, Query{}, nil)
+	if len(rows) == 0 {
+		t.Fatal("no rows")
+	}
+	for i, r := range rows {
+		if want, _ := c.Decimal(i).Int64(); r.D != want {
+			t.Fatalf("row %d: %d, want %d", i, r.D, want)
+		}
+	}
+	if rows[0].D != -999999999999999999 || rows[len(rows)-1].D != 999999999999999999 {
+		t.Fatalf("edge values: %+v", rows)
+	}
+
+	// Precision 20: no fixture has one, so the decoder is asked directly.
+	for _, p := range []uint8{19, 20} {
+		_, err := decimalDecoder(reflect.TypeFor[int64](), Type{kind: KindDecimal, precision: p}, errors.New("mismatch"))
+		want := fmt.Sprintf("a decimal of precision %d does not fit in int64: want vortex.Decimal", p)
+		if err == nil || err.Error() != want {
+			t.Errorf("precision %d: %v, want %q", p, err, want)
+		}
 	}
 }
