@@ -1,0 +1,92 @@
+name: Bench
+
+# The benchmark numbers of every merge to main, with the Rust reference measured on the same
+# machine: bench.json is appended to history.jsonl on the bench-data branch. The repository is
+# private, so its Actions minutes are counted: one run per merge, 15 minutes at most, no
+# schedule. On a pull request that touches the benchmarks the job runs without the push. It is
+# never a required check.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'bench/**'
+      - 'tools/bench-rust/**'
+      - 'bench_test.go'
+      - 'bench_cases_test.go'
+      - 'Makefile'
+      - '.github/workflows/bench.yml'
+  workflow_dispatch:
+
+# Two merges in a row push one after the other, the second on top of the first.
+concurrency:
+  group: bench-${{ github.event_name == 'push' && 'main' || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  bench:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # the push to bench-data
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+
+      - name: Setup rust
+        run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      # The TPC-H and ClickBench files of the pinned release.
+      - name: Cache fixtures
+        uses: actions/cache@v6
+        with:
+          path: .cache/fixtures
+          key: bench-fixtures-${{ hashFiles('.vortex-version', 'scripts/fixtures.sh') }}
+
+      - name: Fetch the fixtures
+        run: make fixtures
+
+      # The Rust crates and the build of the harness: a run with the cache only compiles the
+      # harness itself.
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            tools/bench-rust/target
+          key: bench-cargo-${{ runner.os }}-${{ hashFiles('tools/bench-rust/Cargo.lock') }}
+
+      - name: make bench-json
+        run: make bench-json
+
+      - name: Upload bench.json
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench.json
+          path: bench.json
+
+      # history.jsonl holds one line per run, next to the latest bench.json, on an orphan branch:
+      # main needs a pull request for every commit, a results commit per merge would be noise.
+      - name: Append to bench-data
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git ls-remote --exit-code --heads origin bench-data > /dev/null; then
+            git fetch origin bench-data
+            git worktree add "$RUNNER_TEMP/data" -B bench-data origin/bench-data
+          else
+            git worktree add --orphan -b bench-data "$RUNNER_TEMP/data"
+          fi
+          cd "$RUNNER_TEMP/data"
+          cat "$GITHUB_WORKSPACE/bench.json" >> history.jsonl
+          cp "$GITHUB_WORKSPACE/bench.json" bench.json
+          git add history.jsonl bench.json
+          git commit -m "bench: ${GITHUB_SHA}"
+          git push origin HEAD:bench-data

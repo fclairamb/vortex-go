@@ -122,8 +122,9 @@ Some identifiers are read and never written, each for a reason: see the writer s
 
 ## Speed
 
-[docs/benchmarks.md](docs/benchmarks.md) has the numbers, the machine and the ratio to
-parquet-go and to the Rust reference. `make bench` runs them.
+[docs/benchmarks.md](docs/benchmarks.md) says how the numbers are made. They are recorded on
+every merge to `main`, with the Rust reference measured on the same machine, in the
+`bench-data` branch. `make bench` runs the Go benchmarks, `make bench-json` all three harnesses.
 
 ## Limits
 
