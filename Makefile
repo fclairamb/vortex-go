@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors api bench bench-compare bench-parquet bench-rust
+.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors api bench bench-compare bench-parquet bench-rust bench-json
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -121,6 +121,25 @@ bench-parquet:
 	go test -run '^$$' -bench '^BenchmarkOpen$$' -benchtime 1x .
 	cd bench && go test -run '^$$' -bench . -benchmem -count 1 ./...
 
-# The reference reader through Python, on the same generated file, for docs/benchmarks.md.
+# The Rust harness: the reference reader at the release of .vortex-version, built in release mode.
+# It needs cargo and network, and is never part of check or of go test. See bench.yml.
 bench-rust:
-	$(ORACLE) tools/oracle/bench.py
+	cd tools/bench-rust && cargo build --release
+
+# The three harnesses on the cases of bench/cases.json, merged into bench.json (one line, the
+# median of BENCH_RUNS runs): the Go benchmarks, parquet-go, and the Rust harness, with 1 thread
+# and with every core. Neither this nor bench-rust is part of check. VORTEX_BENCH_ROWS lowers the
+# size of the generated file.
+BENCH_RUNS ?= 5
+PARQUET_RUNS ?= 3
+BENCH_TMP = .cache/bench-json
+bench-json: bench-rust
+	mkdir -p $(BENCH_TMP)
+	cores=$$(getconf _NPROCESSORS_ONLN); cpus=1; [ "$$cores" -gt 1 ] && cpus="1,$$cores"; \
+	go test -run '^$$' -bench '^BenchmarkCases$$' -benchmem -count $(BENCH_RUNS) -benchtime 1x -cpu $$cpus . | tee $(BENCH_TMP)/go.txt && \
+	(cd bench && go test -run '^$$' -bench '^BenchmarkCases$$/./.*/parquet-go' -benchmem -count $(PARQUET_RUNS) -benchtime 1x -cpu 1 . | tee ../$(BENCH_TMP)/parquet.txt) && \
+	tools/bench-rust/target/release/bench-rust --cases bench/cases.json --root . --runs $(BENCH_RUNS) --threads $$cpus > $(BENCH_TMP)/rust.jsonl && \
+	go -C bench run ./cmd/benchjson -cases cases.json -go ../$(BENCH_TMP)/go.txt -parquet ../$(BENCH_TMP)/parquet.txt \
+		-rust ../$(BENCH_TMP)/rust.jsonl -commit "$$(git rev-parse HEAD)" -vortex-version "$$(cat .vortex-version)" \
+		-go-version "$$(go env GOVERSION)" -rust-version "$$(rustc --version)" -cores $$cores > bench.json
+	@echo "bench.json: $$(wc -c < bench.json) bytes"

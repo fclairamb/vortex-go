@@ -2,3 +2,5 @@ coverage.txt
 /.cache/
 .DS_Store
 *.test
+/bench.json
+/tools/bench-rust/target/

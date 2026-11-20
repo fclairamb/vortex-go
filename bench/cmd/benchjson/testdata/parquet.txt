@@ -1,0 +1,13 @@
+goos: linux
+cpu: Acme Cpu 9000
+BenchmarkCases/gen16/scan_full/vortex-go   2  100 ns/op
+BenchmarkCases/gen16/scan_full/parquet-go   2  1000 ns/op	 1.0e+06 rows/s
+BenchmarkCases/gen16/scan_full/vortex-go   2  300 ns/op
+BenchmarkCases/gen16/scan_full/parquet-go   2  3000 ns/op	 1.0e+06 rows/s
+BenchmarkCases/gen16/scan_full/vortex-go   2  200 ns/op
+BenchmarkCases/gen16/scan_full/parquet-go   2  2000 ns/op	 1.0e+06 rows/s
+BenchmarkCases/gen16/scan_full/vortex-go   2  500 ns/op
+BenchmarkCases/gen16/scan_full/parquet-go   2  5000 ns/op	 1.0e+06 rows/s
+BenchmarkCases/gen16/scan_full/vortex-go   2  400 ns/op
+BenchmarkCases/gen16/scan_full/parquet-go   2  4000 ns/op	 1.0e+06 rows/s
+BenchmarkWriteRows/parquet-go  3 50 ns/op
