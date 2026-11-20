@@ -5,3 +5,4 @@ coverage.txt
 /bench.json
 /tools/bench-rust/target/
 /_site/
+/tools/variantjson/target/

@@ -1,0 +1,21 @@
+[package]
+name = "variantjson"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Prints each row of the Variant column "v" of a Vortex file as one line of JSON, with the
+# reference reader at the pinned release (python vortex-data 0.93.0 has no Variant in its API,
+# so tools/oracle/oracle.py cannot read these files). `make interop` runs it. The pin follows
+# .vortex-version, like tools/vectors and tools/bench-rust.
+[dependencies]
+vortex = { version = "=0.93.0", default-features = false, features = ["files", "zstd", "tokio", "parquet-variant"] }
+vortex-parquet-variant = "=0.93.0"
+parquet-variant-compute = "59"
+parquet-variant-json = "59"
+arrow-array = "59"
+futures = "0.3"
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[workspace]
