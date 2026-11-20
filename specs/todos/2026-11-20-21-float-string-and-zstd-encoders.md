@@ -80,3 +80,9 @@ In `internal/encode`, each with its `estimate` twin, as in the integer encoders 
   Recommended answer: not in this version. The decoder alone is the largest format of the
   edition. Compact mode uses `vortex.zstd` for numbers too, and the compressor spec
   measures what it costs in file size against the reference.
+
+## Implementation notes
+
+- ALP follows the `alp` crate 0.0.4, the version `vortex-alp =0.93.0` pins (`tools/vectors/Cargo.lock`), not the 0.0.6 named above.
+- `TestEstimateFloatsAndZstd` accepts an error of up to 32 bytes, skips the quarter sample of random data for ALP and ALP-RD, and skips zstd quarter samples with fewer than 1024 valid values.
+- Follow-up: the quarter-sample estimate of `dict` on `i16/small/20480` is 18% off under another random stream (pre-existing, from the integer-encoders spec). `TestEstimate` keeps its seed and so does not show it.
