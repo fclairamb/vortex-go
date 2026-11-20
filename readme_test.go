@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -80,5 +81,76 @@ func TestCompatLine(t *testing.T) {
 	got, err := withCompatLine("a\n"+compatBegin+"\nold\n"+compatEnd+"\nb\n", "new")
 	if err != nil || got != "a\n"+compatBegin+"\nnew\n"+compatEnd+"\nb\n" {
 		t.Fatalf("got %q, %v", got, err)
+	}
+}
+
+// badgeRe matches a badge line: [![alt](image)](link).
+var badgeRe = regexp.MustCompile(`^\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)$`)
+
+// TestReadmeBadges checks the badge block under the title: every badge names the repository,
+// the pkg.go.dev and Go Report Card badges use the module path of go.mod, the build badge
+// points at an existing workflow, LICENSE exists, and no badge URL carries a token.
+func TestReadmeBadges(t *testing.T) {
+	readme, err := os.ReadFile("README.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gomod, err := os.ReadFile("go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	modulePath := ""
+	for _, line := range strings.Split(string(gomod), "\n") {
+		if rest, ok := strings.CutPrefix(line, "module "); ok {
+			modulePath = strings.TrimSpace(rest)
+		}
+	}
+	if modulePath == "" {
+		t.Fatal("no module line in go.mod")
+	}
+	if modulePath != "github.com/fclairamb/vortex-go" {
+		t.Fatalf("module path %q", modulePath)
+	}
+
+	var badges []string
+	for _, line := range strings.Split(string(readme), "\n") {
+		if strings.HasPrefix(line, "[![") {
+			badges = append(badges, line)
+		}
+	}
+	if len(badges) != 6 {
+		t.Fatalf("%d badges, want 6", len(badges))
+	}
+	wantLabels := []string{"Build", "Coverage", "Go Reference", "Go Report Card", "Go", "License"}
+	for i, line := range badges {
+		m := badgeRe.FindStringSubmatch(line)
+		if m == nil {
+			t.Fatalf("badge %d is not [![alt](image)](link): %q", i, line)
+		}
+		if m[1] != wantLabels[i] {
+			t.Errorf("badge %d label %q, want %q", i, m[1], wantLabels[i])
+		}
+		if strings.Contains(m[2], "token") || strings.Contains(m[3], "token") {
+			t.Errorf("badge %d carries a token: %q", i, line)
+		}
+		if i < 4 && !strings.Contains(m[2]+m[3], "fclairamb/vortex-go") {
+			t.Errorf("badge %d does not name fclairamb/vortex-go: %q", i, line)
+		}
+	}
+	if !strings.Contains(badges[2], "pkg.go.dev/badge/"+modulePath+".svg") ||
+		!strings.Contains(badges[2], "pkg.go.dev/"+modulePath+")") {
+		t.Errorf("Go Reference badge is not for %s: %q", modulePath, badges[2])
+	}
+	if !strings.Contains(badges[3], "goreportcard.com/badge/"+modulePath+")") {
+		t.Errorf("Go Report Card badge is not for %s: %q", modulePath, badges[3])
+	}
+	if m := badgeRe.FindStringSubmatch(badges[0]); m == nil || !strings.HasSuffix(m[3], "/workflows/build.yml") {
+		t.Errorf("Build badge does not link to build.yml: %q", badges[0])
+	}
+	if _, err := os.Stat(".github/workflows/build.yml"); err != nil {
+		t.Errorf("build workflow: %v", err)
+	}
+	if _, err := os.Stat("LICENSE"); err != nil {
+		t.Errorf("LICENSE: %v", err)
 	}
 }
