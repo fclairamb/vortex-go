@@ -1,0 +1,6 @@
+{"encoding":"constant","ptype":"i32","vectors":[
+{"input":"0000000000000000000000000000000000000000","len":5,"name":"v0","output":{"buffers":["1800"],"children":[],"id":"vortex.constant","metadata":""},"params":{},"valid":null},
+{"input":"0100000001000000010000000100000001000000","len":5,"name":"v1","output":{"buffers":["1802"],"children":[],"id":"vortex.constant","metadata":""},"params":{},"valid":null},
+{"input":"ffffff7fffffff7fffffff7fffffff7fffffff7f","len":5,"name":"v2147483647","output":{"buffers":["18feffffff0f"],"children":[],"id":"vortex.constant","metadata":""},"params":{},"valid":null},
+{"input":"0000008000000080000000800000008000000080","len":5,"name":"v-2147483648","output":{"buffers":["18ffffffff0f"],"children":[],"id":"vortex.constant","metadata":""},"params":{},"valid":null}
+]}

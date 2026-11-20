@@ -93,3 +93,9 @@ func Bytes[T Number](v []T) []byte {
 	var zero T
 	return unsafe.Slice((*byte)(unsafe.Pointer(&v[0])), len(v)*int(unsafe.Sizeof(zero)))
 }
+
+// Size returns the bytes of a value of type T.
+func Size[T Number]() int {
+	var zero T
+	return int(unsafe.Sizeof(zero))
+}
