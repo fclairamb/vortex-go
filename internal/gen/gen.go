@@ -1,5 +1,6 @@
 // Package gen writes the files that are generated from the code: the example and the support
-// matrix of README.md, and api.txt. It uses the standard library only. `go generate ./...`
+// matrix of README.md, the code blocks and the support matrix of the pages of website/, and
+// api.txt. It uses the standard library only. `go generate ./...`
 // rewrites them, and the test of this package fails when one of them is stale.
 package gen
 
@@ -10,9 +11,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"html"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/fclairamb/vortex-go/internal/edition"
@@ -150,8 +153,82 @@ func Readme(readme string, example []byte, support []edition.Support) (string, e
 	return WithBlock(out, "matrix", MatrixBlock(support))
 }
 
-// Run makes README.md and api.txt of the module in root. With write it rewrites the stale
-// ones, without it reports them. It returns the names of the files that were stale.
+// HTMLCode is a code block of a page of the website: the body of the example name, escaped.
+func HTMLCode(name, body string) string {
+	text := html.EscapeString(strings.ReplaceAll(body, "\t", "    "))
+	return `<pre data-testid="code-` + name + `"><code>` + text + `</code></pre>`
+}
+
+// HTMLMatrix is the support matrix of the edition as an HTML table.
+func HTMLMatrix(support []edition.Support) string {
+	var b strings.Builder
+	b.WriteString("<table data-testid=\"matrix-table\">\n")
+	b.WriteString("<thead><tr><th>Kind</th><th>Identifier</th><th>Read</th><th>Written</th></tr></thead>\n<tbody>\n")
+	for _, s := range support {
+		fmt.Fprintf(&b, "<tr><td>%s</td><td><code>%s</code></td><td>%s</td><td>%s</td></tr>\n",
+			html.EscapeString(s.Kind), html.EscapeString(s.ID), yesNo(s.Decoded), yesNo(s.Written))
+	}
+	b.WriteString("</tbody>\n</table>")
+	return b.String()
+}
+
+// pageBlock finds the generated blocks of a page: <!-- example:ExampleRows:begin --> and
+// <!-- matrix:begin -->.
+var pageBlock = regexp.MustCompile(`<!-- (example:\w+|matrix):begin -->`)
+
+// Page returns a page of the website with its code blocks and its matrix up to date. A block
+// whose example does not exist is an error.
+func Page(page string, example []byte, support []edition.Support) (string, error) {
+	out := page
+	for _, m := range pageBlock.FindAllStringSubmatch(page, -1) {
+		name := m[1]
+		content := HTMLMatrix(support)
+		if fn, ok := strings.CutPrefix(name, "example:"); ok {
+			body, err := ExampleBody(example, fn)
+			if err != nil {
+				return "", err
+			}
+			content = HTMLCode(fn, body)
+		}
+		var err error
+		if out, err = WithBlock(out, name, content); err != nil {
+			return "", err
+		}
+	}
+	return out, nil
+}
+
+// generated is a file of the module and what it must contain.
+type generated struct{ name, want string }
+
+// websitePages returns the pages of website/ with their blocks up to date.
+func websitePages(root string, example []byte, support []edition.Support) ([]generated, error) {
+	entries, err := os.ReadDir(filepath.Join(root, "website"))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, err
+	}
+	var out []generated
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) != ".html" {
+			continue
+		}
+		name := "website/" + e.Name()
+		have, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			return nil, err
+		}
+		want, err := Page(string(have), example, support)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		out = append(out, generated{name, want})
+	}
+	return out, nil
+}
+
+// Run makes README.md, the pages of website/ and api.txt of the module in root. With write it
+// rewrites the stale ones, without it reports them. It returns the names of the files that
+// were stale.
 func Run(root string, write bool, doc DocFunc, support []edition.Support) ([]string, error) {
 	example, err := os.ReadFile(filepath.Join(root, "example_test.go"))
 	if err != nil {
@@ -169,8 +246,13 @@ func Run(root string, write bool, doc DocFunc, support []edition.Support) ([]str
 	if err != nil {
 		return nil, err
 	}
+	pages, err := websitePages(root, example, support)
+	if err != nil {
+		return nil, err
+	}
+	files := append([]generated{{"README.md", wantReadme}, {"api.txt", string(wantAPI)}}, pages...)
 	var stale []string
-	for _, f := range []struct{ name, want string }{{"README.md", wantReadme}, {"api.txt", string(wantAPI)}} {
+	for _, f := range files {
 		path := filepath.Join(root, f.name)
 		have, err := os.ReadFile(path)
 		if err != nil && !errors.Is(err, os.ErrNotExist) {

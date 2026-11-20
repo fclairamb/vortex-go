@@ -1,0 +1,10 @@
+<div class="table-wrap">
+<table data-testid="size-table">
+<thead><tr><th>Data</th><th class="num">Default</th><th class="num">Compact</th></tr></thead>
+<tbody>
+{{range .}}<tr><td>{{.Name}}</td><td class="num {{.DefaultClass}}">{{.Default}}</td>
+{{- /* line break */ -}}
+<td class="num {{.CompactClass}}">{{.Compact}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>

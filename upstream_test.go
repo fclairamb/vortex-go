@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -153,5 +154,42 @@ func expectFailure(t *testing.T, msg string) {
 	t.Helper()
 	if !strings.Contains(msg, "make upstream") {
 		t.Fatalf("message %q does not name `make upstream`", msg)
+	}
+}
+
+// cargoPin returns the version the vortex crate is pinned to in a Cargo.toml: the "=x.y.z" of
+// its `vortex = { version = "=x.y.z", ... }` line.
+func cargoPin(cargo string) (string, bool) {
+	m := regexp.MustCompile(`(?m)^vortex\s*=\s*\{[^}]*version\s*=\s*"=(\d+\.\d+\.\d+)"`).FindStringSubmatch(cargo)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// The Rust benchmark harness is pinned to the release of .vortex-version: Renovate moves both
+// in one PR, and this fails when only one moved.
+func TestBenchRustPinFollowsVortexVersion(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("tools", "bench-rust", "Cargo.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pin, ok := cargoPin(string(raw))
+	if !ok {
+		t.Fatal("tools/bench-rust/Cargo.toml has no `vortex = { version = \"=x.y.z\" }` line")
+	}
+	if version := pinnedVersion(t); pin != version {
+		t.Fatalf("tools/bench-rust/Cargo.toml pins vortex %s, .vortex-version is %s: change both", pin, version)
+	}
+}
+
+func TestCargoPin(t *testing.T) {
+	if v, ok := cargoPin("[dependencies]\nvortex = { version = \"=1.2.3\", features = [\"tokio\"] }\n"); !ok || v != "1.2.3" {
+		t.Errorf("got %q %v", v, ok)
+	}
+	for _, bad := range []string{"", "vortex = \"1.2.3\"\n", "vortex = { version = \"1.2.3\" }\n", "vortex-fastlanes = { version = \"=1.2.3\" }\n"} {
+		if v, ok := cargoPin(bad); ok {
+			t.Errorf("%q: pin %q found", bad, v)
+		}
 	}
 }

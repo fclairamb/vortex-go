@@ -1,0 +1,93 @@
+name: Pages
+
+# The website of website/, with the benchmark numbers of the bench-data branch filled in. The build
+# runs on every pull request that touches the site, and uploads _site as an artifact. The deploy
+# runs on a push to main and after a run of Bench, and only when the repository variable PAGES is
+# "on": the repository is private, and Pages puts the site on the public Internet. Without the
+# variable the deploy job is skipped, not red. To turn it on: Settings > Pages > Source "GitHub
+# Actions", then the variable PAGES=on.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths:
+      - 'website/**'
+      - 'bench/cmd/benchsite/**'
+      - 'testdata/size-ratios.json'
+      - 'Makefile'
+      - '.github/workflows/pages.yml'
+  workflow_run:
+    workflows: [Bench]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.event_name == 'pull_request' && github.ref || 'site' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # A run of Bench that failed has nothing new to publish.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup go
+        uses: actions/setup-go@v7
+        with:
+          go-version: '1.27'
+
+      - name: Test benchsite
+        run: go -C bench test ./cmd/benchsite
+
+      # The bench-data branch does not exist before the first run of Bench: the sections then say
+      # "no measurement yet".
+      - name: Fetch the benchmark numbers
+        run: |
+          mkdir -p .cache/bench-data
+          if git fetch --depth 1 origin bench-data; then
+            git show FETCH_HEAD:bench.json > .cache/bench-data/bench.json || rm -f .cache/bench-data/bench.json
+            git show FETCH_HEAD:history.jsonl > .cache/bench-data/history.jsonl || rm -f .cache/bench-data/history.jsonl
+          else
+            echo "no bench-data branch yet"
+          fi
+
+      - name: Build the site
+        run: |
+          rm -rf _site && mkdir -p _site && cp website/* _site/
+          go -C bench run ./cmd/benchsite -page ../_site/rust.html -bench ../.cache/bench-data/bench.json \
+            -history ../.cache/bench-data/history.jsonl -sizes ../testdata/size-ratios.json
+
+      - name: Upload the site
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v7
+        with:
+          name: site
+          path: _site
+
+      - name: Upload the Pages artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && vars.PAGES == 'on'
+    runs-on: ubuntu-26.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

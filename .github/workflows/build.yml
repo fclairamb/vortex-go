@@ -50,10 +50,13 @@ jobs:
         if: matrix.lint
 
       # The size gate (TestSizeRatios) reads the TPC-H and ClickBench files of the reference,
-      # which live in .cache/fixtures and are not committed (about 5 MB, a few seconds).
+      # which live in .cache/fixtures and are not committed (about 5 MB, a few seconds), and the
+      # expected values the oracle computes for them (<file>.expected.json, not committed either).
       - name: Dataset fixtures
         if: matrix.lint
-        run: make fixtures
+        run: |
+          make fixtures
+          scripts/oracle-all.sh
 
       - name: Reference reads our files
         if: matrix.lint
