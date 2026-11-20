@@ -65,3 +65,7 @@ Upstream paths are in `~/code/other/vortex/encodings/`.
 - If the oracle spec could not produce an `onpair` fixture (see
   `testdata/fixtures/<version>/extra/MISSING.md`), build the test input from the bytes of
   upstream's own unit tests in `encodings/onpair/src/`, and say so in the commit message.
+
+## Resolved open questions
+
+- Item 3, "buffer owned by the scan and reused between batches" (autopilot: recommended answer): a flat segment is decoded once and its array is held across several batches, with several columns' segments alive at once. A scan-wide shared buffer would overwrite arrays still in use. The decode loops take a caller-supplied destination and allocate nothing (`AllocsPerRun`). The registered decoders allocate one buffer per segment. A `Scratch` in `array.Options`, released with the segment's arrays, is the way to add reuse later.
