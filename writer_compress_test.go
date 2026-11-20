@@ -359,5 +359,8 @@ func TestNestedChildrenCompressed(t *testing.T) {
 		if err != nil || len(got) != 1000 || len(got[999].kids) != 3 {
 			t.Fatalf("%d rows, %v", len(got), err)
 		}
+		if f := openBytes(t, writeWith(t, None, s, cols, 1000)); slices.Contains(f.arrayEncodings, encode.IDBitPacked) {
+			t.Errorf("None: %v", f.arrayEncodings)
+		}
 	}
 }

@@ -142,6 +142,15 @@ func columns(r *rand.Rand, p PType, n int) map[string][]byte {
 	}
 }
 
+func sortedKeys(m map[string][]byte) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
 func boolInt(b bool) int {
 	if b {
 		return 1
@@ -364,14 +373,15 @@ func TestNoAllocation(t *testing.T) {
 	}
 	dec := make([]byte, 8*20_000)
 	c := New(Compact)
+	numNames, floatNames := sortedKeys(nums), sortedKeys(floats)
 	run := func() {
-		for _, raw := range nums {
+		for _, name := range numNames {
 			c.Reset()
-			c.Numbers(I32, raw, nulls)
+			c.Numbers(I32, nums[name], nulls)
 		}
-		for _, raw := range floats {
+		for _, name := range floatNames {
 			c.Reset()
-			c.Numbers(F64, raw, nil)
+			c.Numbers(F64, floats[name], nil)
 		}
 		c.Reset()
 		c.Strings(strs, nulls, true)
