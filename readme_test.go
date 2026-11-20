@@ -133,7 +133,7 @@ func TestReadmeBadges(t *testing.T) {
 		if strings.Contains(m[2], "token") || strings.Contains(m[3], "token") {
 			t.Errorf("badge %d carries a token: %q", i, line)
 		}
-		if i < 4 && !strings.Contains(m[2]+m[3], "fclairamb/vortex-go") {
+		if !strings.Contains(m[2]+m[3], "fclairamb/vortex-go") {
 			t.Errorf("badge %d does not name fclairamb/vortex-go: %q", i, line)
 		}
 	}
