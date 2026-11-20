@@ -79,3 +79,7 @@ newest edition, `core 2026.08.3` (`internal/edition/table.go:9`), and a reader o
   newest. One field, the names of the upstream editions, nothing else to learn. The
   alternative is a constant per edition (`vortex.Core2025_05`), which `api.txt` then has
   to grow at each upstream release.
+
+## Resolved open questions
+
+- **The option:** add `WriteOptions.Edition string`, empty for the newest, taking the names of the upstream editions. (autopilot: recommended answer)

@@ -80,3 +80,8 @@ and of the two arrays (`internal/array/variant.go:35-37`, `:113-114`). There is 
 - **Go integers and floats other than `int64` and `float64`.** Recommended answer:
   accept every Go integer and float type and widen it. `map[string]any` built by
   `encoding/json` then works without a conversion pass (`json.Number` excluded: an error).
+
+## Resolved open questions
+
+- **Shredding:** not in this spec; write unshredded files only. (autopilot: recommended answer)
+- **Other Go integers and floats:** accept every Go integer and float type and widen it to `int64`/`float64`; `json.Number` is an error. (autopilot: recommended answer)

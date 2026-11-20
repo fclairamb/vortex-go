@@ -66,3 +66,7 @@ reference reader, that the bytes we would write for them are right.
   says the reference reads our bytes for every array of the edition. The other answer is
   to drop this spec and keep the two "no" with their reason, which is where the document
   stands today.
+
+## Resolved open questions
+
+- **"Written when forced" earns a "yes":** write both arrays when forced and show "yes" in the matrix, with the sentence of step 3 in `docs/goals.md`. (autopilot: recommended answer)
