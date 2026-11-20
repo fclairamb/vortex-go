@@ -27,16 +27,13 @@ func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 	}
 	fillNull := 10*nullCount > nullDominated*len(v)
 	fill := fillValue(e, v, nulls, fillNull)
-	patch := func(i int) bool {
-		if fillNull {
-			return !isNull(nulls, i)
-		}
-		return isNull(nulls, i) || v[i] != fill
-	}
-	count := 0
+	count, validPatches := 0, 0
 	for i := range v {
-		if patch(i) {
+		if isPatch(v, nulls, i, fill, fillNull) {
 			count++
+			if !isNull(nulls, i) {
+				validPatches++
+			}
 		}
 	}
 	if count == 0 {
@@ -49,15 +46,9 @@ func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 	w := unsafex.Size[T]()
 	raw := unsafex.Bytes(v)
 	idx, vals, patchNulls := e.alloc(count*iw), e.alloc(count*w), e.flags(count)
-	validPatches := 0
-	for i := range v {
-		if patch(i) && !isNull(nulls, i) {
-			validPatches++
-		}
-	}
 	k := 0
 	for i := range v {
-		if !patch(i) {
+		if !isPatch(v, nulls, i, fill, fillNull) {
 			continue
 		}
 		putWidth(idx[k*iw:], iw, uint64(i))
@@ -68,20 +59,27 @@ func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 		}
 		k++
 	}
-	n := e.node(IDSparse)
-	pm := protowire.AppendUint(e.tmp2[:0], 1, uint64(count))
-	pm = putUint(pm, 3, uint64(ptype))
-	e.tmp2 = pm
-	n.Meta = e.keep(protowire.AppendBytes(e.tmp[:0], 1, pm))
 	if fillNull {
 		e.tmp = protowire.AppendUint(e.tmp[:0], scalarNull, 0)
 	} else {
 		e.tmp = appendScalar(e.tmp[:0], fill)
 	}
+	n := e.node(IDSparse)
 	n.add(e.keep(e.tmp), 1)
+	e.tmp2 = putUint(protowire.AppendUint(e.tmp2[:0], 1, uint64(count)), 3, uint64(ptype))
+	n.Meta = e.keep(protowire.AppendBytes(e.tmp[:0], 1, e.tmp2))
 	n.kid(e.leaf(idx, iw, nil, count))
 	n.kid(e.leaf(vals, w, patchNulls, count))
 	return n, true
+}
+
+// isPatch says whether row i is a patch: with a null fill, the valid rows; else the null rows
+// and the ones that are not equal to the fill.
+func isPatch[T Number](v []T, nulls []bool, i int, fill T, fillNull bool) bool {
+	if fillNull {
+		return !isNull(nulls, i)
+	}
+	return isNull(nulls, i) || v[i] != fill
 }
 
 // fillValue is the most frequent valid value of v, a zero when the fill is null.

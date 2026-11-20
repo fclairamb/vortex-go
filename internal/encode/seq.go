@@ -9,7 +9,7 @@ import (
 func checkedAdd[T Int](a, b T) (T, bool) {
 	s := a + b
 	if signed[T]() {
-		return s, !(b > 0 && s < a || b < 0 && s > a)
+		return s, (b <= 0 || s >= a) && (b >= 0 || s <= a)
 	}
 	return s, s >= a
 }
@@ -18,7 +18,7 @@ func checkedAdd[T Int](a, b T) (T, bool) {
 func checkedSub[T Int](a, b T) (T, bool) {
 	d := a - b
 	if signed[T]() {
-		return d, !(b > 0 && d > a || b < 0 && d < a)
+		return d, (b <= 0 || d <= a) && (b >= 0 || d >= a)
 	}
 	return d, a >= b
 }

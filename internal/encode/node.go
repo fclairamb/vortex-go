@@ -58,13 +58,12 @@ type Buf struct {
 
 // Node is an encoded array.
 type Node struct {
+	kids [4]*Node
 	ID   string
 	Meta []byte
 	Bufs []Buf
 	Kids []*Node
-
 	bufs [2]Buf
-	kids [4]*Node
 }
 
 func (n *Node) add(data []byte, align int) { n.Bufs = append(n.Bufs, Buf{data, align}) }
@@ -258,17 +257,13 @@ func getWidth(b []byte, w int) uint64 {
 	return v
 }
 
-// narrow is the PType number and the width of the smallest unsigned integer that holds max.
-func narrow(max uint64) (ptype, width int) {
-	switch {
-	case max <= 1<<8-1:
-		return pU8, 1
-	case max <= 1<<16-1:
-		return pU16, 2
-	case max <= 1<<32-1:
-		return pU32, 4
+// narrow is the PType number and the width of the smallest unsigned integer that holds limit.
+func narrow(limit uint64) (ptype, width int) {
+	ptype, width = pU8, 1
+	for limit>>(8*width) != 0 {
+		ptype, width = ptype+1, 2*width
 	}
-	return pU64, 8
+	return ptype, width
 }
 
 // flags returns n false flags, scratch of the Encoder.

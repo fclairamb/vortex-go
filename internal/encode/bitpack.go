@@ -134,18 +134,8 @@ func BestWidth(h []int, valueBytes int) int {
 }
 
 // patchWidth is the PType number and the width in bytes of the indices of the patches of an
-// array of rows values.
-func patchWidth(rows int) (ptype, width int) {
-	switch {
-	case rows < 1<<8-1:
-		return pU8, 1
-	case rows < 1<<16-1:
-		return pU16, 2
-	case rows < 1<<32-1:
-		return pU32, 4
-	}
-	return pU64, 8
-}
+// array of rows values: the reference takes u8 under 255 rows, u16 under 65535, and so on.
+func patchWidth(rows int) (ptype, width int) { return narrow(uint64(rows) + 1) }
 
 // BitPackBest is BitPack at the width BestWidth picks from the histogram of the values. It
 // fails when that width is the bits of T: the values are not worth packing.

@@ -49,15 +49,12 @@ func (k *keys) eq(i, j int) bool {
 	return bytes.Equal(k.raw[i*k.w:(i+1)*k.w], k.raw[j*k.w:(j+1)*k.w])
 }
 
-// size is the bytes of value i.
+// size is the bytes of value i of a set of strings or byte slices.
 func (k *keys) size(i int) int {
-	switch k.kind {
-	case keyBytes:
+	if k.kind == keyBytes {
 		return len(k.bins[i])
-	case keyStrings:
-		return len(k.strs[i])
 	}
-	return k.w
+	return len(k.strs[i])
 }
 
 // copyTo copies value i to dst, which has room for it.
