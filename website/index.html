@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>vortex-go: Vortex files in pure Go</title>
+<meta name="description" content="vortex-go: a pure Go reader and writer for the Vortex columnar file format.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<a class="brand" href="index.html" data-testid="brand-link">vortex-go</a>
+<nav data-testid="nav">
+<a href="index.html" aria-current="page" data-testid="nav-home">Home</a>
+<a href="usage.html" data-testid="nav-usage">Usage</a>
+<a href="rust.html" data-testid="nav-rust">Versus Rust</a>
+</nav>
+</header>
+<main>
+<h1>Vortex files in pure Go</h1>
+<p class="lead">vortex-go reads and writes the <a href="https://vortex.dev">Vortex</a> columnar file format.
+A file goes to Go structs, or Go structs go to a file, in a few lines and with no configuration.
+There is no cgo: the standard library, plus <code>klauspost/compress</code> for zstd.</p>
+
+<h2>Install</h2>
+<pre data-testid="code-install"><code>go get github.com/fclairamb/vortex-go</code></pre>
+<p>Go 1.26 or later.</p>
+
+<h2>Read the rows of a file</h2>
+<p>This block is copied from <code>ExampleRows</code> by <code>go generate</code>, and a test keeps it at 10 lines or fewer.</p>
+<!-- example:ExampleRows:begin -->
+<pre data-testid="code-ExampleRows"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.93.0/extra/default_ints.vortex&#34;)
+if err != nil {
+    log.Fatal(err)
+}
+defer f.Close()
+type Row struct {
+    Sorted sql.Null[int64] `vortex:&#34;sorted&#34;`
+}
+for r, err := range vortex.Rows[Row](context.Background(), f, vortex.Query{Rows: vortex.Range{End: 3}}) {
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(r.Sorted.V)
+}</code></pre>
+<!-- example:ExampleRows:end -->
+<p>More cases, such as columns, filters and writing, are on the <a href="usage.html" data-testid="link-usage">usage page</a>.</p>
+
+<h2>Status</h2>
+<ul data-testid="status-list">
+<li><strong>Edition.</strong> The target is the default <code>core</code> edition of the upstream release pinned in <a href="https://github.com/fclairamb/vortex-go/blob/main/.vortex-version" data-testid="link-pinned"><code>.vortex-version</code></a>: about 50 identifiers of array encodings, layouts, extension types and statistics. Every one of them is read, most are written, see the <a href="rust.html#matrix" data-testid="link-matrix">support matrix</a>.</li>
+<li><strong>Releases read.</strong> The files of every published upstream release that has fixtures are read, and checked every night against the reference reader.</li>
+<li><strong>Judged by Rust.</strong> The Rust reader reads every file we write, and our reader gives the values of the Rust one on every file of the corpus.</li>
+<li><strong>Speed.</strong> The numbers against the Rust implementation and parquet-go, whatever they are, are on the <a href="rust.html" data-testid="link-speed">comparison page</a>.</li>
+</ul>
+
+<h2>Links</h2>
+<ul>
+<li><a href="https://pkg.go.dev/github.com/fclairamb/vortex-go" data-testid="link-pkgsite">The API on pkg.go.dev</a></li>
+<li><a href="https://github.com/fclairamb/vortex-go" data-testid="link-repo">The repository</a></li>
+<li><a href="https://vortex.dev" data-testid="link-vortex">Vortex</a>, the format and its Rust implementation</li>
+</ul>
+</main>
+<footer>
+<p>vortex-go is MIT licensed. <a href="https://github.com/fclairamb/vortex-go" data-testid="footer-repo">Source</a> &middot; <a href="https://pkg.go.dev/github.com/fclairamb/vortex-go" data-testid="footer-pkgsite">pkg.go.dev</a></p>
+</footer>
+</body>
+</html>

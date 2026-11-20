@@ -2,6 +2,8 @@
 
 A pure Go reader and writer for the [Vortex](https://vortex.dev) columnar file format.
 
+The site, with how to use it and how it compares with the Rust implementation: <https://fclairamb.github.io/vortex-go/>.
+
 ## Goals
 
 Ranked. The details and the "done when" lists are in [docs/goals.md](docs/goals.md).

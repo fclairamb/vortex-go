@@ -238,3 +238,96 @@ func TestRunFileErrors(t *testing.T) {
 		t.Error("a README.md that is read-only: no error")
 	}
 }
+
+const pageTmpl = "<p>x</p>\n<!-- example:ExampleRows:begin -->\nold\n<!-- example:ExampleRows:end -->\n<!-- matrix:begin -->\nold\n<!-- matrix:end -->\n"
+
+func TestHTMLBlocks(t *testing.T) {
+	if got := HTMLCode("ExampleA", "if a < b {\n\tc()\n}"); got != "<pre data-testid=\"code-ExampleA\"><code>if a &lt; b {\n    c()\n}</code></pre>" {
+		t.Fatalf("got %q", got)
+	}
+	m := HTMLMatrix([]edition.Support{{Member: edition.Member{Kind: "array", ID: "vortex.a"}, Decoded: true}})
+	for _, want := range []string{`data-testid="matrix-table"`, "<td>array</td><td><code>vortex.a</code></td><td>yes</td><td>no</td>"} {
+		if !strings.Contains(m, want) {
+			t.Errorf("%q is not in %s", want, m)
+		}
+	}
+}
+
+func TestPage(t *testing.T) {
+	got, err := Page(pageTmpl, []byte(exampleSrc), support)
+	if err != nil || !strings.Contains(got, `<pre data-testid="code-ExampleRows"><code>f()</code></pre>`) || !strings.Contains(got, "vortex.a") {
+		t.Fatalf("got %q, %v", got, err)
+	}
+	if again, err := Page(got, []byte(exampleSrc), support); err != nil || again != got {
+		t.Fatalf("a fresh page changed: %v", err)
+	}
+	if _, err := Page(pageTmpl, []byte("package x"), support); err == nil {
+		t.Error("an example that does not exist: no error")
+	}
+	// A begin marker with no end marker.
+	if _, err := Page("<!-- matrix:begin -->", []byte(exampleSrc), support); err == nil {
+		t.Error("no end marker: no error")
+	}
+	if got, err := Page("no block", nil, support); err != nil || got != "no block" {
+		t.Errorf("a page with no block: %q, %v", got, err)
+	}
+}
+
+// TestRunWebsite: a page of website/ is stale, then rewritten, then fresh; what is not an html
+// page is left alone.
+func TestRunWebsite(t *testing.T) {
+	dir := tree(t, map[string]string{"example_test.go": exampleSrc, "README.md": readmeTmpl, "api.txt": "API"})
+	if err := os.Mkdir(filepath.Join(dir, "website"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range map[string]string{"index.html": pageTmpl, "style.css": "x"} {
+		if err := os.WriteFile(filepath.Join(dir, "website", name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	doc := fakeDoc("API")
+	if _, err := Run(dir, true, doc, support); err != nil {
+		t.Fatal(err)
+	}
+	stale, err := Run(dir, false, doc, support)
+	if err != nil || len(stale) != 0 {
+		t.Fatalf("fresh tree is stale: %v, %v", stale, err)
+	}
+	page := filepath.Join(dir, "website", "index.html")
+	b, _ := os.ReadFile(page)
+	if err := os.WriteFile(page, []byte(strings.Replace(string(b), "f()", "g()", 1)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if stale, err = Run(dir, false, doc, support); err != nil || !slices.Equal(stale, []string{"website/index.html"}) {
+		t.Fatalf("stale %v, %v", stale, err)
+	}
+}
+
+func TestRunWebsiteErrors(t *testing.T) {
+	good := map[string]string{"example_test.go": exampleSrc, "README.md": readmeTmpl}
+	// website is a file: it cannot be listed.
+	dir := tree(t, map[string]string{"example_test.go": exampleSrc, "README.md": readmeTmpl, "website": "x"})
+	if _, err := Run(dir, false, fakeDoc(""), support); err == nil {
+		t.Error("website is a file: no error")
+	}
+	// A page that is a directory cannot be read.
+	dir = tree(t, good)
+	if err := os.MkdirAll(filepath.Join(dir, "website", "a.html"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(dir, false, fakeDoc(""), support); err == nil {
+		t.Error("a page that is a directory: no error")
+	}
+	// A page with an unknown example.
+	dir = tree(t, good)
+	if err := os.Mkdir(filepath.Join(dir, "website"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bad := "<!-- example:Nope:begin -->\n<!-- example:Nope:end -->"
+	if err := os.WriteFile(filepath.Join(dir, "website", "a.html"), []byte(bad), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(dir, false, fakeDoc(""), support); err == nil || !strings.Contains(err.Error(), "website/a.html") {
+		t.Errorf("an unknown example: %v", err)
+	}
+}

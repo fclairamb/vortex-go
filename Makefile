@@ -1,4 +1,4 @@
-.PHONY: check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors api bench bench-compare bench-parquet bench-rust bench-json
+.PHONY: site check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors api bench bench-compare bench-parquet bench-rust bench-json
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -143,3 +143,15 @@ bench-json: bench-rust
 		-rust ../$(BENCH_TMP)/rust.jsonl -commit "$$(git rev-parse HEAD)" -vortex-version "$$(cat .vortex-version)" \
 		-go-version "$$(go env GOVERSION)" -rust-version "$$(rustc --version)" -cores $$cores > bench.json
 	@echo "bench.json: $$(wc -c < bench.json) bytes"
+
+# The website in _site/, as the Pages workflow builds it: website/ with the benchmark numbers filled
+# in. The numbers come from the latest bench.json and history.jsonl of the bench-data branch,
+# when it exists: without them the sections say "no measurement yet".
+site:
+	rm -rf _site && mkdir -p _site && cp website/* _site/
+	mkdir -p .cache/bench-data
+	git show origin/bench-data:bench.json > .cache/bench-data/bench.json 2> /dev/null || rm -f .cache/bench-data/bench.json
+	git show origin/bench-data:history.jsonl > .cache/bench-data/history.jsonl 2> /dev/null || rm -f .cache/bench-data/history.jsonl
+	go -C bench run ./cmd/benchsite -page ../_site/rust.html -bench ../.cache/bench-data/bench.json \
+		-history ../.cache/bench-data/history.jsonl -sizes ../testdata/size-ratios.json
+	@echo "site: _site/index.html"
