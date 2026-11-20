@@ -82,7 +82,11 @@ func (w *Writer) consume(c *column, hi int) {
 		c.zones.add(c.buf, lo, hi)
 	}
 	if c.mode == modeUndecided {
-		c.decide(lo, hi)
+		if w.force != "" {
+			c.mode = modePlain // a test that forces an encoding gets no dictionary layout
+		} else {
+			c.decide(lo, hi)
+		}
 	}
 	if c.mode == modeDict {
 		w.encodeDict(c, lo, hi)

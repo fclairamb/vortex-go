@@ -8,6 +8,7 @@ import (
 	"math"
 	mbits "math/bits"
 
+	"github.com/fclairamb/vortex-go/internal/encode"
 	"github.com/fclairamb/vortex-go/internal/fbs"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 )
@@ -69,6 +70,8 @@ type Writer struct {
 	schema    *Schema
 	root      *layoutBuild
 	fb        *flatbuf.Builder
+	enc       *encode.Encoder // the encoders of a forced encoding
+	force     string          // the encoding a test forces, see wforce.go
 	statsID   string
 	bufs      []buffer
 	blocks    [][]byte
@@ -289,6 +292,9 @@ func (w *Writer) beginFlat() {
 	w.stack = w.stack[:0]
 	w.fb.Reset()
 	w.block, w.used = 0, 0
+	if w.enc != nil {
+		w.enc.Reset()
+	}
 }
 
 // alloc returns n zeroed bytes that live until the next beginFlat. Blocks are kept between
