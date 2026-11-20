@@ -36,6 +36,7 @@ type chunk struct {
 // column is a column that has no children: the rows that are not in a segment yet, and what
 // has been written of it.
 type column struct {
+	ranger
 	t        Type
 	buf      *body
 	arena    []byte // the bytes of the strings of buf
@@ -52,7 +53,7 @@ type column struct {
 }
 
 func newColumn(t Type, zoned bool) *column {
-	c := &column{t: t, buf: newBody(t), eligible: dictEligible(t)}
+	c := &column{ranger: newRanger(t), t: t, buf: newBody(t), eligible: dictEligible(t)}
 	if zoned {
 		c.zones = newZoneAcc(t)
 	}
@@ -106,7 +107,9 @@ func (c *column) empty() {
 func (w *Writer) flushPlain(c *column) {
 	w.start()
 	w.beginFlat()
+	w.stats, w.statsID = w.arrayStats(c), rootID(c.t)
 	root := w.encode(c.t, Data{c.buf}, c.buf.n)
+	w.stats = 0
 	if seg, ok := w.endFlat(root); ok {
 		c.pieces = append(c.pieces, piece{rows: uint64(c.buf.n), seg: seg})
 	}

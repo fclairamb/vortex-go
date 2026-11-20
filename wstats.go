@@ -64,9 +64,7 @@ func statWidth(t Type, class statClass) int {
 
 // zoneAcc gathers the statistics of the zones of a column, one entry per block of rows.
 type zoneAcc struct {
-	t     Type
-	class statClass
-	width int
+	ranger
 	n     int
 	nulls []uint64
 	nans  []uint64
@@ -79,10 +77,19 @@ type zoneAcc struct {
 	arena []byte
 }
 
-func newZoneAcc(t Type) *zoneAcc {
-	class := classOf(t)
-	return &zoneAcc{t: t, class: class, width: statWidth(t, class)}
+// ranger finds the extremes of the rows of a buffer of one type.
+type ranger struct {
+	t     Type
+	class statClass
+	width int
 }
+
+func newRanger(t Type) ranger {
+	class := classOf(t)
+	return ranger{t: t, class: class, width: statWidth(t, class)}
+}
+
+func newZoneAcc(t Type) *zoneAcc { return &zoneAcc{ranger: newRanger(t)} }
 
 // add records the statistics of the rows lo to hi of the buffer.
 func (z *zoneAcc) add(b *body, lo, hi int) {
@@ -121,31 +128,13 @@ func countNulls(b *body, t Type, lo, hi int) uint64 {
 
 // scan finds the smallest and the largest value of the valid rows lo to hi, as row numbers
 // (-1 when there is none), and counts the NaNs, which are neither.
-func (z *zoneAcc) scan(b *body, lo, hi int) (imin, imax, nans int) {
-	w := z.width
-	var order func(i, j int) int
-	var nan func(i int) bool
-	switch z.class {
-	case scInt:
-		order = func(i, j int) int { return cmp.Compare(rawInt(b.raw, w, i), rawInt(b.raw, w, j)) }
-	case scUint:
-		order = func(i, j int) int { return cmp.Compare(rawUint(b.raw, w, i), rawUint(b.raw, w, j)) }
-	case scFloat:
-		order = func(i, j int) int { return cmp.Compare(rawFloat(b.raw, w, i), rawFloat(b.raw, w, j)) }
-		nan = func(i int) bool { return math.IsNaN(rawFloat(b.raw, w, i)) }
-	case scBool:
-		order = func(i, j int) int { return cmp.Compare(boolInt(b.bools[i]), boolInt(b.bools[j])) }
-	case scDec:
-		order = func(i, j int) int { return b.decs[i].Cmp(b.decs[j]) }
-	default:
-		order = func(i, j int) int { return bytes.Compare(b.bins[i], b.bins[j]) }
-	}
+func (r ranger) scan(b *body, lo, hi int) (imin, imax, nans int) {
 	imin, imax = -1, -1
 	for i := lo; i < hi; i++ {
 		if isNull(b.nulls, i) {
 			continue
 		}
-		if nan != nil && nan(i) {
+		if r.class == scFloat && math.IsNaN(rawFloat(b.raw, r.width, i)) {
 			nans++
 			continue
 		}
@@ -153,14 +142,32 @@ func (z *zoneAcc) scan(b *body, lo, hi int) (imin, imax, nans int) {
 			imin, imax = i, i
 			continue
 		}
-		if order(i, imin) < 0 {
+		if r.order(b, i, imin) < 0 {
 			imin = i
 		}
-		if order(i, imax) > 0 {
+		if r.order(b, i, imax) > 0 {
 			imax = i
 		}
 	}
 	return imin, imax, nans
+}
+
+// order compares the rows i and j of the buffer.
+func (r ranger) order(b *body, i, j int) int {
+	w := r.width
+	switch r.class {
+	case scInt:
+		return cmp.Compare(rawInt(b.raw, w, i), rawInt(b.raw, w, j))
+	case scUint:
+		return cmp.Compare(rawUint(b.raw, w, i), rawUint(b.raw, w, j))
+	case scFloat:
+		return cmp.Compare(rawFloat(b.raw, w, i), rawFloat(b.raw, w, j))
+	case scBool:
+		return cmp.Compare(boolInt(b.bools[i]), boolInt(b.bools[j]))
+	case scDec:
+		return b.decs[i].Cmp(b.decs[j])
+	}
+	return bytes.Compare(b.bins[i], b.bins[j])
 }
 
 func boolInt(v bool) int {
@@ -231,14 +238,14 @@ func (z *zoneAcc) addFixed(b *body, imin, imax int) {
 	z.minB, z.maxB = z.putFixed(z.minB, b, imin), z.putFixed(z.maxB, b, imax)
 }
 
-func (z *zoneAcc) putFixed(dst []byte, b *body, i int) []byte {
-	w := z.width
+func (r ranger) putFixed(dst []byte, b *body, i int) []byte {
+	w := r.width
 	switch {
 	case i < 0:
 		return append(dst, zeros[:w]...)
-	case z.class == scBool:
+	case r.class == scBool:
 		return append(dst, byte(boolInt(b.bools[i])))
-	case z.class == scDec:
+	case r.class == scDec:
 		le := b.decs[i].le()
 		return append(dst, le[:w]...)
 	}

@@ -72,12 +72,15 @@ type Writer struct {
 	layoutIDs []string
 
 	// The flat segment being built.
-	bufs   []buffer
-	stack  []flatbuf.Off
-	idx    []uint16
-	meta   []byte
-	bspec  []byte
-	blocks [][]byte
+	stats   flatbuf.Off // the ArrayStats of the root node, written before it
+	statsID string      // the encoding of the root node
+	depth   int         // the encode calls in progress
+	bufs    []buffer
+	stack   []flatbuf.Off
+	idx     []uint16
+	meta    []byte
+	bspec   []byte
+	blocks  [][]byte
 
 	pos           int64 // the bytes written so far, pending ones included
 	written       int64 // the bytes the io.Writer has taken
@@ -423,6 +426,7 @@ func storageKind(t Type) Kind {
 func (w *Writer) footer() {
 	dtype := w.segment(func() flatbuf.Off { return w.dtypeTable(w.schema.root) })
 	layout := w.segment(func() flatbuf.Off { return w.layoutTable(w.root, w.rows) })
+	stats := w.segment(w.fileStatsTable)
 	foot := w.segment(w.footerTable)
 	w.fb.Reset()
 	seg := func(s [2]uint64) flatbuf.Off {
@@ -432,10 +436,11 @@ func (w *Writer) footer() {
 		w.fb.Uint8(2, 3, 0) // alignment 8
 		return w.fb.EndTable()
 	}
-	d, l, f := seg(dtype), seg(layout), seg(foot)
+	d, l, st, f := seg(dtype), seg(layout), seg(stats), seg(foot)
 	w.fb.StartTable(5)
 	w.fb.Ref(0, d)
 	w.fb.Ref(1, l)
+	w.fb.Ref(2, st)
 	w.fb.Ref(3, f)
 	ps := w.fb.Finish(w.fb.EndTable())
 	if len(ps) > maxPostscript {

@@ -44,6 +44,10 @@ func (w *Writer) node(id string, meta []byte, firstBuf, nBuf, kidsBase int) flat
 	if len(meta) > 0 {
 		md = b.Bytes(meta)
 	}
+	var stats flatbuf.Off
+	if w.depth == 1 && w.stats != 0 && id == w.statsID {
+		stats, w.stats = w.stats, 0
+	}
 	b.StartTable(5)
 	b.Uint16(0, specIndex(&w.arrayIDs, id), 0)
 	if len(meta) > 0 {
@@ -54,6 +58,9 @@ func (w *Writer) node(id string, meta []byte, firstBuf, nBuf, kidsBase int) flat
 	}
 	if nBuf > 0 {
 		b.Ref(3, bufs)
+	}
+	if stats != 0 {
+		b.Ref(4, stats)
 	}
 	return b.EndTable()
 }
@@ -67,6 +74,13 @@ func (w *Writer) leaf(id string, data []byte, align int) flatbuf.Off {
 
 // encode writes the array of a column of type t.
 func (w *Writer) encode(t Type, d Data, n int) flatbuf.Off {
+	w.depth++
+	off := w.encodeNode(t, d, n)
+	w.depth--
+	return off
+}
+
+func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
 	switch t.kind {
 	case Null:
 		return w.node("vortex.null", nil, len(w.bufs), 0, len(w.stack))
@@ -119,7 +133,10 @@ func (w *Writer) encodeValidity(d Data, n int) flatbuf.Off {
 			bits[i>>3] |= 1 << (i & 7)
 		}
 	}
-	return w.leaf("vortex.bool", bits, 1)
+	w.depth++ // a child, whatever its encoding
+	off := w.leaf("vortex.bool", bits, 1)
+	w.depth--
+	return off
 }
 
 func (w *Writer) encodePrimitive(d Data, n int) flatbuf.Off {
