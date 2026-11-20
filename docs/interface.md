@@ -71,7 +71,20 @@ for b, err := range f.Scan(ctx, q, "id", "price", "name") {
   binary). A file with no row has one empty chunk. A struct needs one field at least to
   have a length. Rows reach the `io.Writer` when a chunk is full, and at `Close`.
 - **Lists are `vortex.listview`**, maps are `vortex.map` over a listview of structs: it is
-  the canonical form, and the one a map requires.
+  the canonical form, and the one a map requires. A compressed list (not `None`) is a
+  `vortex.list`, with no sizes.
+- **`WriteOptions.Edition` is the edition the file must be readable with**, as upstream
+  names them (`"core 2025.05.0"`); empty is the newest, `core 2026.08.3`. The writer only
+  makes what that edition has. Before `core 2026.08.0` a zone map is a `vortex.stats` layout
+  (the zone length, the bitset of the statistics, and a table of max, min, null count and NaN
+  count, a max and a min followed by a flag that says the bound is cut) and the file
+  statistics have no aggregate, so Vortex 0.83 and earlier open the file. Before
+  `core 2025.10.0` a list is always a `vortex.list`, and the compressor leaves out
+  `fastlanes.rle` and `vortex.masked`; before `core 2025.06.0` it leaves out `vortex.sequence`
+  and `vortex.zstd` too. A type the edition cannot hold is an error of the first `Write` or
+  `Close` that names the type and the edition: `fixed_size_list` before `core 2025.10.0`,
+  `map` before `core 2026.08.2`, `uuid` before `core 2026.08.3`. An unknown edition is an
+  error too.
 
 ## Opening, schema and errors
 

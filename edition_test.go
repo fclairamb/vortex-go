@@ -262,6 +262,33 @@ func writtenFiles(t *testing.T) map[string]map[string]string {
 		}
 		collect("all types, compression "+mode, f)
 	}
+	// the files of the older editions: the zone maps of vortex.stats, the lists of vortex.list
+	for _, ed := range []string{"core 2025.05.0"} {
+		g := &gen{r: rand.New(rand.NewPCG(7, 8))}
+		var fields []Field
+		var cols []Data
+		for _, n := range names {
+			if validEdition(types[n], "", ed) != nil {
+				continue
+			}
+			d, _ := g.make(types[n], 300)
+			fields = append(fields, Field{n, types[n]})
+			cols = append(cols, d)
+		}
+		var buf bytes.Buffer
+		w := NewWriter(&buf, NewSchema(fields...), WriteOptions{Edition: ed})
+		if err := w.Write(cols...); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		f, err := Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		collect("all types, edition "+ed, f)
+	}
 	// a column of of about 1 MiB is cut into chunks, in a chunked layout
 	rows := make([]int32, 600000)
 	for i := range rows {

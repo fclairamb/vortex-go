@@ -103,7 +103,7 @@ func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
 		base := len(w.stack)
 		w.push(w.encode(*t.elem, d.kids[0], n*t.Size()))
 		w.validity(d, n)
-		return w.node("vortex.fixed_size_list", nil, len(w.bufs), 0, base)
+		return w.node(idFixedSizeList, nil, len(w.bufs), 0, base)
 	case UUID:
 		return w.arrayExtension(w.encodeUUID(d, n))
 	case Date, Time, Timestamp:
@@ -297,7 +297,7 @@ func (w *Writer) encodeStruct(t Type, d Data, n int) flatbuf.Off {
 func (w *Writer) encodeList(t Type, d Data, n int) flatbuf.Off {
 	elems := d.kids[0]
 	base := len(w.stack)
-	if t.kind == List && w.comp != nil {
+	if t.kind == List && (w.comp != nil || w.plainLists) {
 		return w.encodePlainList(t, d, n)
 	}
 	if t.kind == Map {
@@ -322,7 +322,7 @@ func (w *Writer) encodeList(t Type, d Data, n int) flatbuf.Off {
 		return view
 	}
 	w.push(view)
-	return w.node("vortex.map", nil, len(w.bufs), 0, base)
+	return w.node(idMap, nil, len(w.bufs), 0, base)
 }
 
 // encodePlainList writes a vortex.list: the offsets are narrowed to the smallest unsigned type
@@ -384,5 +384,5 @@ func (w *Writer) encodeUUID(d Data, n int) flatbuf.Off {
 	base := len(w.stack)
 	w.push(w.leaf("vortex.primitive", bytes, 1))
 	w.validity(d, n)
-	return w.node("vortex.fixed_size_list", nil, len(w.bufs), 0, base)
+	return w.node(idFixedSizeList, nil, len(w.bufs), 0, base)
 }

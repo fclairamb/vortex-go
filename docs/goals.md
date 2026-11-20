@@ -36,7 +36,8 @@ Reader:
 Writer:
 
 - Every file written is opened by the reference reader and gives back the values we wrote.
-- A file only contains encodings of the target edition (see goal 3).
+- A file only contains encodings of the target edition (see goal 3), which is the newest
+  unless `WriteOptions.Edition` names an older one.
 
 ## 3. Complete
 
@@ -57,6 +58,9 @@ Reader, done when:
 Writer, done when:
 
 - Every logical type can be written.
+- A file can target any edition of the table, `core 2025.05.0` to the newest
+  (`WriteOptions.Edition`): it only holds what that edition has, and the readers of that
+  era (Vortex 0.64 and 0.83 for `core 2025.05.0`) open it.
 - The compressor picks encodings per chunk, like the reference one, and our files are at
   most 10% larger than the reference writer's on TPC-H and ClickBench.
 

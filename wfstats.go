@@ -71,9 +71,9 @@ func rootID(t Type) string {
 	case List:
 		return "vortex.listview"
 	case Map:
-		return "vortex.map"
+		return idMap
 	case FixedSizeList:
-		return "vortex.fixed_size_list"
+		return idFixedSizeList
 	case UUID, Date, Time, Timestamp:
 		return "vortex.ext"
 	}
@@ -407,14 +407,20 @@ func (a *fileAggs) tables(b *flatbuf.Builder) (specs, sets flatbuf.Off) {
 // of every entry.
 func (w *Writer) fileStatsTable() flatbuf.Off {
 	b := w.fb
-	var entries [][]fstat
-	fileEntries(w.root, &entries)
-	aggs := newFileAggs(entries)
 	legacy := legacyStats(w.root)
 	legacyOffs := make([]flatbuf.Off, len(legacy))
 	for i := range legacy {
 		legacyOffs[i] = legacy[i].table(b)
 	}
+	if w.legacyFile { // an edition before the aggregates: the legacy statistics only
+		fieldStats := b.Offsets(legacyOffs)
+		b.StartTable(5)
+		b.Ref(0, fieldStats)
+		return b.EndTable()
+	}
+	var entries [][]fstat
+	fileEntries(w.root, &entries)
+	aggs := newFileAggs(entries)
 	specs, sets := aggs.tables(b)
 	fieldStats := b.Offsets(legacyOffs)
 	entryVec, partialVec := b.Uint16s(aggs.entrySets), b.Bytes(aggs.partials)

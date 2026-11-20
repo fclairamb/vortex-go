@@ -121,7 +121,7 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | layout | `vortex.chunked` | yes | yes |
 | layout | `vortex.dict` | yes | yes |
 | layout | `vortex.flat` | yes | yes |
-| layout | `vortex.stats` | yes | no |
+| layout | `vortex.stats` | yes | yes |
 | layout | `vortex.struct` | yes | yes |
 | layout | `vortex.zoned` | yes | yes |
 <!-- matrix:end -->

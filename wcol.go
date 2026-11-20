@@ -48,7 +48,7 @@ type column struct {
 	arena      []byte
 	spareArena []byte
 	decRaw     []byte
-	specs      []aggSpec
+	zoneMeta   []byte // the metadata of the zone map layout, nil when there is none
 	t          Type
 	ranger
 	block    int
@@ -159,11 +159,22 @@ func (w *Writer) finish(c *column) {
 
 // writeZones writes the zones table, a struct of one field per statistic, as a flat layout.
 func (w *Writer) writeZones(c *column) {
-	fields, cols, specs := c.zones.table()
+	var fields []Field
+	var cols []Data
+	var meta []byte
+	if w.legacyZones {
+		var bits []byte
+		fields, cols, bits = c.zones.legacyTable()
+		meta = legacyMetadata(rowBlock, bits)
+	} else {
+		var specs []aggSpec
+		fields, cols, specs = c.zones.table()
+		meta = zonedMetadata(rowBlock, specs)
+	}
 	w.beginFlat()
 	root := w.encode(StructOf(fields...), OfStruct(cols...), c.zones.n)
 	if seg, ok := w.endFlat(root); ok {
-		c.zoneSeg, c.specs = seg, specs
+		c.zoneSeg, c.zoneMeta = seg, meta
 	}
 }
 
@@ -200,11 +211,15 @@ func (w *Writer) pieceLayout(c *column, p piece) flatbuf.Off {
 // columnLayout is the layout of a column: its data, and the zones table when it has one.
 func (w *Writer) columnLayout(c *column) flatbuf.Off {
 	data := w.dataLayout(c)
-	if c.specs == nil {
+	if c.zoneMeta == nil {
 		return data
 	}
 	zones := w.layoutNode("vortex.flat", uint64(c.zones.n), nil, nil, []uint32{c.zoneSeg})
-	return w.layoutNode("vortex.zoned", c.rows, zonedMetadata(rowBlock, c.specs), []flatbuf.Off{data, zones}, nil)
+	id := "vortex.zoned"
+	if w.legacyZones {
+		id = "vortex.stats"
+	}
+	return w.layoutNode(id, c.rows, c.zoneMeta, []flatbuf.Off{data, zones}, nil)
 }
 
 // dictMetadata is the metadata of a dictionary layout: the type of the codes (0 is u8, 1

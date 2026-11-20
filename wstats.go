@@ -76,6 +76,8 @@ type zoneAcc struct {
 	maxB  []byte
 	minV  [][]byte
 	maxV  [][]byte
+	minTr []bool // the min is cut: a bound, not the value
+	maxTr []bool
 	arena []byte
 	ranger
 	n int
@@ -260,6 +262,7 @@ func (r *ranger) putFixed(dst []byte, b *body, i int) []byte {
 func (z *zoneAcc) addBounds(b *body, imin, imax int) {
 	if imin < 0 {
 		z.minV, z.maxV, z.unk = append(z.minV, nil), append(z.maxV, nil), append(z.unk, false)
+		z.minTr, z.maxTr = append(z.minTr, false), append(z.maxTr, false)
 		return
 	}
 	isUTF8 := z.t.kind == Utf8
@@ -267,6 +270,8 @@ func (z *zoneAcc) addBounds(b *body, imin, imax int) {
 	z.minV = append(z.minV, copyBytes(&z.arena, lowerBound(b.bins[imin], isUTF8)))
 	z.maxV = append(z.maxV, copyBytes(&z.arena, upper))
 	z.unk = append(z.unk, !ok)
+	z.minTr = append(z.minTr, len(b.bins[imin]) > statBound)
+	z.maxTr = append(z.maxTr, ok && len(b.bins[imax]) > statBound)
 }
 
 // cut is the length a value longer than statBound is cut to: a character boundary for utf8.
@@ -323,6 +328,12 @@ func incrementUTF8(s []byte) ([]byte, bool) {
 	return nil, false
 }
 
+// The identifiers of the arrays of the types that an edition may lack.
+const (
+	idFixedSizeList = "vortex.fixed_size_list"
+	idMap           = "vortex.map"
+)
+
 // The identifiers of the aggregates of the statistics.
 const (
 	aggBoundedMax = "vortex.bounded_max"
@@ -357,13 +368,7 @@ func (z *zoneAcc) table() ([]Field, []Data, []aggSpec) {
 		specs = append(specs, aggSpec{id, options})
 	}
 	nullable := z.t.AsNullable()
-	var missing []bool
-	if slices.Contains(z.has, false) {
-		missing = make([]bool, z.n)
-		for i, h := range z.has {
-			missing[i] = !h
-		}
-	}
+	missing := z.missing()
 	anyHas := slices.Contains(z.has, true)
 	switch {
 	case z.class == scBytes:
@@ -385,6 +390,76 @@ func (z *zoneAcc) table() ([]Field, []Data, []aggSpec) {
 	}
 	add(aggNullCount, nil, Uint64Type().AsNullable(), Of(z.nulls))
 	return fields, cols, specs
+}
+
+// The bits of the statistics a vortex.stats layout holds, by the order of the upstream Stat.
+const (
+	bitMax       = 3
+	bitMin       = 4
+	bitNullCount = 6
+	bitNanCount  = 8
+)
+
+// legacyTable returns the zones table of a vortex.stats layout and the bitset of its statistics:
+// the max, the min, the null count and the NaN count, in that order, a max and a min being
+// followed by a flag that says it is cut. A max or a min that no zone has is left out.
+func (z *zoneAcc) legacyTable() ([]Field, []Data, []byte) {
+	var fields []Field
+	var cols []Data
+	var bits uint16
+	add := func(bit int, name string, t Type, d Data) {
+		fields = append(fields, Field{Name: name, Type: t})
+		cols = append(cols, d)
+		bits |= 1 << bit
+	}
+	bound := func(bit int, name string, t Type, d Data, cut []bool) {
+		add(bit, name, t, d)
+		fields = append(fields, Field{Name: name + "_is_truncated", Type: BoolType()})
+		cols = append(cols, OfBools(cut))
+	}
+	nullable := z.t.AsNullable()
+	missing := z.missing()
+	anyHas := slices.Contains(z.has, true)
+	switch {
+	case z.class == scBytes:
+		unbound := make([]bool, z.n) // the zones that have no max: none, or no bound
+		for i := range unbound {
+			unbound[i] = !z.has[i] || z.unk[i]
+		}
+		if slices.Contains(unbound, false) {
+			bound(bitMax, "max", nullable, OfBytes(z.maxV).Nulls(unbound), z.maxTr)
+		}
+		if anyHas {
+			bound(bitMin, "min", nullable, OfBytes(z.minV).Nulls(missing), z.minTr)
+		}
+	case z.class != scNone && anyHas: // no file of an edition without zoned holds a uuid
+		none := make([]bool, z.n)
+		bound(bitMax, "max", nullable, z.fixed(z.maxB).Nulls(missing), none)
+		bound(bitMin, "min", nullable, z.fixed(z.minB).Nulls(missing), none)
+	}
+	add(bitNullCount, "null_count", Uint64Type().AsNullable(), Of(z.nulls))
+	if z.class == scFloat {
+		add(bitNanCount, "nan_count", Uint64Type().AsNullable(), Of(z.nans))
+	}
+	return fields, cols, binary.LittleEndian.AppendUint16(nil, bits)
+}
+
+// legacyMetadata is the metadata of a vortex.stats layout: the zone length as a u32
+// little-endian, then the bitset of the statistics.
+func legacyMetadata(zoneLen int, bits []byte) []byte {
+	return append(binary.LittleEndian.AppendUint32(nil, uint32(zoneLen)), bits...)
+}
+
+// missing flags the zones that have no value, nil when every zone has one.
+func (z *zoneAcc) missing() []bool {
+	if !slices.Contains(z.has, false) {
+		return nil
+	}
+	out := make([]bool, z.n)
+	for i, h := range z.has {
+		out[i] = !h
+	}
+	return out
 }
 
 // fixed is the Data of the fixed-width values raw, one per zone.
@@ -449,14 +524,14 @@ func writtenStatistics() []string {
 
 // writtenLayouts lists the layouts the writer makes.
 func writtenLayouts() []string {
-	return []string{"vortex.chunked", "vortex.dict", "vortex.flat", "vortex.struct", "vortex.zoned"}
+	return []string{"vortex.chunked", "vortex.dict", "vortex.flat", "vortex.stats", "vortex.struct", "vortex.zoned"}
 }
 
 // writtenArrays lists the arrays the writer makes without an encoder: the plain ones.
 func writtenArrays() []string {
 	return []string{
-		"vortex.bool", "vortex.decimal", "vortex.ext", "vortex.fixed_size_list", "vortex.list", "vortex.listview",
-		"vortex.map", "vortex.null", "vortex.struct", "vortex.varbinview",
+		"vortex.bool", "vortex.decimal", "vortex.ext", idFixedSizeList, "vortex.list", "vortex.listview",
+		idMap, "vortex.null", "vortex.struct", "vortex.varbinview",
 	}
 }
 

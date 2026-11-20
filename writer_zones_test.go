@@ -35,7 +35,7 @@ func layoutTree(f *File, l *layoutNode) string {
 // layout, or the layout itself.
 func chunkRows(f *File, col int) []uint64 {
 	l := f.layout.children[col]
-	if f.layoutEncodings[l.encoding] == "vortex.zoned" {
+	if id := f.layoutEncodings[l.encoding]; id == "vortex.zoned" || id == "vortex.stats" {
 		l = l.children[0]
 	}
 	if f.layoutEncodings[l.encoding] != "vortex.chunked" {
@@ -141,10 +141,11 @@ type zoneStat struct {
 func readZones(t *testing.T, f *File, col int, ty Type) (stats []zoneStat, tbl zoneTable) {
 	t.Helper()
 	l := f.layout.children[col]
-	if f.layoutEncodings[l.encoding] != "vortex.zoned" {
-		t.Fatalf("column %d is %s", col, f.layoutEncodings[l.encoding])
+	id := f.layoutEncodings[l.encoding]
+	if id != "vortex.zoned" && id != "vortex.stats" {
+		t.Fatalf("column %d is %s", col, id)
 	}
-	z, err := parseZoneLayout(l, false)
+	z, err := parseZoneLayout(l, id == "vortex.stats")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -345,13 +346,33 @@ func statText(ty Type, b []byte) string {
 	return renderNumber(ty, b)
 }
 
+// eachZoneEdition runs a test of the zones for each of the zoneEditions.
+func eachZoneEdition(t *testing.T, test func(t *testing.T)) {
+	for _, ed := range zoneEditions {
+		t.Run(ed, func(t *testing.T) {
+			lowered(t, &testOptions, WriteOptions{Edition: ed})
+			test(t)
+		})
+	}
+}
+
+// zoneEditions are the editions whose zone maps differ: vortex.zoned, and its older form.
+var zoneEditions = []string{"", "core 2025.05.0"}
+
 func TestZoneStatistics(t *testing.T) {
 	lowered(t, &rowBlock, 7)
 	lowered(t, &chunkBytes, 50)
+	for _, ed := range zoneEditions {
+		lowered(t, &testOptions, WriteOptions{Edition: ed})
+		zoneStatistics(t, ed)
+	}
+}
+
+func zoneStatistics(t *testing.T, ed string) {
 	types := allTypes()
 	for _, name := range slices.Sorted(mapKeys(types)) {
 		ty := types[name]
-		if ty.kind == Struct {
+		if ty.kind == Struct || validEdition(ty, "", testOptions.Edition) != nil {
 			continue
 		}
 		for _, allNull := range []bool{false, true} {
@@ -367,7 +388,7 @@ func TestZoneStatistics(t *testing.T) {
 				vals = append(vals, v...)
 			}
 			f, _ := writeFile(t, NewSchema(Field{"c", ty}), chunks...)
-			checkZones(t, fmt.Sprintf("%s allNull=%v", name, allNull), f, 0, ty, vals)
+			checkZones(t, fmt.Sprintf("%s %s allNull=%v", ed, name, allNull), f, 0, ty, vals)
 		}
 	}
 }
@@ -382,7 +403,9 @@ func mapKeys[K comparable, V any](m map[K]V) func(yield func(K) bool) {
 	}
 }
 
-func TestZoneStatisticsOfFloats(t *testing.T) {
+func TestZoneStatisticsOfFloats(t *testing.T) { eachZoneEdition(t, runZoneStatisticsOfFloats) }
+
+func runZoneStatisticsOfFloats(t *testing.T) {
 	lowered(t, &rowBlock, 4)
 	nan := math.NaN()
 	f64 := []float64{nan, nan, nan, nan /* only NaNs */, 1, nan, -3, 2 /* both */, math.Copysign(0, -1), 0, math.Inf(-1), math.Inf(1)}
@@ -503,7 +526,9 @@ func readValues[T Number](t *testing.T, f *File, q Query) []T {
 	return out
 }
 
-func TestPruningOnOurFiles(t *testing.T) {
+func TestPruningOnOurFiles(t *testing.T) { eachZoneEdition(t, runPruningOnOurFiles) }
+
+func runPruningOnOurFiles(t *testing.T) {
 	lowered(t, &chunkBytes, 64<<10) // a chunk a zone
 	const rows = 100_000
 	k, s := make([]int64, rows), make([]string, rows)

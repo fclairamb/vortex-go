@@ -33,8 +33,17 @@ func binsCost(v [][]byte, nulls []bool) int {
 	return total
 }
 
+// constantBytes is the constant array of the strings v, under their validity when the compressor
+// may mask.
+func (c *Compressor) constantBytes(x at, v [][]byte, nulls []bool, utf8 bool) (*encode.Node, bool) {
+	if c.limit.NoMasked {
+		return encode.ConstantBytes(x.e, v, nulls, utf8)
+	}
+	return encode.ConstantBytesMasked(x.e, v, nulls, utf8)
+}
+
 func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.Node {
-	if n, ok := encode.ConstantBytesMasked(x.e, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
+	if n, ok := c.constantBytes(x, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
 		return n
 	}
 	valid := 0
@@ -49,7 +58,7 @@ func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.
 	l.add(sFSST, utf8 && valid > 0)
 	// the reference tries it for binary only, between the dictionary and zstd
 	l.add(sVarBin, !utf8)
-	l.add(sZstd, c.mode == Compact)
+	l.add(sZstd, c.zstd())
 	return pick(c, x, v, nulls, &l, binsCost, sampleBins, func(x at, s scheme, v [][]byte, nulls []bool) *encode.Node {
 		return c.applyStrings(x, s, v, nulls, utf8)
 	})
@@ -140,7 +149,11 @@ func (c *Compressor) Timestamps(v []int64, nulls []bool, ticks int64) *encode.No
 
 // Bools is the compressed array of booleans, or nil for the plain array: a constant, or nothing.
 func (c *Compressor) Bools(v, nulls []bool) *encode.Node {
-	n, _ := encode.ConstantBoolsMasked(c.e, v, nulls)
+	constant := encode.ConstantBoolsMasked
+	if c.limit.NoMasked {
+		constant = encode.ConstantBools
+	}
+	n, _ := constant(c.e, v, nulls)
 	if n != nil && cost(n) >= nodeOverhead+bufferOverhead+(len(v)+7)/8+validityCost(nulls, len(v)) {
 		return nil
 	}

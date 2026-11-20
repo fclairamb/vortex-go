@@ -33,6 +33,15 @@ const (
 	Compact
 )
 
+// Limits lists the encodings that a compressor leaves out, because the edition a file targets
+// does not have them. The zero value leaves out none.
+type Limits struct {
+	NoRLE      bool // fastlanes.rle
+	NoMasked   bool // vortex.masked
+	NoSequence bool // vortex.sequence
+	NoZstd     bool // vortex.zstd
+}
+
 // PType is the type of the numbers of an array.
 type PType uint8
 
@@ -116,12 +125,19 @@ type Compressor struct {
 	nulls arena[bool]     // the samples of nulls, and the nulls of children
 	bins  arena[[]byte]   // the samples of strings, and the values of dictionaries
 	mode  Mode
+	limit Limits
 }
 
 // New returns a Compressor.
-func New(mode Mode) *Compressor {
-	return &Compressor{e: encode.New(), trial: encode.New(), mode: mode}
+func New(mode Mode) *Compressor { return NewLimited(mode, Limits{}) }
+
+// NewLimited returns a Compressor that does without the encodings of limit.
+func NewLimited(mode Mode, limit Limits) *Compressor {
+	return &Compressor{e: encode.New(), trial: encode.New(), mode: mode, limit: limit}
 }
+
+// zstd says whether zstd is a candidate.
+func (c *Compressor) zstd() bool { return c.mode == Compact && !c.limit.NoZstd }
 
 // Reset frees the arrays of the earlier calls, which must not be used any more.
 func (c *Compressor) Reset() {

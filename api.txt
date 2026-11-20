@@ -623,6 +623,15 @@ func (d VariantDecimal) String() string
     String prints the decimal, like Decimal.Text with the scale of the value.
 
 type WriteOptions struct {
+	// Edition is the edition the file must be readable with, as the upstream names it
+	// ("core 2025.05.0"). Empty is the newest the library knows, "core 2026.08.3". The writer
+	// only makes what the edition has: a file for an edition before "core 2026.08.0" has the
+	// older zone maps (vortex.stats) and only the legacy file statistics, one before
+	// "core 2025.10.0" has no listview and no run-length or masked arrays, and so on. An
+	// unknown edition, or a type it cannot hold (a uuid before "core 2026.08.3", a map before
+	// "core 2026.08.2", a fixed-size list before "core 2025.10.0"), is an error of the first
+	// Write or Close.
+	Edition     string
 	Compression Compression
 }
     WriteOptions are the options of a Writer.

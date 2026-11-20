@@ -3,6 +3,8 @@
 package edition
 
 import (
+	"maps"
+	"slices"
 	"sync"
 	"sync/atomic"
 )
@@ -32,6 +34,30 @@ func Has(kind, id string) bool {
 	for _, m := range members {
 		if m.Kind == kind && m.ID == id {
 			return true
+		}
+	}
+	return false
+}
+
+// Known reports whether name is an edition of the table: the newest, or one that added a member.
+func Known(name string) bool { return slices.Contains(Names(), name) }
+
+// Names lists the editions of the table, oldest first.
+func Names() []string {
+	set := map[string]bool{ID: true}
+	for _, m := range members {
+		set[m.Since] = true
+	}
+	return slices.Sorted(maps.Keys(set))
+}
+
+// Allows reports whether a file that targets the edition may hold the identifier of that kind:
+// the edition is the member's own or a later one. An identifier that is not in the table, and
+// an unknown edition, are not allowed. Editions are ordered by their date.
+func Allows(name, kind, id string) bool {
+	for _, m := range members {
+		if m.Kind == kind && m.ID == id {
+			return Known(name) && name >= m.Since
 		}
 	}
 	return false

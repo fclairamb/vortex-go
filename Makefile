@@ -81,15 +81,20 @@ compat:
 
 # The reference reader opens the files our writer makes, and gets the values we wrote. The
 # Go test writes the files and the canonical hashes of its source data into .cache/interop,
-# the oracle checks them with the pinned vortex-data and with the latest release. Needs uv
-# and network.
+# the oracle checks them with the pinned vortex-data and with the latest release. The files of
+# core 2025.05.0 (WriteOptions.Edition) are read by vortex-data 0.64.0 and 0.83.0 too, the first
+# and the last release before vortex.zoned. Needs uv and network.
 INTEROP = .cache/interop
 interop:
 	rm -rf $(INTEROP)
 	mkdir -p $(INTEROP)
-	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropRows|TestSizeRatios)$$' -count=1 .
+	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropEditions|TestInteropRows|TestSizeRatios)$$' -count=1 .
 	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)
 	uv run --with vortex-data --with pyarrow python tools/oracle/oracle.py check $(INTEROP)
+	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)/core_2025_05_0
+	for v in 0.64.0 0.83.0; do \
+		uv run --python 3.12 --with vortex-data==$$v --with 'substrait<0.25' --with pyarrow python tools/oracle/oracle.py check $(INTEROP)/core_2025_05_0 || exit 1; \
+	done
 
 # The byte-exact vectors of the encoders (testdata/vectors), made by the encoders of the
 # reference. Needs cargo and network; the tests never do. See tools/vectors/README.md.

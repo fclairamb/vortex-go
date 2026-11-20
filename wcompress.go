@@ -31,7 +31,7 @@ func (w *Writer) compressor(c *column) *compress.Compressor {
 		if w.opt.Compression == Compact {
 			mode = compress.Compact
 		}
-		c.comp = compress.New(mode)
+		c.comp = compress.NewLimited(mode, w.limit)
 	}
 	return c.comp
 }
