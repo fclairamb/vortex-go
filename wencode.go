@@ -102,6 +102,11 @@ func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
 	case UUID:
 		return w.arrayExtension(w.encodeUUID(d, n))
 	case Date, Time, Timestamp:
+		if t.kind == Timestamp {
+			if off, ok := w.encodeForcedTimestamps(t, d); ok {
+				return off
+			}
+		}
 		return w.arrayExtension(w.encodePrimitive(d, n))
 	default:
 		return w.encodePrimitive(d, n)
@@ -237,6 +242,9 @@ func writeViews(w *Writer, vals [][]byte, nulls []bool) {
 }
 
 func (w *Writer) encodeDecimals(t Type, d Data, n int) flatbuf.Off {
+	if off, ok := w.encodeForcedDecimals(t, d, n); ok {
+		return off
+	}
 	width := decimalWidth(t.precision)
 	buf := w.alloc(n * width)
 	for i, v := range d.decs {

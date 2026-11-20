@@ -41,7 +41,6 @@ func vectorFSST(t *testing.T, e *Encoder, v vector) {
 	}
 }
 
-
 // TestTrainingMatchesReference checks more than the spec asks: the table our training makes
 // is the reference's, symbol for symbol and in the order of the codes, so the whole node is.
 func TestTrainingMatchesReference(t *testing.T) {

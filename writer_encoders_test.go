@@ -3,6 +3,8 @@ package vortex
 import (
 	"bytes"
 	"fmt"
+	"math"
+	"math/rand/v2"
 	"slices"
 	"testing"
 
@@ -17,6 +19,8 @@ var encodingIDs = map[string]string{
 	"bitpacked": "fastlanes.bitpacked", "for": "fastlanes.for", "zigzag": "vortex.zigzag",
 	"rle": "fastlanes.rle", "runend": "vortex.runend", "dict": "vortex.dict",
 	"sequence": "vortex.sequence", "constant": "vortex.constant", "sparse": "vortex.sparse",
+	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "fsst": "vortex.fsst",
+	"decimal_byte_parts": "vortex.decimal_byte_parts", "datetimeparts": "vortex.datetimeparts",
 }
 
 func numberTypes() map[Kind]Type {
@@ -35,6 +39,8 @@ func forcedTypes(enc string) []Kind {
 		isSigned := k >= Int8 && k <= Int64
 		switch {
 		case enc == "zigzag" && !isSigned, isFloat && slices.Contains([]string{"bitpacked", "for", "sequence"}, enc):
+		case !isFloat && (enc == "alp" || enc == "alprd"):
+		case enc == "fsst" || enc == "decimal_byte_parts" || enc == "datetimeparts": // not numbers
 		default:
 			out = append(out, k)
 		}
@@ -98,6 +104,9 @@ func forcedColumn(enc string, k Kind, n int, withNulls bool) (Type, Data, []val)
 		"runend":   func(i int) int64 { return int64(i / 5) },
 		"dict":     func(i int) int64 { return int64(i % 13) },
 		"sequence": func(i int) int64 { return int64(i*3 + 5) },
+		"zstd":     func(i int) int64 { return int64(i * 37 % 100) },
+		"alp":      func(i int) int64 { return int64(i) },
+		"alprd":    func(i int) int64 { return int64(i) },
 		"constant": func(int) int64 { return 42 },
 		"sparse": func(i int) int64 {
 			if i%17 == 5 {
@@ -122,8 +131,42 @@ func forcedColumn(enc string, k Kind, n int, withNulls bool) (Type, Data, []val)
 	if withNulls {
 		ty = ty.AsNullable()
 	}
+	if enc == "alp" || enc == "alprd" {
+		d, vals := floatsOf(k, n, nulls, func(i int) float64 {
+			if enc == "alp" {
+				return float64(i*37%100000) / 100 // prices, and a few values that are not
+			}
+			return math.Sqrt(float64(i)+0.5) * 1000 // no short decimal form
+		})
+		return ty, d, vals
+	}
 	d, vals := numbersOf(k, n, value, nulls)
 	return ty, d, vals
+}
+
+// floatsOf makes the Data of n floats of kind k, f(i) for row i, and the rows it stands for.
+func floatsOf(k Kind, n int, nulls []bool, f func(i int) float64) (Data, []val) {
+	vals := make([]val, n)
+	var d Data
+	if k == Float32 {
+		v := make([]float32, n)
+		for i := range v {
+			v[i] = float32(f(i))
+			vals[i] = val{b: rawOf(v[i]), null: nulls != nil && nulls[i]}
+		}
+		d = Of(v)
+	} else {
+		v := make([]float64, n)
+		for i := range v {
+			v[i] = f(i)
+			vals[i] = val{b: rawOf(v[i]), null: nulls != nil && nulls[i]}
+		}
+		d = Of(v)
+	}
+	if nulls != nil {
+		d = d.Nulls(nulls)
+	}
+	return d, vals
 }
 
 // writeForced writes the chunks with the encoding forced, and opens the file.
@@ -216,8 +259,48 @@ func TestForcedStrings(t *testing.T) {
 		nulls[i] = i%9 == 4
 		vals[i] = val{b: bins[i], null: nulls[i]}
 	}
-	checkForced(t, "dict", Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 300)
-	checkForced(t, "dict", BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
+	for _, enc := range []string{"dict", "fsst", "zstd"} {
+		checkForced(t, enc, Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 300)
+		checkForced(t, enc, BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
+	}
+}
+
+// TestForcedDecimalsAndTimestamps writes decimals that fit an i64, and timestamps of every unit,
+// with decimal byte parts and datetime parts, then reads them back.
+func TestForcedDecimalsAndTimestamps(t *testing.T) {
+	g := &gen{r: rand.New(rand.NewPCG(24, 25))}
+	for _, nullable := range []bool{false, true} {
+		types := map[string]Type{
+			"decimal(5,2)": DecimalOf(5, 2), "decimal(18,4)": DecimalOf(18, 4), "decimal(2,0)": DecimalOf(2, 0),
+		}
+		for name, ty := range types {
+			if nullable {
+				ty = ty.AsNullable()
+			}
+			d, vals := g.make(ty, 700)
+			checkForced(t, "decimal_byte_parts", ty, d, vals, 700)
+			_ = name
+		}
+		for _, unit := range []Unit{Second, Millisecond, Microsecond, Nanosecond} {
+			ty := TimestampType(unit, "")
+			if nullable {
+				ty = ty.AsNullable()
+			}
+			d, vals := g.make(ty, 600)
+			checkForced(t, "datetimeparts", ty, d, vals, 300, 300)
+		}
+	}
+}
+
+// TestForcedWideDecimals: values that need lower parts are an error, and so is a type that
+// the encoding does not take.
+func TestForcedWideDecimals(t *testing.T) {
+	big := DecimalFromInt64(1)
+	big.w[1] = 1 // 2^64 + 1
+	d := OfDecimals([]Decimal{big})
+	if _, err := writeForced(t, "decimal_byte_parts", NewSchema(Field{"c", DecimalOf(30, 0)}), []Data{d}); err == nil {
+		t.Fatal("a decimal above an i64 is written")
+	}
 }
 
 // TestForcedErrors checks that an encoding that cannot take the data is an error of the write.
@@ -234,6 +317,8 @@ func TestForcedErrors(t *testing.T) {
 		"sequence of floats": {"sequence", Float64Type(), Of([]float64{1, 2})},
 		"all equal sparse":   {"sparse", Int32Type(), Of([]int32{})},
 		"unknown":            {"nothing", Int32Type(), Of([]int32{1})},
+		"alp of integers":    {"alp", Int32Type(), Of([]int32{1})},
+		"alprd of no row":    {"alprd", Float64Type(), Of([]float64{})},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {

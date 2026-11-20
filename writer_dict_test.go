@@ -40,6 +40,8 @@ func sliceOf(d Data, ty Type, lo, hi int) Data {
 		out = Data{&body{kind: dPrim, pk: d.pk, n: hi - lo, raw: d.raw[lo*w : hi*w]}}
 	case dStr:
 		out = OfStrings(d.strs[lo:hi])
+	case dDec:
+		out = OfDecimals(d.decs[lo:hi])
 	default:
 		out = OfBytes(d.bins[lo:hi])
 	}

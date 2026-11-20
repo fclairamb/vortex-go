@@ -10,7 +10,7 @@ import (
 
 // The writer does not choose among the encoders of internal/encode yet: that is the compressor.
 // A test can force one on a Writer (the force field, the name of the encoding), which then
-// writes with it every array of numbers it can, and every dictionary of strings, to check the
+// writes with it every array of numbers, strings, decimals or timestamps it can, to check the
 // files with the reference reader. An array that the encoder cannot take is an error.
 
 // encodeForced is the array of the numbers d in the forced encoding.
@@ -37,9 +37,9 @@ func (w *Writer) encodeForced(d Data, n int) flatbuf.Off {
 	case Uint64:
 		node = forceInt(w.enc, w.force, unsafex.Slice[uint64](d.raw), nulls)
 	case Float32:
-		node = forceNumber(w.enc, w.force, unsafex.Slice[float32](d.raw), nulls)
+		node = forceFloat(w.enc, w.force, unsafex.Slice[float32](d.raw), nulls)
 	default:
-		node = forceNumber(w.enc, w.force, unsafex.Slice[float64](d.raw), nulls)
+		node = forceFloat(w.enc, w.force, unsafex.Slice[float64](d.raw), nulls)
 	}
 	if node == nil {
 		w.setErr(fmt.Errorf("vortex: Write: the %s encoding cannot take %s", w.force, d.describe()))
@@ -49,16 +49,66 @@ func (w *Writer) encodeForced(d Data, n int) flatbuf.Off {
 }
 
 // encodeForcedStrings is the array of strings d (the buffer of a column holds them as byte
-// slices) as a dictionary, when that is the encoding
-// forced, and false when it is not.
+// slices) as a dictionary, FSST or zstd, when that is the encoding forced, and false when it
+// is not.
 func (w *Writer) encodeForcedStrings(d Data) (flatbuf.Off, bool) {
-	if w.force != "dict" || w.depth != 1 {
+	if w.depth != 1 {
 		return 0, false
 	}
 	if w.enc == nil {
 		w.enc = encode.New()
 	}
-	return w.emit(encode.DictBytes(w.enc, d.bins, d.nulls)), true
+	switch w.force {
+	case "dict":
+		return w.emit(encode.DictBytes(w.enc, d.bins, d.nulls)), true
+	case "fsst":
+		return w.emit(encode.FSSTBytes(w.enc, d.bins, d.nulls)), true
+	case "zstd":
+		return w.emit(encode.ZstdBytes(w.enc, d.bins, d.nulls)), true
+	}
+	return 0, false
+}
+
+// encodeForcedDecimals is the array of the decimals of d as decimal byte parts, when that is
+// the encoding forced and the values fit: else false, with the error of the write.
+func (w *Writer) encodeForcedDecimals(t Type, d Data, n int) (flatbuf.Off, bool) {
+	if w.force != "decimal_byte_parts" || w.depth != 1 {
+		return 0, false
+	}
+	if w.enc == nil {
+		w.enc = encode.New()
+	}
+	width := decimalWidth(t.precision)
+	raw := w.alloc(n * width)
+	for i, v := range d.decs {
+		le := v.le()
+		copy(raw[i*width:], le[:width])
+	}
+	node, ok := encode.DecimalBytes(w.enc, raw, width, d.nulls)
+	if !ok {
+		w.setErr(fmt.Errorf("vortex: Write: the %s encoding cannot take %s", w.force, d.describe()))
+		return 0, false
+	}
+	return w.emit(node), true
+}
+
+// encodeForcedTimestamps is the array of the timestamps of d as datetime parts, when that is
+// the encoding forced: it replaces the extension array of the timestamps, which has the type.
+func (w *Writer) encodeForcedTimestamps(t Type, d Data) (flatbuf.Off, bool) {
+	if w.force != "datetimeparts" || w.depth != 1 {
+		return 0, false
+	}
+	if w.enc == nil {
+		w.enc = encode.New()
+	}
+	ticks := map[Unit]int64{Second: encode.TicksSecond, Millisecond: encode.TicksMilli,
+		Microsecond: encode.TicksMicro, Nanosecond: encode.TicksNano}[t.unit]
+	node, ok := encode.DateTimeParts(w.enc, unsafex.Slice[int64](d.raw), d.nulls, ticks)
+	if !ok {
+		w.setErr(fmt.Errorf("vortex: Write: the %s encoding cannot take %s", w.force, d.describe()))
+		return 0, false
+	}
+	return w.emit(node), true
 }
 
 // emit writes the tree of an encoded array: the buffers of a node, then those of its
@@ -101,8 +151,21 @@ func forceInt[T encode.Int](e *encode.Encoder, name string, v []T, nulls []bool)
 	return forceNumber(e, name, v, nulls)
 }
 
+func forceFloat[T encode.Float](e *encode.Encoder, name string, v []T, nulls []bool) *encode.Node {
+	switch name {
+	case "alp":
+		return encode.ALP(e, v, nulls)
+	case "alprd":
+		n, _ := encode.ALPRD(e, v, nulls)
+		return n
+	}
+	return forceNumber(e, name, v, nulls)
+}
+
 func forceNumber[T encode.Number](e *encode.Encoder, name string, v []T, nulls []bool) *encode.Node {
 	switch name {
+	case "zstd":
+		return encode.Zstd(e, v, nulls)
 	case "rle":
 		return encode.RLE(e, v, nulls)
 	case "runend":

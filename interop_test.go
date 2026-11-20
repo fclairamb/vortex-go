@@ -75,8 +75,11 @@ func writeInteropEncoders(t *testing.T, dir string) {
 				hashColumn(hashes, name, ty, vals)
 			}
 		}
-		if enc == "dict" {
+		switch enc {
+		case "dict", "fsst", "zstd":
 			fields, data = addInteropStrings(fields, data, hashes, n)
+		case "decimal_byte_parts", "datetimeparts":
+			fields, data = addInteropParts(enc, fields, data, hashes, n)
 		}
 		var buf bytes.Buffer
 		w := NewWriter(&buf, NewSchema(fields...), WriteOptions{})
@@ -105,6 +108,30 @@ func writeInteropEncoders(t *testing.T, dir string) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// addInteropParts adds the columns of the decimal byte parts (decimals that fit an i64) and of
+// the datetime parts (a timestamp of every unit), nullable or not.
+func addInteropParts(enc string, fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
+	g := &gen{r: rand.New(rand.NewPCG(26, 27))}
+	var types []Type
+	if enc == "decimal_byte_parts" {
+		types = []Type{DecimalOf(5, 2), DecimalOf(18, 4), DecimalOf(2, 0)}
+	} else {
+		for _, u := range []Unit{Second, Millisecond, Microsecond, Nanosecond} {
+			types = append(types, TimestampType(u, ""), TimestampType(u, "UTC").AsNullable())
+		}
+	}
+	for i, ty := range types {
+		if enc == "decimal_byte_parts" && i%2 == 1 {
+			ty = ty.AsNullable()
+		}
+		d, vals := g.make(ty, n)
+		name := fmt.Sprintf("%s_%d", enc, i)
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
+		hashColumn(hashes, name, ty, vals)
+	}
+	return fields, data
 }
 
 // addInteropStrings adds the string columns of the dictionary file: utf8 and binary, nullable.

@@ -71,15 +71,21 @@ type Buf struct {
 
 // Node is an encoded array.
 type Node struct {
-	kids [4]*Node
-	ID   string
-	Meta []byte
-	Bufs []Buf
-	Kids []*Node
-	bufs [2]Buf
+	kids  [4]*Node
+	ID    string
+	Meta  []byte
+	Bufs  []Buf
+	Kids  []*Node
+	bufs  [3]Buf
+	grown []Buf
 }
 
-func (n *Node) add(data []byte, align int) { n.Bufs = append(n.Bufs, Buf{data, align}) }
+func (n *Node) add(data []byte, align int) {
+	n.Bufs = append(n.Bufs, Buf{data, align})
+	if cap(n.Bufs) > cap(n.grown) && cap(n.Bufs) > len(n.bufs) {
+		n.grown = n.Bufs
+	}
+}
 
 // kid adds a child. A nil child (an absent validity) is not added.
 func (n *Node) kid(k *Node) {
@@ -150,7 +156,11 @@ func (e *Encoder) node(id string) *Node {
 	n := e.pool[e.used]
 	e.used++
 	n.ID, n.Meta = id, nil
+	// a node that grew its buffers (the frames of zstd) keeps them for the next use
 	n.Bufs, n.Kids = n.bufs[:0], n.kids[:0]
+	if cap(n.Bufs) < cap(n.grown) {
+		n.Bufs = n.grown[:0]
+	}
 	return n
 }
 
