@@ -363,6 +363,54 @@ def write_expected(path):
         fh.write("\n")
 
 
+def literal_of(dtype, value):
+    """A literal of the dtype of a column, for a filter."""
+    if dtype["kind"] == "primitive" and dtype["ptype"][0] in "iu":
+        return vx.expr.literal(vx.int_(int(dtype["ptype"][1:])), value)
+    if dtype["kind"] == "primitive":
+        return vx.expr.literal(vx.float_(int(dtype["ptype"][1:])), value)
+    if dtype["kind"] == "utf8":
+        return vx.expr.literal(vx.utf8(), value)
+    raise ValueError("no filter on a %s" % dtype["kind"])
+
+
+def filter_expr(spec, dtype):
+    """The predicate of a filter of a hashes file: the column compared with up to two bounds,
+    "ge", "gt", "le", "lt" and "eq" ({"column": "k", "ge": 10, "lt": 20})."""
+    ve = vx.expr
+    field = next(f["dtype"] for f in dtype["fields"] if f["name"] == spec["column"])
+    col = ve.column(spec["column"])
+    terms = [fn(col, literal_of(field, spec[op]))
+             for op, fn in (("ge", ve.gt_eq), ("gt", ve.gt), ("le", ve.lt_eq), ("lt", ve.lt), ("eq", ve.eq))
+             if op in spec]
+    pred = terms[0]
+    for term in terms[1:]:
+        pred = ve.and_(pred, term)
+    return pred
+
+
+def check_filters(path, want):
+    """Reads the file with each filter of the hashes file pushed to the reference reader, which
+    prunes the zones with the statistics of the file: a wrong bound loses rows. Returns the
+    problems."""
+    problems = []
+    f = vx.open(path)
+    dtype = parse_dtype(str(f.dtype))
+    for spec in want.get("filters", []):
+        label = json.dumps({k: v for k, v in spec.items() if k not in ("rows", "columns")}, sort_keys=True)
+        table = f.scan(expr=filter_expr(spec, dtype)).read_all().to_arrow_table()
+        if table.num_rows != spec["rows"]:
+            problems.append("filter %s: %d rows, want %d" % (label, table.num_rows, spec["rows"]))
+            continue
+        columns = {}
+        for field, col in zip(dtype["fields"], table.columns):
+            collect(field["name"], col, field["dtype"], columns)
+        for name, w in sorted(spec["columns"].items()):
+            if columns[name]["sha256"] != w["sha256"] or columns[name]["nulls"] != w["nulls"]:
+                problems.append("filter %s: column %s differs" % (label, name))
+    return problems
+
+
 def check(folder):
     """Opens every <name>.vortex of the folder that has a <name>.hashes.json with the
     reference reader, and compares the row count and, per column path, the null count and
@@ -398,6 +446,12 @@ def check(folder):
             elif g["nulls"] != w["nulls"] or g["sha256"] != w["sha256"]:
                 problems.append("column %s: nulls %s/%s, sha256 %s/%s (got/want)" % (
                     col, g["nulls"], w["nulls"], g["sha256"][:12], w["sha256"][:12]))
+        try:
+            problems.extend(check_filters(path, want))
+        except BaseException as e:  # the reference reader refuses the filter
+            if isinstance(e, KeyboardInterrupt):
+                raise
+            problems.append("filters: the reference reader failed: %s" % str(e).replace("\n", " "))
         if "schema" in want and got["schema"] != want["schema"]:
             problems.append("schema: got %s, want %s" % (json.dumps(got["schema"], sort_keys=True),
                                                          json.dumps(want["schema"], sort_keys=True)))
