@@ -207,9 +207,22 @@ func gatherRanges[C word](starts, ends, from, to []int, codes []C, valid *Bitmap
 // its value is, and when valid does not mark it null (nil marks none). The codes are values.
 func gatherValidity[C word](ar *Arena, values *Bitmap, codes []C, valid *Bitmap) []byte {
 	bytes := ar.Bytes((len(codes)+7)/8, true)
-	for i, c := range codes {
-		if (valid == nil || valid.Get(i)) && values.Get(int(c)) {
-			bytes[i>>3] |= 1 << (i & 7)
+	// A byte of the result is made in a register, from 8 codes, with no test: the nulls are
+	// where they please, a test per row is one the processor cannot guess.
+	i := 0
+	for ; i+8 <= len(codes); i += 8 {
+		var b byte
+		for k, c := range codes[i : i+8] {
+			b |= values.bit(int(c)) << k
+		}
+		bytes[i>>3] = b
+	}
+	for ; i < len(codes); i++ {
+		bytes[i>>3] |= values.bit(int(codes[i])) << (i & 7)
+	}
+	if valid != nil {
+		for j := range bytes {
+			bytes[j] &= valid.byteAt(8 * j)
 		}
 	}
 	return bytes

@@ -141,3 +141,10 @@ func GatherNull[T, V any](rows []T, off, offValid uintptr, dst []V, null []bool)
 		}
 	}
 }
+
+// Store64 writes the 8 bytes of v at b[off:], in the byte order of the machine, with no test
+// of the range: the caller has checked that 0 <= off and off+8 <= len(b). It is for the
+// decoders whose loop makes one test for many stores.
+func Store64(b []byte, off int, v uint64) {
+	*(*uint64)(unsafe.Add(unsafe.Pointer(unsafe.SliceData(b)), off)) = v
+}
