@@ -140,6 +140,13 @@ func NewLimited(mode Mode, limit Limits) *Compressor {
 	return &Compressor{e: encode.New(), trial: encode.New(), mode: mode, limit: limit}
 }
 
+// Configure makes c a Compressor of this mode and of these limits, with the memory it has: the
+// arrays of its earlier calls must not be used any more.
+func (c *Compressor) Configure(mode Mode, limit Limits) {
+	c.Reset()
+	c.mode, c.limit = mode, limit
+}
+
 // zstd says whether zstd is a candidate.
 func (c *Compressor) zstd() bool { return c.mode == Compact && !c.limit.NoZstd }
 

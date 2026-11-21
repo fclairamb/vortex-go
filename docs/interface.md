@@ -73,6 +73,12 @@ for b, err := range f.Scan(ctx, q, "id", "price", "name") {
 - **Lists are `vortex.listview`**, maps are `vortex.map` over a listview of structs: it is
   the canonical form, and the one a map requires. A compressed list (not `None`) is a
   `vortex.list`, with no sizes.
+- **`WriteOptions.Buffer` trades memory for cores.** The chunks that are full wait in a queue
+  and are compressed together, on every core; each one holds its rows and the memory of its
+  compressor until it is written. `Buffer` is the bytes of rows, before compression, that
+  may wait: 0 is a queue of two chunks a column, 16 at least, and a value under the size of a
+  chunk compresses the chunks one at a time, on one core, with the least memory. The rows of
+  the file do not depend on it, the order of its segments may.
 - **`WriteOptions.Edition` is the edition the file must be readable with**, as upstream
   names them (`"core 2025.05.0"`); empty is the newest, `core 2026.08.3`. The writer only
   makes what that edition has. Before `core 2026.08.0` a zone map is a `vortex.stats` layout

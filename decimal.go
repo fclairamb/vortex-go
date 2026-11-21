@@ -1,6 +1,7 @@
 package vortex
 
 import (
+	"encoding/binary"
 	"errors"
 	"math/big"
 	"strings"
@@ -71,9 +72,10 @@ func decimalFromLE(b []byte) Decimal {
 // le returns the 32 bytes of the value, little-endian.
 func (d Decimal) le() [32]byte {
 	var b [32]byte
-	for i := range b {
-		b[i] = byte(d.w[i/8] >> (8 * (i % 8)))
-	}
+	binary.LittleEndian.PutUint64(b[0:], d.w[0])
+	binary.LittleEndian.PutUint64(b[8:], d.w[1])
+	binary.LittleEndian.PutUint64(b[16:], d.w[2])
+	binary.LittleEndian.PutUint64(b[24:], d.w[3])
 	return b
 }
 

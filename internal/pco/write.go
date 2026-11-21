@@ -136,6 +136,7 @@ type Coder struct {
 	sample []seg
 	// the training of the bins
 	upos []int
+	logs []float64 // logs[k] is the base 2 logarithm of k, for the counts of a bin
 	dp   []float64
 	from []int32
 	cuts []int32
@@ -458,12 +459,16 @@ func (c *Coder) train(tb *table, s []uint64, nb int) float64 {
 	c.dp, c.from = grow(c.dp, nu+1), grow(c.from, nu+1)
 	c.dp[0] = 0
 	lm := math.Log2(float64(m))
+	for k := len(c.logs); k <= m; k++ { // a count is at most m: its logarithm is computed once
+		c.logs = append(c.logs, math.Log2(float64(k)))
+	}
+	logs := c.logs
 	for i := 1; i <= nu; i++ {
 		hiV := s[c.upos[i]-1]
 		best, from := math.Inf(1), 0
 		for j := range i {
-			cnt := float64(c.upos[i] - c.upos[j])
-			cost := c.dp[j] + cnt*(lm-math.Log2(cnt)+float64(bits.Len64(hiV-s[c.upos[j]]))) + meta
+			n := c.upos[i] - c.upos[j]
+			cost := c.dp[j] + float64(n)*(lm-logs[n]+float64(bits.Len64(hiV-s[c.upos[j]]))) + meta
 			if cost < best {
 				best, from = cost, j
 			}
