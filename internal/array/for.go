@@ -29,44 +29,60 @@ func (n *Node) oneChild() error {
 // decodeFoR decodes fastlanes.for: the metadata is the reference, a ScalarValue, child 0 the
 // encoded integers. A value is the encoded one plus the reference, wrapping.
 func decodeFoR(n *Node, t DType, rows int) (*Array, error) {
-	width, err := intPrim(t)
+	width, ref, err := n.forParts(t)
 	if err != nil {
 		return nil, err
-	}
-	if n.NumBuffers() != 0 {
-		return nil, fmt.Errorf("expected no buffer, got %d", n.NumBuffers())
-	}
-	if n.NumChildren() != 1 {
-		return nil, fmt.Errorf("expected 1 child, got %d", n.NumChildren())
-	}
-	v, err := scalar.Decode(n.Metadata())
-	if err != nil {
-		return nil, fmt.Errorf("reference: %w", err)
-	}
-	ref, err := primBytes(&v, t.PType)
-	if err != nil {
-		return nil, fmt.Errorf("reference: %w", err)
 	}
 	enc, err := n.Child(0, t, rows)
 	if err != nil {
 		return nil, err
 	}
 	out := *enc
-	out.Data = addConst(n.target(enc), enc.Data, width, binary.LittleEndian.Uint64(append(ref, 0, 0, 0, 0, 0, 0, 0, 0)))
+	out.Data = addConst(n.target(enc), enc.Data, width, ref)
 	out.fresh = true
 	return &out, nil
 }
 
-// decodeZigZag decodes vortex.zigzag: child 0 is the unsigned encoded integers.
-func decodeZigZag(n *Node, t DType, rows int) (*Array, error) {
+// forParts reads a fastlanes.for node of an array of type t: the width of its integers, and
+// the reference, as the bits of a 64-bit integer.
+func (n *Node) forParts(t DType) (width int, ref uint64, err error) {
+	if width, err = intPrim(t); err != nil {
+		return 0, 0, err
+	}
+	if n.NumBuffers() != 0 {
+		return 0, 0, fmt.Errorf("expected no buffer, got %d", n.NumBuffers())
+	}
+	if n.NumChildren() != 1 {
+		return 0, 0, fmt.Errorf("expected 1 child, got %d", n.NumChildren())
+	}
+	v, err := scalar.Decode(n.Metadata())
+	if err != nil {
+		return 0, 0, fmt.Errorf("reference: %w", err)
+	}
+	b, err := primBytes(&v, t.PType)
+	if err != nil {
+		return 0, 0, fmt.Errorf("reference: %w", err)
+	}
+	return width, binary.LittleEndian.Uint64(append(b, 0, 0, 0, 0, 0, 0, 0, 0)), nil
+}
+
+// zigZagParts checks a vortex.zigzag node of an array of type t, and returns the width of its
+// integers.
+func (n *Node) zigZagParts(t DType) (int, error) {
 	width, err := intPrim(t)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
 	if !t.PType.Signed() {
-		return nil, fmt.Errorf("cannot be a %s", t)
+		return 0, fmt.Errorf("cannot be a %s", t)
 	}
-	if err := n.oneChild(); err != nil {
+	return width, n.oneChild()
+}
+
+// decodeZigZag decodes vortex.zigzag: child 0 is the unsigned encoded integers.
+func decodeZigZag(n *Node, t DType, rows int) (*Array, error) {
+	width, err := n.zigZagParts(t)
+	if err != nil {
 		return nil, err
 	}
 	enc, err := n.primChild(0, unsignedOf(t.PType), t, rows)

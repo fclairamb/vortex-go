@@ -179,7 +179,61 @@ func mustDecode(t *testing.T, seg []byte, dt DType, rows int) *Array {
 	if err != nil {
 		t.Fatalf("Decode: %v", err)
 	}
+	sameAsRows(t, seg, dt, rows, a)
 	return a
+}
+
+// sameAsRows checks, for an array that Decode decoded as all, that the decoding of some of its
+// rows gives the same rows, when the encodings of the array have one: every row, none, one row
+// out of three, the first and the last, each in a pooled arena and without one.
+func sameAsRows(t *testing.T, seg []byte, dt DType, rows int, all *Array) {
+	t.Helper()
+	r, err := OpenRows(seg, specs, Options{})
+	if err != nil {
+		t.Fatalf("OpenRows: %v", err)
+	}
+	every := make([]int, rows)
+	var third, ends []int
+	for i := range every {
+		every[i] = i
+		if i%3 == 1 {
+			third = append(third, i)
+		}
+	}
+	if rows > 0 {
+		ends = []int{0, rows - 1}[:min(rows, 2)]
+	}
+	for k, idx := range [][]int{every, nil, third, ends} {
+		var ar *Arena
+		if k%2 == 0 {
+			ar = new(Pool).NewArena()
+		}
+		got, ok, err := r.Decode(dt, rows, idx, ar)
+		if err != nil {
+			t.Fatalf("rows %v: %v", idx, err)
+		}
+		if !ok {
+			return
+		}
+		if got.Len != len(idx) || got.Type.Kind != all.Type.Kind {
+			t.Fatalf("rows %v: %d rows of %s, want %d of %s", idx, got.Len, got.Type, len(idx), all.Type)
+		}
+		for j, i := range idx {
+			if got.Null(j) != all.Null(i) {
+				t.Fatalf("row %d: null %v, want %v", i, got.Null(j), all.Null(i))
+			}
+			if got.Type.Kind != Prim || all.Null(i) {
+				continue
+			}
+			w := got.Type.PType.Width()
+			if g, e := got.Data[j*w:(j+1)*w], all.Data[i*w:(i+1)*w]; string(g) != string(e) {
+				t.Fatalf("row %d: %x, want %x", i, g, e)
+			}
+		}
+		if _, _, err := r.Decode(dt, rows, []int{rows}, ar); err == nil {
+			t.Fatalf("a row past the %d of the array is decoded", rows)
+		}
+	}
 }
 
 func wantErr(t *testing.T, seg []byte, dt DType, rows int, sub string) {
@@ -187,6 +241,16 @@ func wantErr(t *testing.T, seg []byte, dt DType, rows int, sub string) {
 	_, err := Decode(seg, specs, dt, rows, Options{})
 	if err == nil || !strings.Contains(err.Error(), sub) {
 		t.Fatalf("Decode error = %v, want %q", err, sub)
+	}
+	// What Decode refuses, the decoding of every row refuses too, or leaves to Decode.
+	if r, err := OpenRows(seg, specs, Options{}); err == nil && rows < 1<<20 {
+		every := make([]int, max(rows, 0))
+		for i := range every {
+			every[i] = i
+		}
+		if _, ok, err := r.Decode(dt, rows, every, nil); ok && err == nil {
+			t.Fatalf("the rows of an array that Decode refuses (%q) are decoded", sub)
+		}
 	}
 }
 

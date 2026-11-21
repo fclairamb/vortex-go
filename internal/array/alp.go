@@ -37,47 +37,66 @@ var (
 // floats that did not round-trip. A value is encoded * 10^exp_f * 10^-exp_e, the two products
 // in that order, each one rounded to the float type.
 func decodeALP(n *Node, t DType, rows int) (*Array, error) {
-	if t.Kind != Prim || (t.PType != F32 && t.PType != F64) {
-		return nil, fmt.Errorf("cannot be a %s", t)
-	}
-	meta, err := readMessage(n.Metadata())
+	m, err := n.alpParts(t)
 	if err != nil {
 		return nil, err
 	}
-	e, f := meta.varint[1], meta.varint[2]
-	limit, enc := uint64(18), I64
-	if t.PType == F32 {
-		limit, enc = 10, I32
-	}
-	if e > limit || f > limit {
-		return nil, fmt.Errorf("exponents e=%d, f=%d, want at most %d for %s", e, f, limit, t.PType)
-	}
-	if n.NumBuffers() != 0 {
-		return nil, fmt.Errorf("expected no buffer, got %d", n.NumBuffers())
-	}
-	if n.NumChildren() < 1 {
-		return nil, errors.New("has no child")
-	}
-	ints, err := n.primChild(0, enc, t, rows)
+	ints, err := n.primChild(0, m.enc, t, rows)
 	if err != nil {
 		return nil, err
 	}
-	out := &Array{Type: t, Len: rows, Validity: ints.Validity, Data: alpFloats(n.target(ints), ints.Data, t.PType, e, f)}
-	if !meta.hasBlob[3] {
-		if n.NumChildren() != 1 {
-			return nil, fmt.Errorf("expected 1 child without patches, got %d", n.NumChildren())
-		}
+	out := &Array{Type: t, Len: rows, Validity: ints.Validity}
+	out.Data = alpFloats(n.target(ints), ints.Data, t.PType, m.e, m.f)
+	if !m.hasPatches {
 		return out, nil
 	}
-	pm, err := parsePatchesMeta(meta.blob[3])
-	if err != nil {
-		return nil, err
-	}
-	pt, err := n.patchesChild(pm, 1, t, rows)
+	pt, err := n.patchesChild(m.patches, 1, t, rows)
 	if err != nil {
 		return nil, err
 	}
 	return out, pt.apply(out.Data, t.PType.Width())
+}
+
+// alp is what the metadata of a vortex.alp node says.
+type alp struct {
+	patches    patchesMeta
+	e, f       uint64
+	enc        PType // the type of the encoded integers
+	hasPatches bool
+}
+
+// alpParts reads a vortex.alp node of an array of type t.
+func (n *Node) alpParts(t DType) (m alp, err error) {
+	if t.Kind != Prim || (t.PType != F32 && t.PType != F64) {
+		return m, fmt.Errorf("cannot be a %s", t)
+	}
+	meta, err := readMessage(n.Metadata())
+	if err != nil {
+		return m, err
+	}
+	m.e, m.f = meta.varint[1], meta.varint[2]
+	limit := uint64(18)
+	m.enc = I64
+	if t.PType == F32 {
+		limit, m.enc = 10, I32
+	}
+	if m.e > limit || m.f > limit {
+		return m, fmt.Errorf("exponents e=%d, f=%d, want at most %d for %s", m.e, m.f, limit, t.PType)
+	}
+	if n.NumBuffers() != 0 {
+		return m, fmt.Errorf("expected no buffer, got %d", n.NumBuffers())
+	}
+	if n.NumChildren() < 1 {
+		return m, errors.New("has no child")
+	}
+	if m.hasPatches = meta.hasBlob[3]; !m.hasPatches {
+		if n.NumChildren() != 1 {
+			return m, fmt.Errorf("expected 1 child without patches, got %d", n.NumChildren())
+		}
+		return m, nil
+	}
+	m.patches, err = parsePatchesMeta(meta.blob[3])
+	return m, err
 }
 
 // alpFloats turns the encoded integers into the bits of floats of type p: in out, which may

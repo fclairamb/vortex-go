@@ -113,31 +113,43 @@ var _ = edition.Register(edition.KindArray, Encodings)
 // the length of the flatbuffer. specs are the array specs of the footer, rows the number of
 // rows and t the type the array must have.
 func Decode(seg []byte, specs []string, t DType, rows int, opt Options) (*Array, error) {
+	ctx, root, err := open(seg, specs, opt)
+	if err != nil {
+		return nil, err
+	}
+	return ctx.decode(root, "", t, rows)
+}
+
+// nodeRef is a node of the tree of a serialized array, not read yet.
+type nodeRef = fbs.ArrayNode
+
+// open reads the tree and the buffers of the serialized array of seg, and returns its root.
+func open(seg []byte, specs []string, opt Options) (*context, nodeRef, error) {
+	var root nodeRef
 	if len(seg) < 4 {
-		return nil, fmt.Errorf("segment of %d bytes has no flatbuffer length", len(seg))
+		return nil, root, fmt.Errorf("segment of %d bytes has no flatbuffer length", len(seg))
 	}
 	fbLen := int(binary.LittleEndian.Uint32(seg[len(seg)-4:]))
 	if fbLen > len(seg)-4 {
-		return nil, fmt.Errorf("flatbuffer of %d bytes in a segment of %d", fbLen, len(seg))
+		return nil, root, fmt.Errorf("flatbuffer of %d bytes in a segment of %d", fbLen, len(seg))
 	}
 	body := seg[:len(seg)-4-fbLen]
 	msg, err := fbs.ReadArray(seg[len(body):len(seg)-4], maxDepth)
 	if err != nil {
-		return nil, err
+		return nil, root, err
 	}
 	bufs, err := buffers(msg, body)
 	if err != nil {
-		return nil, err
+		return nil, root, err
 	}
 	root, ok, err := msg.Root()
 	if err != nil {
-		return nil, err
+		return nil, root, err
 	}
 	if !ok {
-		return nil, errors.New("array has no root node")
+		return nil, root, errors.New("array has no root node")
 	}
-	ctx := &context{opt: opt, specs: specs, bufs: bufs, table: decoders()}
-	return ctx.decode(root, "", t, rows)
+	return &context{opt: opt, specs: specs, bufs: bufs, table: decoders()}, root, nil
 }
 
 // buffers cuts the data buffers out of body, each one after its padding.
@@ -177,33 +189,42 @@ func (c *context) spec(fb fbs.ArrayNode) (string, error) {
 }
 
 func (c *context) decode(fb fbs.ArrayNode, path string, t DType, rows int) (*Array, error) {
-	id, err := c.spec(fb)
+	id, n, err := c.node(fb, path, rows)
 	if err != nil {
 		return nil, err
 	}
-	edition.Met(edition.KindArray, id)
-	dec, ok := c.table[id]
-	if !ok {
-		return nil, fmt.Errorf("unsupported encoding %q at column %q: %w", id, path, errors.ErrUnsupported)
-	}
-	if c.opt.MaxRows > 0 && rows > c.opt.MaxRows {
-		return nil, fmt.Errorf("%s: %d rows, more than the %d the file allows", id, rows, c.opt.MaxRows)
-	}
-	n := &Node{ctx: c, path: path}
-	if n.metadata, err = fb.Metadata(); err != nil {
-		return nil, err
-	}
-	if n.children, err = fb.Children(); err != nil {
-		return nil, err
-	}
-	if n.buffers, err = fb.Buffers(); err != nil {
-		return nil, err
-	}
-	a, err := dec(n, t, rows)
+	a, err := c.table[id](n, t, rows)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", id, err)
 	}
 	return a, nil
+}
+
+// node reads the node fb of an array of that many rows: the identifier of its encoding, which
+// has a decoder, and what the decoder reads.
+func (c *context) node(fb fbs.ArrayNode, path string, rows int) (string, *Node, error) {
+	id, err := c.spec(fb)
+	if err != nil {
+		return "", nil, err
+	}
+	edition.Met(edition.KindArray, id)
+	if _, ok := c.table[id]; !ok {
+		return "", nil, fmt.Errorf("unsupported encoding %q at column %q: %w", id, path, errors.ErrUnsupported)
+	}
+	if c.opt.MaxRows > 0 && rows > c.opt.MaxRows {
+		return "", nil, fmt.Errorf("%s: %d rows, more than the %d the file allows", id, rows, c.opt.MaxRows)
+	}
+	n := &Node{ctx: c, path: path}
+	if n.metadata, err = fb.Metadata(); err != nil {
+		return "", nil, err
+	}
+	if n.children, err = fb.Children(); err != nil {
+		return "", nil, err
+	}
+	if n.buffers, err = fb.Buffers(); err != nil {
+		return "", nil, err
+	}
+	return id, n, nil
 }
 
 // Metadata is the protobuf of the encoding.
@@ -241,11 +262,14 @@ func (n *Node) ChildEncoding(i int) string {
 }
 
 func (n *Node) child(i int, path string, t DType, rows int) (*Array, error) {
-	fb, err := n.children.At(i)
-	if err != nil {
-		return nil, err
-	}
-	return n.ctx.decode(fb, path, t, rows)
+	return n.ctx.decode(n.childRef(i), path, t, rows)
+}
+
+// childRef is child i of the node, which the node has: a child that cannot be read is an
+// error of its decoding.
+func (n *Node) childRef(i int) nodeRef {
+	fb, _ := n.children.At(i)
+	return fb
 }
 
 // Field decodes child i as the struct field called name. When it fails with an unsupported

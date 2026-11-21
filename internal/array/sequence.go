@@ -13,21 +13,7 @@ import (
 // buffer and no child. Value i is base + i * multiplier, wrapping at the width of the type. A
 // nullable sequence has no null.
 func decodeSequence(n *Node, t DType, rows int) (*Array, error) {
-	width, err := intPrim(t)
-	if err != nil {
-		return nil, err
-	}
-	if n.NumBuffers() != 0 || n.NumChildren() != 0 {
-		return nil, fmt.Errorf("expected no buffer and no child, got %d and %d", n.NumBuffers(), n.NumChildren())
-	}
-	meta, err := readMessage(n.Metadata())
-	if err != nil {
-		return nil, err
-	}
-	if !meta.hasBlob[1] || !meta.hasBlob[2] {
-		return nil, errors.New("needs a base and a multiplier")
-	}
-	base, step, err := sequenceParams(meta.blob[1], meta.blob[2], t.PType)
+	width, base, step, err := n.sequenceParts(t)
 	if err != nil {
 		return nil, err
 	}
@@ -43,6 +29,26 @@ func decodeSequence(n *Node, t DType, rows int) (*Array, error) {
 		fillSequence(unsafex.Slice[uint64](a.Data), base, step)
 	}
 	return a, nil
+}
+
+// sequenceParts reads a vortex.sequence node of an array of type t: the width of its integers,
+// the base and the multiplier.
+func (n *Node) sequenceParts(t DType) (width int, base, step uint64, err error) {
+	if width, err = intPrim(t); err != nil {
+		return 0, 0, 0, err
+	}
+	if n.NumBuffers() != 0 || n.NumChildren() != 0 {
+		return 0, 0, 0, fmt.Errorf("expected no buffer and no child, got %d and %d", n.NumBuffers(), n.NumChildren())
+	}
+	meta, err := readMessage(n.Metadata())
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if !meta.hasBlob[1] || !meta.hasBlob[2] {
+		return 0, 0, 0, errors.New("needs a base and a multiplier")
+	}
+	base, step, err = sequenceParams(meta.blob[1], meta.blob[2], t.PType)
+	return width, base, step, err
 }
 
 // fillSequence sets out[i] to the low bits of base + i*step.

@@ -43,11 +43,15 @@ type unit struct {
 	err   error
 	buf   *ioBuf       // the buffer of the read, released when the unit is dropped
 	arena *array.Arena // the buffers of arr, released with buf
+	seg   []byte       // the segment, in buf, of a unit that was read and not decoded
 	mu    sync.Mutex
 	start int // the row of the file the flat starts at
 	idx   int // the place of the unit in the order of the scan
 	state unitState
 	drop  bool // the scan no longer needs the unit
+	// late is set for a column that a filter does not read: when the filter keeps few rows,
+	// the unit is read ahead and not decoded, and the scan decodes the rows kept.
+	late bool
 }
 
 type unitState uint8
@@ -70,9 +74,9 @@ func (u *unit) claim() bool {
 }
 
 // finish stores the result of a read, the buffer b holding the segment.
-func (u *unit) finish(b *ioBuf, ar *array.Arena, a *array.Array, err error) {
+func (u *unit) finish(b *ioBuf, seg []byte, ar *array.Arena, a *array.Array, err error) {
 	u.mu.Lock()
-	u.arr, u.err, u.state = a, err, unitDone
+	u.arr, u.seg, u.err, u.state = a, seg, err, unitDone
 	drop := u.drop
 	if !drop {
 		u.buf, u.arena = b, ar
@@ -98,7 +102,7 @@ func (u *unit) release() {
 	u.mu.Lock()
 	u.drop = true
 	b, ar := u.buf, u.arena
-	u.arr, u.buf, u.arena = nil, nil, nil
+	u.arr, u.seg, u.buf, u.arena = nil, nil, nil, nil
 	u.mu.Unlock()
 	if b != nil {
 		b.release()
@@ -165,6 +169,7 @@ type loader struct {
 	pool     bufPool
 	wg       sync.WaitGroup
 	front    atomic.Int64 // the units the consumer has reached
+	sparse   atomic.Bool  // the filter keeps few rows: the late units are not decoded ahead
 	ahead    int          // the units read before the consumer reaches them
 	gap      int64
 	maxRead  int64
@@ -238,15 +243,39 @@ func (l *loader) reach(i int) {
 
 // get returns the array of unit u, read and decoded.
 func (l *loader) get(u *unit) (*array.Array, error) {
+	if err := l.wait(u); err != nil {
+		return nil, err
+	}
+	if u.arr == nil && u.err == nil { // read ahead and not decoded: the scan wants every row
+		ar := l.arrays.NewArena()
+		a, err := u.fl.decode(u.seg, ar)
+		u.mu.Lock()
+		u.arr, u.err, u.arena = a, err, ar
+		u.mu.Unlock()
+	}
+	return u.arr, u.err
+}
+
+// segment returns the bytes of the segment of unit u when it was read and not decoded, and
+// nil when it is decoded.
+func (l *loader) segment(u *unit) ([]byte, error) {
+	if err := l.wait(u); err != nil || u.arr != nil {
+		return nil, err
+	}
+	return u.seg, u.err
+}
+
+// wait reads unit u when nobody has, and waits for its read to end.
+func (l *loader) wait(u *unit) error {
 	l.reach(u.idx)
 	if u.claim() {
 		l.read(l.merge([]*unit{u})[0])
 	}
 	select {
 	case <-u.ready:
-		return u.arr, u.err
+		return nil
 	case <-l.ctx.Done():
-		return nil, l.ctx.Err()
+		return l.ctx.Err()
 	}
 }
 
@@ -339,16 +368,20 @@ func (l *loader) read(e extent) {
 	for _, u := range e.units {
 		var a *array.Array
 		var ar *array.Arena
+		var seg []byte
 		var uerr error
 		switch {
 		case err != nil:
 			uerr = u.fl.ioErr(err)
 		case !u.dropped():
 			start := pad + u.off() - e.off
-			ar = u.fl.opt.Pool.NewArena()
-			a, uerr = u.fl.decode(b.b[start:start+int64(u.fl.segLen())], ar)
+			seg = b.b[start : start+int64(u.fl.segLen())]
+			if !u.late || !l.sparse.Load() {
+				ar = u.fl.opt.Pool.NewArena()
+				a, uerr = u.fl.decode(seg, ar)
+			}
 		}
-		u.finish(b, ar, a, uerr)
+		u.finish(b, seg, ar, a, uerr)
 	}
 }
 

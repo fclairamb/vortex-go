@@ -72,6 +72,9 @@ func (n *Node) patchesChild(m patchesMeta, first int, t DType, rows int) (*patch
 	return p, nil
 }
 
+// patchNull is the error of a patch whose value is null.
+func patchNull(k int) error { return fmt.Errorf("patch %d is null", k) }
+
 // row is the row of the array patch k replaces.
 func (p *patches) row(k int) int { return p.index[k] - p.offset }
 
@@ -80,7 +83,7 @@ func (p *patches) row(k int) int { return p.index[k] - p.offset }
 func (p *patches) apply(data []byte, w int) error {
 	for k := range p.index {
 		if p.values.Null(k) {
-			return fmt.Errorf("patch %d is null", k)
+			return patchNull(k)
 		}
 		copy(data[p.row(k)*w:], p.values.Data[k*w:(k+1)*w])
 	}
