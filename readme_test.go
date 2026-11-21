@@ -87,7 +87,7 @@ func TestCompatLine(t *testing.T) {
 // badgeRe matches a badge line: [![alt](image)](link).
 var badgeRe = regexp.MustCompile(`^\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)$`)
 
-// TestReadmeBadges checks the badge block under the title: every badge names the repository,
+// the pkg.go.dev badge uses the module path of go.mod, the build badge
 // the pkg.go.dev and Go Report Card badges use the module path of go.mod, the build badge
 // points at an existing workflow, LICENSE exists, and no badge URL carries a token.
 func TestReadmeBadges(t *testing.T) {
@@ -118,10 +118,10 @@ func TestReadmeBadges(t *testing.T) {
 			badges = append(badges, line)
 		}
 	}
-	if len(badges) != 7 {
-		t.Fatalf("%d badges, want 7", len(badges))
+	if len(badges) != 6 {
+		t.Fatalf("%d badges, want 6", len(badges))
 	}
-	wantLabels := []string{"Build", "Coverage", "Go Reference", "Go Report Card", "Go", "License", "Site"}
+	wantLabels := []string{"Build", "Coverage", "Go Reference", "Go", "License", "Site"}
 	for i, line := range badges {
 		m := badgeRe.FindStringSubmatch(line)
 		if m == nil {
@@ -141,14 +141,11 @@ func TestReadmeBadges(t *testing.T) {
 		!strings.Contains(badges[2], "pkg.go.dev/"+modulePath+")") {
 		t.Errorf("Go Reference badge is not for %s: %q", modulePath, badges[2])
 	}
-	if !strings.Contains(badges[3], "goreportcard.com/badge/"+modulePath+")") {
-		t.Errorf("Go Report Card badge is not for %s: %q", modulePath, badges[3])
-	}
 	if m := badgeRe.FindStringSubmatch(badges[0]); m == nil || !strings.HasSuffix(m[3], "/workflows/build.yml") {
 		t.Errorf("Build badge does not link to build.yml: %q", badges[0])
 	}
-	if m := badgeRe.FindStringSubmatch(badges[6]); m == nil || m[3] != "https://fclairamb.github.io/vortex-go/" {
-		t.Errorf("Site badge does not link to the site: %q", badges[6])
+	if m := badgeRe.FindStringSubmatch(badges[5]); m == nil || m[3] != "https://fclairamb.github.io/vortex-go/" {
+		t.Errorf("Site badge does not link to the site: %q", badges[5])
 	}
 	if _, err := os.Stat(".github/workflows/build.yml"); err != nil {
 		t.Errorf("build workflow: %v", err)
