@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/fclairamb/vortex-go/internal/flatbuf/fbtest"
+	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
 
 // lenField is the field num of a protobuf message, holding the message msg.
@@ -212,12 +213,66 @@ func TestBitPackedErrors(t *testing.T) {
 }
 
 func TestUnpackBlockAllocs(t *testing.T) {
-	var out [blockSize]uint32
-	packed := make([]uint32, 32*11)
-	if n := testing.AllocsPerRun(100, func() { unpackBlock(&out, packed, 11) }); n != 0 {
+	out, packed := make([]byte, blockSize*4), make([]byte, rowBytes*11)
+	if n := testing.AllocsPerRun(100, func() { unpackBlock(out, packed, 11, 32) }); n != 0 {
 		t.Fatalf("unpackBlock allocates %v times", n)
 	}
-	if n := testing.AllocsPerRun(100, func() { unpackBlock(&out, packed, 0) }); n != 0 {
+	if n := testing.AllocsPerRun(100, func() { unpackBlock(out, packed, 0, 32) }); n != 0 {
 		t.Fatalf("unpackBlock of width 0 allocates %v times", n)
+	}
+}
+
+// unpackNaive is unpackBlock one value at a time, as the layout is defined: the value of row
+// r of lane l is w bits of the lane, from bit r*w.
+func unpackNaive[T word](out *[blockSize]T, packed []T, w int) {
+	if w == 0 {
+		*out = [blockSize]T{}
+		return
+	}
+	bits := bitsOf[T]()
+	lanes := blockSize / bits
+	mask := T(1)<<w - 1 // w == bits shifts everything out: the mask is all ones
+	for row := range bits {
+		word, shift := row*w/bits, row*w%bits
+		dst := out[flOrder[row/8]*16+row%8*128:][:lanes]
+		lo := packed[word*lanes:][:lanes]
+		if shift+w <= bits {
+			for l := range dst {
+				dst[l] = lo[l] >> shift & mask
+			}
+			continue
+		}
+		hi := packed[(word+1)*lanes:][:lanes]
+		for l := range dst {
+			dst[l] = (lo[l]>>shift | hi[l]<<(bits-shift)) & mask
+		}
+	}
+}
+
+// TestUnpackBlockEveryWidth unpacks random blocks of every word and every width, and compares
+// with the values read one by one. out starts full of ones: every byte is written.
+func TestUnpackBlockEveryWidth(t *testing.T) {
+	unpackEveryWidth[uint8](t)
+	unpackEveryWidth[uint16](t)
+	unpackEveryWidth[uint32](t)
+	unpackEveryWidth[uint64](t)
+}
+
+func unpackEveryWidth[T word](t *testing.T) {
+	t.Helper()
+	bits := bitsOf[T]()
+	rng := rand.New(rand.NewPCG(3, uint64(bits)))
+	for w := 0; w <= bits; w++ {
+		packed := make([]T, blockSize/bits*w)
+		for i := range packed {
+			packed[i] = T(rng.Uint64())
+		}
+		var want [blockSize]T
+		unpackNaive(&want, packed, w)
+		got := bytes.Repeat([]byte{0xFF}, blockSize*bits/8)
+		unpackBlock(got, unsafex.Bytes(packed), w, bits)
+		if !bytes.Equal(got, unsafex.Bytes(want[:])) {
+			t.Fatalf("words of %d bits, width %d: the values differ", bits, w)
+		}
 	}
 }

@@ -124,8 +124,9 @@ Speed targets, to revise after the first measurements:
   Everything else is hand-written: flatbuffers, the protobuf wire format, FastLanes, ALP,
   FSST, OnPair and Pco.
 - No assembly in the first version.
-- `unsafe` only in one internal package, for two things: casting decoded bytes to typed
-  slices, and writing the fields of a row struct.
+- `unsafe` only in one internal package, for three things: casting decoded bytes to typed
+  slices, writing the fields of a row struct, and the stores of the FSST decoder, whose loop
+  tests the room once for 8 symbols (a test per store halves its speed).
 - MIT license.
 
 Adding another module is Florent's decision, case by case.
