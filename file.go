@@ -35,6 +35,7 @@ const (
 type File struct {
 	r      io.ReaderAt
 	closer io.Closer
+	mapped *mapped // the memory of a file that OpenMapped opened, nil otherwise
 	schema *Schema
 	layout *layoutNode
 	// The dictionaries of the footer, which the layout and the arrays index.

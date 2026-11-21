@@ -122,7 +122,7 @@ type ioBuf struct {
 }
 
 func (b *ioBuf) release() {
-	if b.refs.Add(-1) == 0 {
+	if b.refs.Add(-1) == 0 && b.pool != nil { // a view of a mapped file goes nowhere
 		b.pool.put(b)
 	}
 }
@@ -385,8 +385,16 @@ func (l *loader) read(e extent) {
 	// The bytes sit in memory as they are aligned in the file: a buffer of numbers is then
 	// read where it is, not copied.
 	pad := e.off & 7
-	b := l.pool.get(int(pad+e.end-e.off), int32(len(e.units)))
-	err := readFull(l.f.r, b.b[pad:], e.off)
+	var b *ioBuf
+	var err error
+	if m := l.f.mapped; m != nil {
+		// A mapped file is read where it is: its bytes are aligned as they are in the file.
+		b = &ioBuf{b: m.view(e.off-pad, e.end)}
+		b.refs.Store(int32(len(e.units)))
+	} else {
+		b = l.pool.get(int(pad+e.end-e.off), int32(len(e.units)))
+		err = readFull(l.f.r, b.b[pad:], e.off)
+	}
 	for _, u := range e.units {
 		var a *array.Array
 		var ar *array.Arena

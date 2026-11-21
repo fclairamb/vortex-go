@@ -155,6 +155,15 @@ it is out of scope.
 | UUID | `[16]byte` | `Bytes(i)`, 16 bytes |
 | Variant | `any` (`nil`, `bool`, `int64`, `float64`, `string`, `[]byte`, `time.Time`, `VariantDecimal`, `[]any`, `map[string]any`) | `Variant(i)`, allocates |
 
+- **`io.ReaderAt` is the way in, `OpenMapped` is a choice.** `Open` and `OpenFile` read
+  through a reader, and every feature works through one: that is what an object store, a
+  network file system or a file being replaced need. `OpenMapped` maps a local file in memory
+  where the platform can (the Unix systems), and is `OpenFile` elsewhere: a scan then reads the
+  segments where they are, so a scan of a part of the file touches that part only. It is a
+  function of its own, not an option, so that the call shows the trade: a mapped byte that the
+  system cannot read (a truncated file, a failing disk) stops the process, where a reader
+  returns an error, and the columns of a batch are not read after `Close`. `Close` gives the
+  memory back once the scans still running have ended.
 - **Exact match.** An `int32` column does not go into an `int64` field. The error names
   both types. `int` and `uint` count as 64 bits. Widening can come later, it is additive.
 - **Date, time and timestamp give their storage at the column level.** `Type()` says which
