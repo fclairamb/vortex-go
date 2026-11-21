@@ -79,6 +79,18 @@
       "groupName": "github-actions"
     },
     {
+      "description": "The arrow crates of tools/variantjson are the ones the pinned vortex crate is built with: another major is another type, and the tool does not compile (PR 20). They move with the Vortex release, by hand.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "arrow-array",
+        "parquet-variant-compute",
+        "parquet-variant-json"
+      ],
+      "enabled": false
+    },
+    {
       "description": "A new Vortex release is work to do, not a version to merge. It is never grouped and never automerged. Its label hands it to the agent.",
       "matchDatasources": [
         "pypi"
