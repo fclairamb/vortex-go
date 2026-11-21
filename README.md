@@ -3,7 +3,6 @@
 [![Build](https://img.shields.io/github/actions/workflow/status/fclairamb/vortex-go/build.yml?branch=main&label=build&logo=github)](https://github.com/fclairamb/vortex-go/actions/workflows/build.yml)
 [![Coverage](https://codecov.io/gh/fclairamb/vortex-go/graph/badge.svg)](https://codecov.io/gh/fclairamb/vortex-go)
 [![Go Reference](https://pkg.go.dev/badge/github.com/fclairamb/vortex-go.svg)](https://pkg.go.dev/github.com/fclairamb/vortex-go)
-[![Go Report Card](https://goreportcard.com/badge/github.com/fclairamb/vortex-go)](https://goreportcard.com/report/github.com/fclairamb/vortex-go)
 [![Go](https://img.shields.io/github/go-mod/go-version/fclairamb/vortex-go?logo=go)](go.mod)
 [![License](https://img.shields.io/github/license/fclairamb/vortex-go?color=blue)](LICENSE)
 [![Site](https://img.shields.io/github/actions/workflow/status/fclairamb/vortex-go/pages.yml?branch=main&label=site&logo=github)](https://fclairamb.github.io/vortex-go/)
