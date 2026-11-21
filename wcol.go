@@ -1,6 +1,8 @@
 package vortex
 
 import (
+	"slices"
+
 	"github.com/fclairamb/vortex-go/internal/compress"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 	"github.com/fclairamb/vortex-go/internal/protowire"
@@ -58,6 +60,7 @@ type column struct {
 	zoneSeg  uint32
 	mode     colMode
 	eligible bool
+	wide     bool // a chunk was many times the size of a chunk: the compressors are not kept
 }
 
 func newColumn(t Type, zoned bool) *column {
@@ -71,6 +74,7 @@ func newColumn(t Type, zoned bool) *column {
 // addRows adds the rows lo to n of d to the column, a block at a time.
 func (w *Writer) addRows(c *column, d Data, lo, n int) {
 	c.rows += uint64(n - lo)
+	c.reserve(w.ahead)
 	for lo < n && w.err == nil {
 		take := min(n-lo, rowBlock-(c.buf.n-c.block))
 		appendRows(c.buf, d.body, c.t, lo, lo+take, &c.arena)
@@ -78,6 +82,35 @@ func (w *Writer) addRows(c *column, d Data, lo, n int) {
 		if c.buf.n-c.block == rowBlock {
 			w.consume(c, c.buf.n)
 		}
+	}
+}
+
+// reserve makes room in the buffer for the rows that the Write still has for the column, up
+// to a chunk of them: a buffer that grows as the rows come is copied many times over.
+func (c *column) reserve(ahead int) {
+	b := c.buf
+	rows := rowBlock // a dictionary takes the rows a block at a time
+	if c.mode != modeDict {
+		rows = min(ahead, 8*rowBlock)
+		if b.kind == dPrim {
+			rows = min(ahead, chunkBytes/numberWidth(b.pk)+rowBlock)
+		}
+	}
+	if rows -= b.n - c.block; rows <= 0 {
+		return
+	}
+	if c.t.nullable {
+		b.nulls = slices.Grow(b.nulls, rows)
+	}
+	switch b.kind {
+	case dPrim:
+		b.raw = slices.Grow(b.raw, rows*numberWidth(b.pk))
+	case dBool:
+		b.bools = slices.Grow(b.bools, rows)
+	case dBytes:
+		b.bins = slices.Grow(b.bins, rows)
+	case dDec:
+		b.decs = slices.Grow(b.decs, rows)
 	}
 }
 
@@ -125,6 +158,7 @@ func (w *Writer) flushPlain(c *column) {
 		// A chunk of wide rows is a block, many times the size of a chunk: it does not wait,
 		// so that the writer holds one of them, not a queue of them.
 		w.drain()
+		c.wide = true
 		w.withCompressor(c, func() { w.writeChunk(c, c.buf) })
 	default:
 		w.queueChunk(c)

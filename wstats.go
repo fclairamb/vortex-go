@@ -138,6 +138,9 @@ func (r *ranger) scan(b *body, lo, hi int) (imin, imax, nans int) {
 	if f, ok := r.scanFast(b, lo, hi); ok {
 		return f.imin, f.imax, f.nans
 	}
+	if r.class == scDec && r.width <= 8 {
+		return scanSmallDecimals(b.decs, b.nulls, lo, hi)
+	}
 	imin, imax = -1, -1
 	for i := lo; i < hi; i++ {
 		if isNull(b.nulls, i) {

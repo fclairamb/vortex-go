@@ -17,7 +17,8 @@ import (
 // queue is full, the waiting chunks are compressed in parallel, up to GOMAXPROCS at once, then
 // written one after the other in the order they were filled, so that the file does not depend
 // on the scheduling, nor on the number of cores: the length of the queue only depends on the
-// schema. Several chunks of one column can wait: a column of long strings fills its chunks
+// schema, or on WriteOptions.Buffer, which trades the memory of the chunks that wait for the
+// cores that work at once. Several chunks of one column can wait: a column of long strings fills its chunks
 // faster than the others, and costs more to compress. The chunks of the dictionary layout (its
 // codes and its values) are compressed as they are written.
 
@@ -27,18 +28,53 @@ func (w *Writer) compressing() bool { return w.opt.Compression != None && w.forc
 // compressor is the compressor of the column, made on the first use.
 func (w *Writer) compressor(c *column) *compress.Compressor {
 	if c.comp == nil {
-		c.comp = w.newCompressor()
+		c.comp = w.newCompressor(c.buf.kind)
 	}
 	return c.comp
 }
 
-// newCompressor makes a compressor of the mode and of the edition of the file.
-func (w *Writer) newCompressor() *compress.Compressor {
+// compressors is the compressors of the writers that are closed, by the kind of the data of
+// their column: the next writers take them, with the memory they have, in place of growing
+// their own from nothing. A compressor of strings holds much more than one of numbers, so they
+// do not mix. What a compressor makes of a chunk does not depend on the chunks it has seen.
+var compressors [dVars + 1]sync.Pool
+
+// newCompressor returns a compressor of the mode and of the edition of the file, for a column
+// of data of this kind.
+func (w *Writer) newCompressor(kind dataKind) *compress.Compressor {
 	mode := compress.Default
 	if w.opt.Compression == Compact {
 		mode = compress.Compact
 	}
+	if cp, ok := compressors[kind].Get().(*compress.Compressor); ok {
+		cp.Configure(mode, w.limit)
+		return cp
+	}
 	return compress.NewLimited(mode, w.limit)
+}
+
+// releaseCompressors gives the compressors of the columns under l back, once the file is
+// written: nothing of what they made is read any more.
+func releaseCompressors(l *layoutBuild) {
+	for _, k := range l.kids {
+		releaseCompressors(k)
+	}
+	c := l.col
+	if c == nil || c.wide { // a compressor of wide rows holds too much to be kept
+		return
+	}
+	pool := &compressors[c.buf.kind]
+	if c.comp != nil {
+		c.comp.Reset()
+		pool.Put(c.comp)
+	}
+	for _, q := range c.free {
+		if q.comp != c.comp { // one of the chunks has the compressor of the column
+			q.comp.Reset()
+			pool.Put(q.comp)
+		}
+	}
+	c.comp, c.free = nil, nil
 }
 
 // ptypeOf is the type of the compressor of the numbers of a column of kind k. A Float16 is not
@@ -157,9 +193,18 @@ type waiting struct {
 	decRaw []byte
 }
 
-// queueLen is the chunks that wait at most: enough for every column to have one, and for a
-// column that fills faster to have several.
+// queueLen is the chunks that wait at most, when WriteOptions.Buffer sets no size: enough for
+// every column to have one, and for a column that fills faster to have several.
 func (w *Writer) queueLen() int { return max(2*w.leaves, minQueue) }
+
+// full says whether the chunks that wait are compressed now: they are as many as the queue
+// holds, or their rows are the bytes of WriteOptions.Buffer.
+func (w *Writer) full() bool {
+	if w.opt.Buffer > 0 {
+		return w.queued >= w.opt.Buffer
+	}
+	return len(w.queue) >= w.queueLen()
+}
 
 // minQueue is the least chunks the queue holds. A variable so that the tests can lower it.
 var minQueue = 16
@@ -174,13 +219,14 @@ func (w *Writer) queueChunk(c *column) {
 		if c.slots++; c.slots == 1 {
 			q.comp = w.compressor(c) // the one of the dictionaries: they never work at once
 		} else {
-			q.comp = w.newCompressor()
+			q.comp = w.newCompressor(c.buf.kind)
 		}
 	}
 	c.buf, q.buf = q.buf, c.buf
 	c.arena, q.arena = q.arena, c.arena
 	c.waiting++
-	if w.queue = append(w.queue, q); len(w.queue) >= w.queueLen() {
+	w.queue = append(w.queue, q)
+	if w.queued += c.size; w.full() {
 		w.drain()
 	}
 }
@@ -191,6 +237,7 @@ func (w *Writer) drain() {
 	if len(q) == 0 {
 		return
 	}
+	w.queued = 0
 	workers := min(len(q), runtime.GOMAXPROCS(0))
 	if workers == 1 {
 		for _, c := range q {

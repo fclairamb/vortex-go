@@ -28,6 +28,26 @@ func scanNumbers[T unsafex.Number](v []T, nulls []bool, lo, hi int) (imin, imax,
 	return imin, imax, nans
 }
 
+// scanSmallDecimals is ranger.scan for decimals of at most 8 bytes: checkDecimals made sure
+// that each one is its low word, a signed integer.
+func scanSmallDecimals(v []Decimal, nulls []bool, lo, hi int) (imin, imax, nans int) {
+	imin, imax = -1, -1
+	var least, most int64
+	for i := lo; i < hi; i++ {
+		x := int64(v[i].w[0])
+		switch {
+		case nulls != nil && nulls[i]:
+		case imin < 0:
+			imin, imax, least, most = i, i, x, x
+		case x < least:
+			imin, least = i, x
+		case x > most:
+			imax, most = i, x
+		}
+	}
+	return imin, imax, 0
+}
+
 // sortedNumbers reports whether no value of v is under the one before. v has no NaN.
 func sortedNumbers[T unsafex.Number](v []T) bool {
 	for i := 1; i < len(v); i++ {

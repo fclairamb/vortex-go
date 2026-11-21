@@ -40,7 +40,16 @@ type WriteOptions struct {
 	// unknown edition, or a type it cannot hold (a uuid before "core 2026.08.3", a map before
 	// "core 2026.08.2", a fixed-size list before "core 2025.10.0"), is an error of the first
 	// Write or Close.
-	Edition     string
+	Edition string
+	// Buffer is the bytes of rows, as they are before compression, that may wait to be
+	// compressed together: the writer compresses the chunks that wait on every core, and each
+	// one holds its rows and the memory of its compressor until it is written. 0 is the
+	// default, a queue of chunks whose length depends on the schema (two chunks of about 1 MiB
+	// a column, 16 at least). A smaller Buffer lowers the memory of the writer and uses fewer
+	// cores at once; under the size of a chunk, the chunks are compressed one at a time, on one
+	// core. A larger one only matters for a file of few columns. The rows of the file do not
+	// depend on it, the order of its segments may.
+	Buffer      int
 	Compression Compression
 }
 
@@ -81,7 +90,6 @@ type Writer struct {
 	err       error
 	w         io.Writer
 	schema    *Schema
-	opt       WriteOptions
 	root      *layoutBuild
 	fb        *flatbuf.Builder
 	enc       *encode.Encoder      // the encoders of a forced encoding
@@ -101,7 +109,9 @@ type Writer struct {
 	stack     []flatbuf.Off
 	idx       []uint16
 	meta      []byte
+	opt       WriteOptions
 	depth     int
+	queued    int // the bytes, before compression, of the chunks that wait
 	pos       int64
 	written   int64
 	rows      uint64
@@ -118,6 +128,7 @@ type Writer struct {
 	legacyFile  bool // the file statistics have no aggregates
 	plainLists  bool // a list is a vortex.list, never a vortex.listview
 	leaves      int  // the columns that have no children
+	ahead       int  // the rows of the Write that the columns have not taken yet
 }
 
 // buffer is a data buffer of the array being built, and the alignment its first byte needs.
@@ -303,6 +314,7 @@ func (w *Writer) writeRows(cols []Data) error {
 	// then compressed together, on every core, whatever the rows of one Write.
 	for lo := 0; lo < n && w.err == nil; lo += rowBlock {
 		hi := min(n, lo+rowBlock)
+		w.ahead = n - lo
 		for i, f := range fields {
 			w.writeNode(w.root.kids[i], f.Type, cols[i], lo, hi)
 		}
@@ -435,6 +447,7 @@ func (w *Writer) Close() error {
 	w.drain()
 	w.footer()
 	w.flush()
+	releaseCompressors(w.root)
 	return w.err
 }
 

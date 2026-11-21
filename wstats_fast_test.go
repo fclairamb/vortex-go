@@ -72,6 +72,21 @@ func TestScanFast(t *testing.T) {
 			t.Errorf("%s: one row is not sorted", c.t)
 		}
 	}
+	// Decimals of at most 8 bytes are compared as their low word.
+	decs := []Decimal{DecimalFromInt64(4), DecimalFromInt64(-7), DecimalFromInt64(9), DecimalFromInt64(-7), DecimalFromInt64(9)}
+	for _, n := range [][]bool{nil, {false, true, false, false, true}} {
+		wantMin, wantMax := 1, 2
+		if n != nil {
+			wantMin = 3
+		}
+		r := newRanger(DecimalOf(12, 2))
+		if imin, imax, nans := r.scan(&body{kind: dDec, decs: decs, nulls: n, n: 5}, 0, 5); imin != wantMin || imax != wantMax || nans != 0 {
+			t.Errorf("decimals, nulls %v: min %d, max %d, %d NaNs", n != nil, imin, imax, nans)
+		}
+	}
+	if imin, imax, _ := scanSmallDecimals(decs, nil, 2, 2); imin != -1 || imax != -1 {
+		t.Errorf("no decimal: min %d, max %d", imin, imax)
+	}
 	// A column that is not one of numbers read where they are has no fast path.
 	for _, ty := range []Type{Float16Type(), Utf8Type(), BoolType(), DecimalOf(5, 1)} {
 		r := newRanger(ty)
@@ -111,6 +126,41 @@ func TestQueueOfChunks(t *testing.T) {
 			} else if queue == 16 && !bytes.Equal(got, first) {
 				t.Fatal("the file depends on the number of threads")
 			}
+		}
+	}
+}
+
+// TestWriteBuffer checks WriteOptions.Buffer: under the size of a chunk, a column never has
+// more than one chunk that waits, and a larger one lets several wait. The rows are the same.
+func TestWriteBuffer(t *testing.T) {
+	lowered(t, &chunkBytes, 20_000)
+	lowered(t, &rowBlock, 512)
+	s, cols := wideColumns(40_000, "random")
+	rows := ""
+	for _, c := range []struct{ buffer, slots int }{{0, 2}, {1, 1}, {1 << 30, 2}} {
+		var buf bytes.Buffer
+		w := NewWriter(&buf, s, WriteOptions{Buffer: c.buffer})
+		if err := w.Write(cols...); err != nil {
+			t.Fatal(err)
+		}
+		most := 0
+		for _, k := range w.root.kids {
+			most = max(most, k.col.slots)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if c.slots == 1 && most != 1 || c.slots > 1 && most < 2 {
+			t.Errorf("Buffer %d: a column had %d chunks that waited", c.buffer, most)
+		}
+		sum, err := digest(openBytes(t, buf.Bytes()), &scanOptions{batchRows: 1000})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rows == "" {
+			rows = sum
+		} else if sum != rows {
+			t.Errorf("Buffer %d: other rows", c.buffer)
 		}
 	}
 }
