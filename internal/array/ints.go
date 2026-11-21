@@ -74,17 +74,67 @@ func (n *Node) ints(i int, what string, p PType, rows int) ([]int, error) {
 	if a.Validity != nil {
 		return nil, fmt.Errorf("%s: has nulls", what)
 	}
-	return toInts(a, what, p, nil)
+	return toInts(n.ctx.opt.Arena, a, what, p, nil)
+}
+
+// fillInts sets out to the values of data, integers of type p, and reports whether every one
+// of them is an int that is not negative. It stops at nothing: the caller that gets false reads
+// the values again, to name the first one that is wrong.
+func fillInts(out []int, data []byte, p PType) bool {
+	switch p {
+	case U8:
+		for i, v := range data[:len(out)] {
+			out[i] = int(v)
+		}
+		return true
+	case U16:
+		return widen(out, words[uint16](data))
+	case U32:
+		return widen(out, words[uint32](data))
+	case U64:
+		return widen(out, words[uint64](data))
+	case I8:
+		return widen(out, words[int8](data))
+	case I16:
+		return widen(out, words[int16](data))
+	case I32:
+		return widen(out, words[int32](data))
+	}
+	return widen(out, words[int64](data))
+}
+
+// widen sets out to the values of src, and reports whether none is negative or past an int.
+func widen[T integer](out []int, src []T) bool {
+	var bad int
+	for i, v := range src[:len(out)] {
+		out[i] = int(v)
+		bad |= int(v)
+	}
+	return bad >= 0
+}
+
+// integer is an integer of a file.
+type integer interface {
+	~int8 | ~int16 | ~int32 | ~int64 | ~uint8 | ~uint16 | ~uint32 | ~uint64
 }
 
 // toInts reads the values of a, an array of integers of type p, as ints. A value that is
 // negative, or does not fit in an int, is an error. The rows that valid marks null are 0:
 // valid nil means every row is valid.
-func toInts(a *Array, what string, p PType, valid *Bitmap) ([]int, error) {
+func toInts(ar *Arena, a *Array, what string, p PType, valid *Bitmap) ([]int, error) {
 	w := p.Width()
-	out := make([]int, a.Len)
+	out := ar.Ints(a.Len, false)
+	if fillInts(out, a.Data, p) {
+		for k := 0; valid != nil && k < len(out); k++ {
+			if !valid.Get(k) {
+				out[k] = 0
+			}
+		}
+		return out, nil
+	}
 	for k := range out {
 		if valid != nil && !valid.Get(k) {
+			out[k] = 0
 			continue
 		}
 		var u uint64

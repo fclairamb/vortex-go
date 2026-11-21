@@ -174,7 +174,7 @@ func checkFixture(path string, batchRows int, hit map[string]bool) error {
 		accs[p] = &acc{h: testutil.NewHasher()}
 	}
 	var rows int64
-	for b, err := range f.scan(context.Background(), opt) {
+	for b, err := range f.scan(context.Background(), &opt) {
 		if err != nil {
 			if id, ok := pending[name]; ok && strings.Contains(err.Error(), id) {
 				hit[name] = true

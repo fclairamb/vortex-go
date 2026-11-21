@@ -45,6 +45,9 @@ type Array struct {
 	Len          int
 	// VOff is, for a Variant array, the row of Var that row 0 is.
 	VOff int
+	// fresh is set by a decoder whose Data nothing else reads: the decoder of the parent may
+	// then write its own values over it.
+	fresh bool
 }
 
 // Null reports whether row i is null.
@@ -65,7 +68,7 @@ func (a *Array) Slice(off, n int) *Array { return a.SliceInto(new(Array), off, n
 func (a *Array) SliceInto(out *Array, off, n int) *Array {
 	fields, elems := out.Fields, out.Elems
 	*out = *a
-	out.Len = n
+	out.Len, out.fresh = n, false
 	if a.Skipped != nil {
 		return out
 	}

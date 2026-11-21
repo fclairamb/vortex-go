@@ -206,7 +206,7 @@ func reflectSet(dst reflect.Value, v any) {
 func reflectRows(t *testing.T, f *File, rt reflect.Type, batchRows int) []reflect.Value {
 	t.Helper()
 	var out []reflect.Value
-	for b, err := range f.scan(context.Background(), scanOptions{batchRows: batchRows}) {
+	for b, err := range f.scan(context.Background(), &scanOptions{batchRows: batchRows}) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -370,7 +370,7 @@ func TestRowsFixtures(t *testing.T) {
 			t.Fatalf("%s: %v", path, err)
 		}
 		for _, batchRows := range []int{maxBatchRows, 7} {
-			for b, err := range f.scan(context.Background(), scanOptions{batchRows: batchRows, columns: p.columns}) {
+			for b, err := range f.scan(context.Background(), &scanOptions{batchRows: batchRows, columns: p.columns}) {
 				if err != nil {
 					t.Fatalf("%s: %v", path, err)
 				}

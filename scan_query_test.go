@@ -163,7 +163,7 @@ func loadModel(f *File) *model {
 		m.names = append(m.names, fl.Name)
 	}
 	m.fp = make([][]string, len(m.names))
-	for b, err := range f.scan(context.Background(), scanOptions{batchRows: 4096}) {
+	for b, err := range f.scan(context.Background(), &scanOptions{batchRows: 4096}) {
 		if err != nil {
 			return nil
 		}
@@ -410,7 +410,7 @@ func runQuery(f *File, m *model, q Query, cols []string, batchRows int, want fun
 		}
 	}
 	got := make([][]string, len(idx))
-	for b, err := range f.scan(context.Background(), scanOptions{batchRows: batchRows, q: q, columns: cols}) {
+	for b, err := range f.scan(context.Background(), &scanOptions{batchRows: batchRows, q: q, columns: cols}) {
 		if err != nil {
 			return err
 		}
@@ -852,7 +852,7 @@ func scanAllocs(t *testing.T, f *File, q Query, batchRows int, cols ...string) (
 	t.Helper()
 	run := func() {
 		batches = 0
-		for _, err := range f.scan(context.Background(), scanOptions{batchRows: batchRows, q: q, columns: cols}) {
+		for _, err := range f.scan(context.Background(), &scanOptions{batchRows: batchRows, q: q, columns: cols}) {
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1360,20 +1360,20 @@ func TestScanTolerateWithFilter(t *testing.T) {
 	tolerate := array.Options{Tolerate: func(string, error) bool { return true }}
 	// Batches of one row: the first is dropped before a is read, then a is skipped.
 	rows := 0
-	for b, err := range f.scan(context.Background(), scanOptions{batchRows: 1, array: tolerate, q: Query{Filter: Col("b").Eq(2)}}) {
+	for b, err := range f.scan(context.Background(), &scanOptions{batchRows: 1, array: tolerate, q: Query{Filter: Col("b").Eq(2)}}) {
 		if err != nil || b.Col(0).arr.Skipped == nil {
 			t.Fatal(b, err)
 		}
 		rows += b.Len()
 	}
 	// The other way: a is skipped, then the batch has a row less than its rows.
-	for b, err := range f.scan(context.Background(), scanOptions{batchRows: 1, array: tolerate, q: Query{Filter: Col("b").Eq(1)}}) {
+	for b, err := range f.scan(context.Background(), &scanOptions{batchRows: 1, array: tolerate, q: Query{Filter: Col("b").Eq(1)}}) {
 		if err != nil || b.Col(0).arr.Skipped == nil {
 			t.Fatal(b, err)
 		}
 		rows += b.Len()
 	}
-	for b, err := range f.scan(context.Background(), scanOptions{batchRows: 8, array: tolerate, q: Query{Filter: Col("b").Eq(2)}}) {
+	for b, err := range f.scan(context.Background(), &scanOptions{batchRows: 8, array: tolerate, q: Query{Filter: Col("b").Eq(2)}}) {
 		if err != nil || b.Col(0).arr.Skipped == nil || b.Len() != 1 {
 			t.Fatal(b, err)
 		}

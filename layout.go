@@ -149,18 +149,22 @@ func (r *flat) load() (*array.Array, error) {
 	if r.u != nil {
 		return r.u.ld.get(r.u)
 	}
-	buf := make([]byte, r.segLen())
-	if err := readFull(r.f.r, buf, int64(r.f.segments[r.seg].Offset)); err != nil {
+	// The bytes sit in memory as they are aligned in the file, like the ones of the loader.
+	off := int64(r.f.segments[r.seg].Offset)
+	buf := r.opt.Arena.Bytes(int(off&7)+r.segLen(), false)[off&7:]
+	if err := readFull(r.f.r, buf, off); err != nil {
 		return nil, r.ioErr(err)
 	}
-	return r.decode(buf)
+	return r.decode(buf, r.opt.Arena)
 }
 
 func (r *flat) segLen() int { return int(r.f.segments[r.seg].Length) }
 
-// decode decodes the segment, in buf.
-func (r *flat) decode(buf []byte) (*array.Array, error) {
-	a, err := array.Decode(buf, r.f.arrayEncodings, r.t, r.rows, r.opt)
+// decode decodes the segment, in buf, into buffers of the arena ar.
+func (r *flat) decode(buf []byte, ar *array.Arena) (*array.Array, error) {
+	opt := r.opt
+	opt.Arena = ar
+	a, err := array.Decode(buf, r.f.arrayEncodings, r.t, r.rows, opt)
 	if err != nil {
 		off := r.f.segments[r.seg].Offset
 		if errors.Is(err, errors.ErrUnsupported) {

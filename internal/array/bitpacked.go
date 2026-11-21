@@ -37,7 +37,7 @@ func decodeBitPacked(n *Node, t DType, rows int) (*Array, error) {
 		}
 		validity = pt.children
 	}
-	a := &Array{Type: t, Len: rows, Data: make([]byte, rows*width)}
+	a := &Array{Type: t, Len: rows, Data: n.ctx.opt.Arena.Bytes(rows*width, false), fresh: true}
 	if a.Validity, err = n.validityFrom(validity, rows); err != nil {
 		return nil, err
 	}

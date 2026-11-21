@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/fclairamb/vortex-go/internal/scalar"
+	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
 
 // decodeSequence decodes vortex.sequence: metadata {base, multiplier}, two ScalarValues, no
@@ -30,13 +31,27 @@ func decodeSequence(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Array{Type: t, Len: rows, Data: make([]byte, rows*width)}
-	var b [8]byte
-	for i := range rows {
-		binary.LittleEndian.PutUint64(b[:], base+uint64(i)*step)
-		copy(a.Data[i*width:], b[:width])
+	a := &Array{Type: t, Len: rows, Data: n.ctx.opt.Arena.Bytes(rows*width, false)}
+	switch width {
+	case 1:
+		fillSequence(a.Data, base, step)
+	case 2:
+		fillSequence(unsafex.Slice[uint16](a.Data), base, step)
+	case 4:
+		fillSequence(unsafex.Slice[uint32](a.Data), base, step)
+	default:
+		fillSequence(unsafex.Slice[uint64](a.Data), base, step)
 	}
 	return a, nil
+}
+
+// fillSequence sets out[i] to the low bits of base + i*step.
+func fillSequence[T word](out []T, base, step uint64) {
+	v, s := T(base), T(step)
+	for i := range out {
+		out[i] = v
+		v += s
+	}
 }
 
 // sequenceParams is the base, which must fit the type p, and the multiplier, as the bits of

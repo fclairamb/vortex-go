@@ -19,7 +19,7 @@ import (
 )
 
 // digest scans f and returns a hash of its batches: their sizes and their values.
-func digest(f *File, o scanOptions) (string, error) {
+func digest(f *File, o *scanOptions) (string, error) {
 	h := testutil.NewHasher()
 	for b, err := range f.scan(context.Background(), o) {
 		if err != nil {
@@ -75,20 +75,20 @@ func TestScanIOFaults(t *testing.T) {
 			t.Fatal(err)
 		}
 		f := reopen(t, raw, plain)
-		want, err := digest(f, scanOptions{batchRows: 1000})
+		want, err := digest(f, &scanOptions{batchRows: 1000})
 		if err != nil {
 			continue // a fixture of an encoding still pending
 		}
 		count := &testutil.FailAt{R: f.r}
 		f.r = count
-		if _, err := digest(f, scanOptions{batchRows: 1000}); err != nil {
+		if _, err := digest(f, &scanOptions{batchRows: 1000}); err != nil {
 			t.Fatal(err)
 		}
 		for n := int64(1); n <= count.Calls(); n++ {
 			fail := &testutil.FailAt{R: count.R, N: n, Err: boom}
 			f.r = fail
 			errs := 0
-			for _, err := range f.scan(context.Background(), scanOptions{batchRows: 1000}) {
+			for _, err := range f.scan(context.Background(), &scanOptions{batchRows: 1000}) {
 				if err != nil {
 					errs++
 					if !errors.Is(err, boom) || !strings.Contains(err.Error(), "offset") {
@@ -116,7 +116,7 @@ func TestScanIOFaults(t *testing.T) {
 			func(r io.ReaderAt, _ int64) io.ReaderAt { return testutil.Short{R: r, Max: 777} },
 			func(r io.ReaderAt, n int64) io.ReaderAt { return testutil.EOFAtEnd{R: r, Size: n} },
 		} {
-			if got, err := digest(reopen(t, raw, wrap), scanOptions{batchRows: 1000}); err != nil || got != want {
+			if got, err := digest(reopen(t, raw, wrap), &scanOptions{batchRows: 1000}); err != nil || got != want {
 				t.Errorf("%s: %v, another digest", fixtureName(path), err)
 			}
 		}
@@ -153,7 +153,7 @@ func TestScanCancelledWhileWaiting(t *testing.T) {
 	f := reopen(t, extraFixture(t, "default_ints.vortex"), plain)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	p, err := f.plan(scanOptions{batchRows: maxBatchRows})
+	p, err := f.plan(&scanOptions{batchRows: maxBatchRows})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,7 @@ func TestScanCancelledWhileWaiting(t *testing.T) {
 func TestScanBreakLeavesNoGoroutine(t *testing.T) {
 	f := reopen(t, extraFixture(t, "default_ints.vortex"), plain)
 	before := runtime.NumGoroutine()
-	for _, err := range f.scan(context.Background(), scanOptions{batchRows: 100}) {
+	for _, err := range f.scan(context.Background(), &scanOptions{batchRows: 100}) {
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -189,7 +189,7 @@ func TestScanBreakLeavesNoGoroutine(t *testing.T) {
 				t.Fatal("no panic")
 			}
 		}()
-		for range f.scan(context.Background(), scanOptions{batchRows: 100}) {
+		for range f.scan(context.Background(), &scanOptions{batchRows: 100}) {
 			panic("in the body")
 		}
 	}()
@@ -215,7 +215,7 @@ func TestConcurrentScans(t *testing.T) {
 	want := make([]string, len(qs))
 	for i, q := range qs {
 		var err error
-		if want[i], err = digest(f, q); err != nil {
+		if want[i], err = digest(f, &q); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -223,7 +223,7 @@ func TestConcurrentScans(t *testing.T) {
 	got := make([]string, len(qs))
 	errs := make([]error, len(qs))
 	for i, q := range qs {
-		wg.Go(func() { got[i], errs[i] = digest(f, q) })
+		wg.Go(func() { got[i], errs[i] = digest(f, &q) })
 	}
 	wg.Wait()
 	for i := range qs {
@@ -240,7 +240,7 @@ func TestCloseDuringScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	batches, errs := 0, 0
-	for _, err := range f.scan(context.Background(), scanOptions{batchRows: 1000}) {
+	for _, err := range f.scan(context.Background(), &scanOptions{batchRows: 1000}) {
 		if err != nil {
 			errs++
 			if !errors.Is(err, os.ErrClosed) {
@@ -316,7 +316,7 @@ func TestScanOrderWhateverTheCores(t *testing.T) {
 		runtime.GOMAXPROCS(procs)
 		var got []string
 		for _, q := range queries() {
-			d, err := digest(f, q)
+			d, err := digest(f, &q)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -336,7 +336,7 @@ func TestScanMergesReads(t *testing.T) {
 	f := reopen(t, extraFixture(t, "default_ints.vortex"), plain)
 	log := &logReader{r: f.r}
 	f.r = log
-	if _, err := digest(f, scanOptions{batchRows: maxBatchRows}); err != nil {
+	if _, err := digest(f, &scanOptions{batchRows: maxBatchRows}); err != nil {
 		t.Fatal(err)
 	}
 	if segs := log.segments(f); len(log.offs) >= segs {
@@ -396,7 +396,7 @@ func TestLoaderWaitsForTheConsumer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := f.plan(scanOptions{batchRows: maxBatchRows})
+	p, err := f.plan(&scanOptions{batchRows: maxBatchRows})
 	if err != nil {
 		t.Fatal(err)
 	}

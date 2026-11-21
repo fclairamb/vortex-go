@@ -158,18 +158,18 @@ func (f *File) newZoned(
 }
 
 // dict is vortex.dict: the values, then the codes. The values are read once, when the first
-// codes are, and kept. The rows are made a chunk of codes at a time, and handed out from it.
+// codes are, and kept. The rows are made a batch at a time, from the codes of the batch.
 type dict struct {
 	codes  reader
 	f      *File
 	values *layoutNode
 	vals   *array.Array
-	cur    *array.Array // the rows of the current chunk of codes
 	path   string
 	t      array.DType
 	opt    array.Options
-	slot   array.Array // the rows take returns
-	off    int         // the next row of cur
+	arena  *array.Arena // the buffers of the rows of the last batch
+	varena *array.Arena // the buffers of vals
+	slot   array.Array  // the rows take returns
 	ptype  array.PType
 }
 
@@ -189,7 +189,8 @@ func (f *File) newDict(l *layoutNode, t array.DType, opt array.Options, path str
 	if err != nil {
 		return nil, err
 	}
-	return &dict{f: f, values: l.children[0], codes: codes, t: t, opt: opt, ptype: ptype, path: path}, nil
+	return &dict{f: f, values: l.children[0], codes: codes, t: t, opt: opt, ptype: ptype, path: path,
+		arena: opt.Pool.NewArena(), varena: opt.Pool.NewArena()}, nil
 }
 
 // parseDict reads the metadata of a vortex.dict layout, {codes_ptype, is_nullable_codes?,
@@ -218,25 +219,19 @@ func parseDict(meta []byte, parentNullable bool) (array.PType, bool, error) {
 	return array.PType(ptype), nullable, nil
 }
 
-func (d *dict) avail() int {
-	if d.cur != nil {
-		return d.cur.Len - d.off
-	}
-	return d.codes.avail()
-}
+func (d *dict) avail() int { return d.codes.avail() }
 
 func (d *dict) skip(n int) {
-	if d.cur == nil {
-		d.codes.skip(n)
-		return
-	}
-	d.advance(n)
+	d.codes.skip(n)
+	d.finish()
 }
 
-// advance moves past n rows of cur.
-func (d *dict) advance(n int) {
-	if d.off += n; d.off == d.cur.Len {
-		d.cur = nil
+// finish gives the memory of the reader back once its last row is taken or skipped: the batch
+// that holds it is the last one to read it.
+func (d *dict) finish() {
+	if d.opt.Pool != nil && d.codes.avail() == 0 {
+		d.opt.Pool.Retire(d.arena)
+		d.opt.Pool.Retire(d.varena)
 	}
 }
 
@@ -244,7 +239,9 @@ func (d *dict) units(base int, out *[]*unit) int { return d.codes.units(base, ou
 
 func (d *dict) take(n int) (*array.Array, error) {
 	if d.vals == nil {
-		r, err := d.f.newReader(d.values, d.t, d.opt, d.path, 0, int(d.values.rowCount))
+		opt := d.opt
+		opt.Pool, opt.Arena = nil, d.varena // the values live as long as the reader
+		r, err := d.f.newReader(d.values, d.t, opt, d.path, 0, int(d.values.rowCount))
 		if err != nil {
 			return nil, err
 		}
@@ -252,18 +249,18 @@ func (d *dict) take(n int) (*array.Array, error) {
 			return nil, err
 		}
 	}
-	if d.cur == nil {
-		codes, err := d.codes.take(d.codes.avail())
-		if err != nil {
-			return nil, err
-		}
-		if d.cur, err = array.TakeDict(d.vals, codes, d.ptype, d.t); err != nil {
-			return nil, fmt.Errorf("%w: layout: dict: %v", ErrCorrupt, err)
-		}
-		d.off = 0
+	codes, err := d.codes.take(n)
+	if err != nil {
+		return nil, err
 	}
-	a := d.cur.SliceInto(&d.slot, d.off, n)
-	d.advance(n)
+	// The rows are made in the memory of the ones of the batch before, which stays in the
+	// cache of the processor.
+	d.arena.Release()
+	a, err := array.TakeDictInto(&d.slot, d.arena, d.vals, codes, d.ptype, d.t)
+	if err != nil {
+		return nil, fmt.Errorf("%w: layout: dict: %v", ErrCorrupt, err)
+	}
+	d.finish()
 	return a, nil
 }
 

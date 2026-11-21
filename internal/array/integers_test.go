@@ -213,7 +213,7 @@ func TestBitPackedErrors(t *testing.T) {
 
 func TestUnpackBlockAllocs(t *testing.T) {
 	var out [blockSize]uint32
-	packed := make([]byte, 128*11)
+	packed := make([]uint32, 32*11)
 	if n := testing.AllocsPerRun(100, func() { unpackBlock(&out, packed, 11) }); n != 0 {
 		t.Fatalf("unpackBlock allocates %v times", n)
 	}

@@ -40,7 +40,7 @@ func decodeRunEnd(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	return withType(take(values, idx), t), nil
+	return withType(take(n.ctx.opt.Arena, values, idx), t), nil
 }
 
 // runIndex is, for rows rows from position offset, the index of the run each one is in. The

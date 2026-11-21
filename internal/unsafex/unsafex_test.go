@@ -46,6 +46,16 @@ func TestSliceUnaligned(t *testing.T) {
 	}
 }
 
+func TestAligned(t *testing.T) {
+	raw := unsafeBytes(make([]uint64, 2))
+	if !Aligned(raw, 8) || !Aligned(nil, 8) || !Aligned(raw[1:], 1) {
+		t.Fatal("an aligned slice is not seen as such")
+	}
+	if Aligned(raw[1:], 2) || Aligned(raw[4:], 8) || !Aligned(raw[4:], 4) {
+		t.Fatal("a misaligned slice is seen as aligned")
+	}
+}
+
 func TestSliceEmpty(t *testing.T) {
 	if Slice[int32](nil) != nil || Slice[int32]([]byte{1, 2, 3}) != nil {
 		t.Fatal("fewer bytes than one value must give nil")

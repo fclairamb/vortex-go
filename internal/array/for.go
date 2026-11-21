@@ -52,7 +52,8 @@ func decodeFoR(n *Node, t DType, rows int) (*Array, error) {
 		return nil, err
 	}
 	out := *enc
-	out.Data = addConst(enc.Data, width, binary.LittleEndian.Uint64(append(ref, 0, 0, 0, 0, 0, 0, 0, 0)))
+	out.Data = addConst(n.target(enc), enc.Data, width, binary.LittleEndian.Uint64(append(ref, 0, 0, 0, 0, 0, 0, 0, 0)))
+	out.fresh = true
 	return &out, nil
 }
 
@@ -74,6 +75,7 @@ func decodeZigZag(n *Node, t DType, rows int) (*Array, error) {
 	}
 	out := *enc
 	out.Type = t
-	out.Data = unzigzag(enc.Data, width)
+	out.Data = unzigzag(n.target(enc), enc.Data, width)
+	out.fresh = true
 	return &out, nil
 }
