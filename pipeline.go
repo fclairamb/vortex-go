@@ -43,6 +43,7 @@ type unit struct {
 	err   error
 	buf   *ioBuf       // the buffer of the read, released when the unit is dropped
 	arena *array.Arena // the buffers of arr, released with buf
+	open  *array.Rows  // the segment, opened, whose rows the scan decodes
 	seg   []byte       // the segment, in buf, of a unit that was read and not decoded
 	mu    sync.Mutex
 	start int // the row of the file the flat starts at
@@ -52,6 +53,9 @@ type unit struct {
 	// late is set for a column that a filter does not read: when the filter keeps few rows,
 	// the unit is read ahead and not decoded, and the scan decodes the rows kept.
 	late bool
+	// part is set when the scan reads a part of the rows of the segment only: the unit is read
+	// ahead and not decoded, and the scan decodes the rows it reads.
+	part bool
 }
 
 type unitState uint8
@@ -336,6 +340,21 @@ func (l *loader) prefetch() {
 	}
 }
 
+// lazy reports whether the segment seg of the unit is left as it is, for the scan to decode
+// the rows it reads: the scan reads some of its rows only, and its encodings decode some rows
+// only. A segment that cannot be opened is left to the scan too, which reports it.
+func (u *unit) lazy(l *loader, seg []byte) bool {
+	if !u.part && (!u.late || !l.sparse.Load()) {
+		return false
+	}
+	open, err := array.OpenRows(seg, u.fl.f.arrayEncodings, u.fl.opt)
+	if err == nil && !open.Can() {
+		return false
+	}
+	u.open = open // read by the scan once the unit is ready
+	return true
+}
+
 // extent is a read that covers the segments of some units.
 type extent struct {
 	units    []*unit
@@ -379,7 +398,7 @@ func (l *loader) read(e extent) {
 		case !u.dropped():
 			start := pad + u.off() - e.off
 			seg = b.b[start : start+int64(u.fl.segLen())]
-			if !u.late || !l.sparse.Load() {
+			if !u.lazy(l, seg) {
 				ar = u.fl.opt.Pool.NewArena()
 				a, uerr = u.fl.decode(seg, ar)
 			}
