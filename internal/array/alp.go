@@ -1,7 +1,6 @@
 package array
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -63,7 +62,7 @@ func decodeALP(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &Array{Type: t, Len: rows, Validity: ints.Validity, Data: alpFloats(n.ctx.opt.Arena, ints.Data, t.PType, e, f)}
+	out := &Array{Type: t, Len: rows, Validity: ints.Validity, Data: alpFloats(n.target(ints), ints.Data, t.PType, e, f)}
 	if !meta.hasBlob[3] {
 		if n.NumChildren() != 1 {
 			return nil, fmt.Errorf("expected 1 child without patches, got %d", n.NumChildren())
@@ -81,9 +80,9 @@ func decodeALP(n *Node, t DType, rows int) (*Array, error) {
 	return out, pt.apply(out.Data, t.PType.Width())
 }
 
-// alpFloats turns the encoded integers into the bits of floats of type p.
-func alpFloats(ar *Arena, ints []byte, p PType, e, f uint64) []byte {
-	out := ar.Bytes(len(ints), false)
+// alpFloats turns the encoded integers into the bits of floats of type p: in out, which may
+// be ints.
+func alpFloats(out, ints []byte, p PType, e, f uint64) []byte {
 	if p == F32 {
 		m, inv := f10f32[f], if10f32[e]
 		dst := unsafex.Slice[float32](out)
@@ -189,30 +188,66 @@ func decodeALPRD(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	bits, err := m.leftBits(left, rows)
-	if err != nil {
-		return nil, err
-	}
+	ar := n.ctx.opt.Arena
+	out := &Array{Type: t, Len: rows, Validity: left.Validity, Data: ar.Bytes(rows*w, false)}
+	var pt *patches
 	if m.hasPatches {
-		err = n.patchLeftBits(&m, bits, rows)
+		pt, err = n.leftPatches(&m, rows)
 	} else if n.NumChildren() != 2 {
 		err = fmt.Errorf("expected 2 children without patches, got %d", n.NumChildren())
 	}
 	if err != nil {
 		return nil, err
 	}
-	out := &Array{Type: t, Len: rows, Validity: left.Validity, Data: make([]byte, rows*w)}
 	// A shift of the full width gives 0 in Go, which is what a right part of every bit needs.
-	for i := range rows {
-		if w == 4 {
-			v := uint32(bits[i])<<m.rightBits | binary.LittleEndian.Uint32(right.Data[4*i:])
-			binary.LittleEndian.PutUint32(out.Data[4*i:], v)
-		} else {
-			v := bits[i]<<m.rightBits | binary.LittleEndian.Uint64(right.Data[8*i:])
-			binary.LittleEndian.PutUint64(out.Data[8*i:], v)
+	if w == 4 {
+		err = joinRD(unsafex.Slice[uint32](out.Data), left, unsafex.Slice[uint32](right.Data), &m, pt)
+	} else {
+		err = joinRD(unsafex.Slice[uint64](out.Data), left, unsafex.Slice[uint64](right.Data), &m, pt)
+	}
+	return out, err
+}
+
+// joinRD sets out[i] to the left bits of row i above its right bits. The left bits are the
+// entry of the dictionary at the code of the row, 0 for a null row, and the value of the
+// patch for a patched row.
+func joinRD[T uint32 | uint64](out []T, left *Array, right []T, m *alpRDMeta, pt *patches) error {
+	rb := m.rightBits
+	right = right[:len(out)]
+	if m.left == U16 && left.Validity == nil && len(m.dict) <= 256 {
+		codes := unsafex.Slice[uint16](left.Data)
+		// Without a null, a code is read where it is: the largest one tells whether all are known.
+		var dict [256]uint16
+		copy(dict[:], m.dict)
+		most := uint16(0)
+		for i, c := range codes[:len(out)] {
+			out[i] = T(dict[uint8(c)])<<rb | right[i]
+			most = max(most, c)
+		}
+		if int(most) >= len(m.dict) {
+			_, err := m.leftBits(nil, left) // names the first code that is wrong
+			return err
+		}
+	} else {
+		bits, err := m.leftBits(nil, left)
+		if err != nil {
+			return err
+		}
+		for i := range out {
+			out[i] = T(bits[i])<<rb | right[i]
 		}
 	}
-	return out, nil
+	if pt == nil {
+		return nil
+	}
+	vals, err := toInts(nil, pt.values, "left patch values", m.left, nil)
+	if err != nil {
+		return err
+	}
+	for k, v := range vals {
+		out[pt.row(k)] = T(v)<<rb | right[pt.row(k)]
+	}
+	return nil
 }
 
 // rdParts decodes the left parts (type p) and the right parts of an array of floats of type t.
@@ -234,42 +269,30 @@ func (n *Node) rdParts(p PType, t DType, rows int) (left, right *Array, err erro
 }
 
 // leftBits maps the codes of the left parts through the dictionary. Every valid code must be in
-// it, patched or not. The rows that are null are 0.
-func (m *alpRDMeta) leftBits(left *Array, rows int) ([]uint64, error) {
-	codes, err := toInts(nil, left, "left parts", m.left, left.Validity)
+// it, patched or not. The rows that are null are 0. The bits take the place of the codes.
+func (m *alpRDMeta) leftBits(ar *Arena, left *Array) ([]int, error) {
+	bits, err := toInts(ar, left, "left parts", m.left, left.Validity)
 	if err != nil {
 		return nil, err
 	}
-	bits := make([]uint64, rows)
-	for i, c := range codes {
+	for i, c := range bits {
 		if left.Null(i) {
 			continue
 		}
 		if c >= len(m.dict) {
 			return nil, fmt.Errorf("left code %d at row %d is past the dictionary of %d entries", c, i, len(m.dict))
 		}
-		bits[i] = uint64(m.dict[c])
+		bits[i] = int(m.dict[c])
 	}
 	return bits, nil
 }
 
-// patchLeftBits replaces the left bits of the patched rows: the patches are the children from
-// child 2, and hold the left bits themselves, not codes.
-func (n *Node) patchLeftBits(m *alpRDMeta, bits []uint64, rows int) error {
+// leftPatches reads the patches of the left bits: they are the children from child 2, and
+// hold the left bits themselves, not codes.
+func (n *Node) leftPatches(m *alpRDMeta, rows int) (*patches, error) {
 	pm, err := parsePatchesMeta(m.patches)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	pt, err := n.patchesChild(pm, 2, DType{Kind: Prim, PType: m.left}, rows)
-	if err != nil {
-		return err
-	}
-	vals, err := toInts(n.ctx.opt.Arena, pt.values, "left patch values", m.left, nil)
-	if err != nil {
-		return err
-	}
-	for k, v := range vals {
-		bits[pt.row(k)] = uint64(v)
-	}
-	return nil
+	return n.patchesChild(pm, 2, DType{Kind: Prim, PType: m.left}, rows)
 }

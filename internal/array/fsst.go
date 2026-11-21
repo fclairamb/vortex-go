@@ -60,8 +60,9 @@ func decodeFSST(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	a.Data = make([]byte, total)
-	a.Starts, a.Ends = make([]int, rows), make([]int, rows)
+	ar := n.ctx.opt.Arena
+	a.Data = ar.Bytes(total, false)
+	a.Starts, a.Ends = ar.Ints(rows, false), ar.Ints(rows, false)
 	if err := tbl.decode(a.Data, a.Starts, a.Ends, codes, starts, ends, ulen); err != nil {
 		return nil, err
 	}
@@ -135,8 +136,8 @@ func outputSize(ulen, starts, ends []int, perCode int) (int, error) {
 
 // symbolTable is the symbols of an FSST array.
 type symbolTable struct {
-	sym [fsstEscape]uint64 // little-endian: the first byte of the symbol is the low one
-	len [fsstEscape]int
+	sym [256]uint64 // little-endian: the first byte of the symbol is the low one
+	len [256]uint8  // 0 for the escape, and for a code that has no symbol
 	n   int
 }
 
@@ -154,7 +155,7 @@ func newSymbolTable(syms, lens []byte) (*symbolTable, error) {
 	}
 	tbl := &symbolTable{n: n}
 	for i := range n {
-		l := int(lens[i])
+		l := lens[i]
 		if l < 1 || l > fsstMaxSymbol {
 			return nil, fmt.Errorf("symbol %d is %d bytes long, want 1 to %d", i, l, fsstMaxSymbol)
 		}
@@ -167,44 +168,47 @@ func newSymbolTable(syms, lens []byte) (*symbolTable, error) {
 // the other, and sets the ranges of the rows. dst holds exactly the sum of the lengths.
 //
 // A symbol is written as 8 bytes when dst has room for them: the bytes past the symbol are
-// then overwritten by what follows. Near the end of dst, it is written byte by byte.
+// then overwritten by what follows. Near the end of dst, it is written byte by byte. A row
+// that decodes to more than its bytes is seen at its end, or at the end of dst.
 func (tbl *symbolTable) decode(dst []byte, outStarts, outEnds []int, codes []byte, starts, ends, ulen []int) error {
 	o := 0
 	for i := range ulen {
 		rowEnd := o + ulen[i]
 		outStarts[i], outEnds[i] = o, rowEnd
-		c, end := starts[i], ends[i]
-		for c < end {
-			code := int(codes[c])
-			c++
-			if code == fsstEscape {
-				if c == end {
-					return fmt.Errorf("row %d ends with an escape", i)
-				}
-				if o == rowEnd {
-					return fmt.Errorf("row %d decodes to more than its %d bytes", i, ulen[i])
-				}
-				dst[o] = codes[c]
-				o++
-				c++
+		row := codes[starts[i]:ends[i]]
+		for c := 0; c < len(row); c++ {
+			code := row[c]
+			l := int(tbl.len[code])
+			if l != 0 && o+8 <= len(dst) {
+				binary.LittleEndian.PutUint64(dst[o:], tbl.sym[code])
+				o += l
 				continue
 			}
-			if code >= tbl.n {
+			switch {
+			case code == fsstEscape:
+				if c++; c == len(row) {
+					return fmt.Errorf("row %d ends with an escape", i)
+				}
+				if o >= rowEnd {
+					return fmt.Errorf("row %d decodes to more than its %d bytes", i, ulen[i])
+				}
+				dst[o] = row[c]
+				o++
+			case l == 0:
 				return fmt.Errorf("row %d has code %d, there are %d symbols", i, code, tbl.n)
-			}
-			l := tbl.len[code]
-			if o+l > rowEnd {
-				return fmt.Errorf("row %d decodes to more than its %d bytes", i, ulen[i])
-			}
-			if o+8 <= len(dst) {
-				binary.LittleEndian.PutUint64(dst[o:], tbl.sym[code])
-			} else {
+			default: // the last bytes of dst
+				if o+l > rowEnd {
+					return fmt.Errorf("row %d decodes to more than its %d bytes", i, ulen[i])
+				}
 				s := tbl.sym[code]
 				for k := range l {
 					dst[o+k] = byte(s >> (8 * k))
 				}
+				o += l
 			}
-			o += l
+		}
+		if o > rowEnd {
+			return fmt.Errorf("row %d decodes to more than its %d bytes", i, ulen[i])
 		}
 		if o != rowEnd {
 			return fmt.Errorf("row %d decodes to %d bytes, declared %d", i, o-(rowEnd-ulen[i]), ulen[i])

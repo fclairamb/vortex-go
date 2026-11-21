@@ -162,6 +162,7 @@ type loader struct {
 	units    []*unit       // in the order of the scan
 	retired  []*unit       // the units done with in the current batch
 	pool     bufPool
+	arrays   *array.Pool // the buffers of the decoded arrays
 	wg       sync.WaitGroup
 	front    atomic.Int64 // the units the consumer has reached
 	ahead    int          // the units read before the consumer reaches them
@@ -172,7 +173,7 @@ type loader struct {
 // newLoader plans the units of a scan: the flats of its readers, in the order of their first
 // row, without the ones whose rows the filter rules out. It starts the reads ahead.
 func newLoader(ctx context.Context, f *File, p *scanPlan, workers int) *loader {
-	l := &loader{ctx: ctx, f: f, gap: f.gap, maxRead: f.maxRead,
+	l := &loader{ctx: ctx, f: f, gap: f.gap, maxRead: f.maxRead, arrays: p.pool,
 		sem: make(chan struct{}, workers), progress: make(chan struct{}, 1), stop: make(chan struct{})}
 	var all []*unit
 	p.src.units(int(p.lo), &all)
@@ -264,6 +265,7 @@ func (l *loader) recycle() {
 		u.fl.slot = array.Array{}
 	}
 	l.retired = l.retired[:0]
+	l.arrays.Recycle()
 }
 
 // prefetch claims the units ahead of the consumer, merges their reads and runs them.

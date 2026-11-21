@@ -153,6 +153,7 @@ type scanPlan struct {
 	early      []int // the fields the filter reads
 	late       []int // the fields only returned
 	filter     *node
+	pool       *array.Pool // the buffers of the arrays of the scan
 	src        source
 	lo, hi     int64
 	wantFilter bool
@@ -217,7 +218,8 @@ func (f *File) plan(o scanOptions) (*scanPlan, error) {
 		}
 	}
 	o.array.MaxRows = f.maxNodeRows()
-	o.array.Pool = new(array.Pool)
+	p.pool = new(array.Pool)
+	o.array.Pool = p.pool
 	if err = f.openSource(p, o.array, need); err != nil {
 		return nil, err
 	}

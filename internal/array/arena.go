@@ -16,7 +16,31 @@ const minPooled = 512
 type Pool struct {
 	bytes [bits.UintSize][][]byte // by the power of two of their capacity
 	ints  [bits.UintSize][][]int
-	mu    sync.Mutex
+	// retired is the arenas the scan is done with once its current batch is.
+	retired []*Arena
+	mu      sync.Mutex
+}
+
+// Retire records that the arrays of the arena are read by the current batch at most: Recycle
+// releases it.
+func (p *Pool) Retire(a *Arena) {
+	if a == nil {
+		return
+	}
+	p.mu.Lock()
+	p.retired = append(p.retired, a)
+	p.mu.Unlock()
+}
+
+// Recycle releases the retired arenas: the consumer has moved on to the next batch.
+func (p *Pool) Recycle() {
+	p.mu.Lock()
+	retired := p.retired
+	p.retired = nil
+	p.mu.Unlock()
+	for _, a := range retired {
+		a.Release()
+	}
 }
 
 // NewArena returns an arena of the pool. A nil pool has the nil arena.

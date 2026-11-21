@@ -149,11 +149,13 @@ func (r *flat) load() (*array.Array, error) {
 	if r.u != nil {
 		return r.u.ld.get(r.u)
 	}
-	buf := make([]byte, r.segLen())
-	if err := readFull(r.f.r, buf, int64(r.f.segments[r.seg].Offset)); err != nil {
+	// The bytes sit in memory as they are aligned in the file, like the ones of the loader.
+	off := int64(r.f.segments[r.seg].Offset)
+	buf := r.opt.Arena.Bytes(int(off&7)+r.segLen(), false)[off&7:]
+	if err := readFull(r.f.r, buf, off); err != nil {
 		return nil, r.ioErr(err)
 	}
-	return r.decode(buf, nil)
+	return r.decode(buf, r.opt.Arena)
 }
 
 func (r *flat) segLen() int { return int(r.f.segments[r.seg].Length) }

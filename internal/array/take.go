@@ -1,14 +1,23 @@
 package array
 
+import "slices"
+
 // take returns the rows idx of a, in that order, in buffers of the arena ar. An index of -1 is a null row. The indexes
 // are not checked: the caller has.
 func take(ar *Arena, a *Array, idx []int) *Array {
+	return takeRows(ar, a, idx, slices.ContainsFunc(idx, func(i int) bool { return i < 0 }))
+}
+
+// takeRows is take, the caller knowing whether an index is -1.
+func takeRows(ar *Arena, a *Array, idx []int, nulls bool) *Array {
 	out := &Array{Type: a.Type, Len: len(idx), Width: a.Width}
 	if a.Skipped != nil {
 		out.Skipped = a.Skipped
 		return out
 	}
-	out.Validity = takeValidity(ar, a, idx)
+	if nulls || a.Validity != nil {
+		out.Validity = takeValidity(ar, a, idx)
+	}
 	switch a.Type.Kind {
 	case Bool:
 		w := &bitWriter{bytes: ar.Bytes((len(idx)+7)/8, true)}
@@ -22,7 +31,7 @@ func take(ar *Arena, a *Array, idx []int) *Array {
 		out.Data = takeFixed(ar, a.Data, a.Width, idx)
 	case Utf8, Binary, List, Map:
 		out.Data, out.Elems = a.Data, a.Elems
-		out.Starts, out.Ends = takeRanges(ar, a, idx)
+		out.Starts, out.Ends = takeRanges(ar, a, idx, nulls)
 	case FixedSizeList:
 		size := a.Type.Size
 		elems := make([]int, 0, len(idx)*size)
@@ -31,11 +40,11 @@ func take(ar *Arena, a *Array, idx []int) *Array {
 				elems = append(elems, takeElem(i, size, k))
 			}
 		}
-		out.Elems = take(ar, a.Elems, elems)
+		out.Elems = takeRows(ar, a.Elems, elems, nulls)
 	case Struct:
 		out.Fields = make([]*Array, len(a.Fields))
 		for k, f := range a.Fields {
-			out.Fields[k] = take(ar, f, idx)
+			out.Fields[k] = takeRows(ar, f, idx, nulls)
 		}
 	}
 	return out
@@ -50,15 +59,8 @@ func takeElem(i, size, k int) int {
 	return i*size + k
 }
 
-// takeValidity is the validity of the rows idx of a, nil when they are all valid.
+// takeValidity is the validity of the rows idx of a.
 func takeValidity(ar *Arena, a *Array, idx []int) *Bitmap {
-	need := a.Validity != nil
-	for _, i := range idx {
-		need = need || i < 0
-	}
-	if !need {
-		return nil
-	}
 	w := &bitWriter{bytes: ar.Bytes((len(idx)+7)/8, true)}
 	for _, i := range idx {
 		w.set(i >= 0 && (a.Validity == nil || a.Validity.Get(i)))
@@ -78,7 +80,16 @@ func takeFixed(ar *Arena, data []byte, w int, idx []int) []byte {
 }
 
 // takeRanges takes the ranges of the rows idx of a.
-func takeRanges(ar *Arena, a *Array, idx []int) (starts, ends []int) {
+func takeRanges(ar *Arena, a *Array, idx []int, nulls bool) (starts, ends []int) {
+	if !nulls {
+		starts, ends = ar.Ints(len(idx), false), ar.Ints(len(idx), false)
+		from, to := a.Starts, a.Ends
+		ends = ends[:len(starts)]
+		for k, i := range idx[:len(starts)] {
+			starts[k], ends[k] = from[i], to[i]
+		}
+		return starts, ends
+	}
 	starts, ends = ar.Ints(len(idx), true), ar.Ints(len(idx), true)
 	for k, i := range idx {
 		if i >= 0 {

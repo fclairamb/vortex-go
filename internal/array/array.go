@@ -39,6 +39,9 @@ type Array struct {
 	Starts, Ends []int
 	Fields       []*Array
 	Bits         Bitmap // Bool: the values
+	// fresh is set by a decoder whose Data nothing else reads: the decoder of the parent may
+	// then write its own values over it.
+	fresh bool
 	vbits        Bitmap // the Validity of an array made by SliceInto
 	Type         DType
 	Width        int // Decimal: the bytes of a stored value
@@ -65,7 +68,7 @@ func (a *Array) Slice(off, n int) *Array { return a.SliceInto(new(Array), off, n
 func (a *Array) SliceInto(out *Array, off, n int) *Array {
 	fields, elems := out.Fields, out.Elems
 	*out = *a
-	out.Len = n
+	out.Len, out.fresh = n, false
 	if a.Skipped != nil {
 		return out
 	}

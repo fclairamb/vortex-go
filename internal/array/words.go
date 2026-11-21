@@ -79,6 +79,15 @@ func storeWords[T word](dst []byte, src []T, bits int) {
 // words views b as words of T: the memory of b when it is aligned, a copy otherwise.
 func words[T integer](b []byte) []T { return unsafex.Slice[T](b) }
 
+// target is where a decoder writes the values it makes from the ones of a, of the same width:
+// over them when nothing else reads them and they can be read as numbers, in the arena otherwise.
+func (n *Node) target(a *Array) []byte {
+	if a.fresh && unsafex.Aligned(a.Data, 8) {
+		return a.Data
+	}
+	return n.ctx.opt.Arena.Bytes(len(a.Data), false)
+}
+
 // addWords is src plus c, wrapping, into dst.
 func addWords[T word](dst, src []T, c T) {
 	for i, v := range src {
@@ -86,9 +95,9 @@ func addWords[T word](dst, src []T, c T) {
 	}
 }
 
-// addConst is src, little-endian integers of width bytes, plus c, wrapping.
-func addConst(ar *Arena, src []byte, width int, c uint64) []byte {
-	dst := ar.Bytes(len(src), false)
+// addConst is src, little-endian integers of width bytes, plus c, wrapping: in dst, which may
+// be src.
+func addConst(dst, src []byte, width int, c uint64) []byte {
 	switch width {
 	case 1:
 		addWords(dst, src, uint8(c))
@@ -109,9 +118,8 @@ func unzigzagWords[T word](dst, src []T) {
 	}
 }
 
-// unzigzag is src, zigzag-encoded integers of width bytes, decoded.
-func unzigzag(ar *Arena, src []byte, width int) []byte {
-	dst := ar.Bytes(len(src), false)
+// unzigzag is src, zigzag-encoded integers of width bytes, decoded: in dst, which may be src.
+func unzigzag(dst, src []byte, width int) []byte {
 	switch width {
 	case 1:
 		unzigzagWords(dst, src)
