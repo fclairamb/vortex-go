@@ -56,6 +56,7 @@ type source struct {
 	whole  reader // the root layout when it is not a struct layout: all its columns are read
 	cur    *array.Array
 	fields []reader
+	late   []bool // the fields that a filter does not read
 	n      int
 }
 
@@ -125,11 +126,38 @@ func (s *source) units(base int, out *[]*unit) {
 	if s.valid != nil {
 		s.valid.units(base, out)
 	}
-	for _, r := range s.fields {
+	for i, r := range s.fields {
 		if r != nil {
+			from := len(*out)
 			r.units(base, out)
+			for _, u := range (*out)[from:] {
+				u.late = s.late != nil && s.late[i]
+			}
 		}
 	}
+}
+
+// readSel gets the rows sel of the columns idx of the batch into arrs, for the columns whose
+// reader decodes some rows only: done says which. The others are read whole, like read does.
+func (s *source) readSel(idx []int, arrs []*array.Array, sel []int, done []bool) error {
+	for _, i := range idx {
+		done[i] = false
+		if s.cur != nil {
+			arrs[i] = s.cur.Fields[i]
+			continue
+		}
+		a, ok, err := takeSel(s.fields[i], s.n, sel)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			if a, err = s.fields[i].take(s.n); err != nil {
+				return err
+			}
+		}
+		arrs[i], done[i] = a, ok
+	}
+	return nil
 }
 
 // skip drops n rows of every column, whatever they are.
@@ -225,6 +253,10 @@ func (f *File) plan(o *scanOptions) (*scanPlan, error) {
 	}
 	if p.wantFilter {
 		p.filter.loadZones(f, f.layout, [2]int64{p.lo, p.hi})
+		p.src.late = make([]bool, len(need))
+		for _, i := range p.late {
+			p.src.late[i] = true
+		}
 	}
 	return p, nil
 }
@@ -262,7 +294,7 @@ func (f *File) scan(ctx context.Context, o *scanOptions) iter.Seq2[*Batch, error
 		}
 		ld := newLoader(ctx, f, p, workers())
 		defer ld.close()
-		s := newScanner(f, p, o.batchRows)
+		s := newScanner(f, p, ld, o.batchRows)
 		for pos := p.lo; pos < p.hi; {
 			ld.recycle() // the consumer is done with the previous batch
 			if err = s.check(ctx); err == nil {
@@ -290,13 +322,20 @@ type scanner struct {
 	sel       []int
 	store     []Column
 	picked    []picked
+	picks     []bool // the fields whose array holds the rows kept only
+	ld        *loader
 	batch     Batch
 	batchRows int
 }
 
-func newScanner(f *File, p *scanPlan, batchRows int) *scanner {
-	s := &scanner{f: f, p: p, batchRows: batchRows, arrs: make([]*array.Array, len(f.schema.root.fields)),
-		sel: make([]int, 0, batchRows), store: make([]Column, len(p.out)), picked: make([]picked, len(p.out))}
+// sparseRatio is the rows of a batch for one row kept from which the columns that the filter
+// does not read decode the rows kept only.
+const sparseRatio = 8
+
+func newScanner(f *File, p *scanPlan, ld *loader, batchRows int) *scanner {
+	s := &scanner{f: f, p: p, ld: ld, batchRows: batchRows, arrs: make([]*array.Array, len(f.schema.root.fields)),
+		picks: make([]bool, len(f.schema.root.fields)),
+		sel:   make([]int, 0, batchRows), store: make([]Column, len(p.out)), picked: make([]picked, len(p.out))}
 	s.batch.cols = make([]*Column, len(p.out))
 	for i := range s.store {
 		s.batch.cols[i] = &s.store[i]
@@ -350,7 +389,16 @@ func (s *scanner) step(pos int64) (*Batch, int, error) {
 			return nil, n, nil
 		}
 	}
-	if err := p.src.read(p.late, s.arrs); err != nil {
+	// A filter that keeps few rows: the other columns decode these rows only, when they can.
+	sparse := p.wantFilter && len(s.sel)*sparseRatio <= n
+	clear(s.picks)
+	var err error
+	if s.ld.sparse.Store(sparse); sparse {
+		err = p.src.readSel(p.late, s.arrs, s.sel, s.picks)
+	} else {
+		err = p.src.read(p.late, s.arrs)
+	}
+	if err != nil {
 		return nil, n, err
 	}
 	return s.fill(n, p.wantFilter && len(s.sel) < n), n, nil
@@ -366,7 +414,7 @@ func (s *scanner) fill(n int, pick bool) *Batch {
 	}
 	for i, k := range s.p.out {
 		a := s.arrs[k]
-		if pick {
+		if pick && !s.picks[k] {
 			a = s.picked[i].gather(a, s.sel)
 		}
 		s.store[i] = Column{arr: a, typ: s.f.schema.root.fields[k].Type}

@@ -6,48 +6,63 @@ import "fmt"
 // the packed blocks, children the patches (indices, values, and their chunk offsets if the
 // metadata has some) then the validity. Signed types are packed as unsigned.
 func decodeBitPacked(n *Node, t DType, rows int) (*Array, error) {
-	width, err := intPrim(t)
+	m, err := n.bitPackedParts(t, rows)
 	if err != nil {
 		return nil, err
 	}
-	meta, err := readMessage(n.Metadata())
-	if err != nil {
-		return nil, err
-	}
-	w, off := meta.varint[1], meta.varint[2]
-	if w > uint64(8*width) {
-		return nil, fmt.Errorf("bit width %d is past the %d bits of %s", w, 8*width, t)
-	}
-	if off >= blockSize {
-		return nil, fmt.Errorf("offset %d is not under %d", off, blockSize)
-	}
-	packed, err := n.packedBlocks(int(w), int(off), rows)
-	if err != nil {
-		return nil, err
-	}
-	var pt *patches
-	validity := 0
-	if meta.hasBlob[3] {
-		m, err := parsePatchesMeta(meta.blob[3])
-		if err != nil {
-			return nil, err
-		}
-		if pt, err = n.patchesChild(m, 0, t, rows); err != nil {
-			return nil, err
-		}
-		validity = pt.children
-	}
-	a := &Array{Type: t, Len: rows, Data: n.ctx.opt.Arena.Bytes(rows*width, false), fresh: true}
-	if a.Validity, err = n.validityFrom(validity, rows); err != nil {
-		return nil, err
-	}
-	unpackWidth(width, a.Data, packed, int(w), int(off), rows)
-	if pt != nil {
-		if err := pt.apply(a.Data, width); err != nil {
+	width := t.PType.Width()
+	a := &Array{Type: t, Len: rows, Data: n.ctx.opt.Arena.Bytes(rows*width, false), fresh: true, Validity: m.valid}
+	unpackWidth(width, a.Data, m.packed, m.w, m.off, rows)
+	if m.patches != nil {
+		if err := m.patches.apply(a.Data, width); err != nil {
 			return nil, err
 		}
 	}
 	return a, nil
+}
+
+// bitPacked is what a fastlanes.bitpacked node holds.
+type bitPacked struct {
+	patches *patches
+	valid   *Bitmap
+	packed  []byte
+	w, off  int // the bits of a value, and the place of row 0 in the first block
+}
+
+// bitPackedParts reads a fastlanes.bitpacked node of an array of type t and of that many rows.
+func (n *Node) bitPackedParts(t DType, rows int) (m bitPacked, err error) {
+	width, err := intPrim(t)
+	if err != nil {
+		return m, err
+	}
+	meta, err := readMessage(n.Metadata())
+	if err != nil {
+		return m, err
+	}
+	w, off := meta.varint[1], meta.varint[2]
+	if w > uint64(8*width) {
+		return m, fmt.Errorf("bit width %d is past the %d bits of %s", w, 8*width, t)
+	}
+	if off >= blockSize {
+		return m, fmt.Errorf("offset %d is not under %d", off, blockSize)
+	}
+	m.w, m.off = int(w), int(off)
+	if m.packed, err = n.packedBlocks(m.w, m.off, rows); err != nil {
+		return m, err
+	}
+	validity := 0
+	if meta.hasBlob[3] {
+		pm, err := parsePatchesMeta(meta.blob[3])
+		if err != nil {
+			return m, err
+		}
+		if m.patches, err = n.patchesChild(pm, 0, t, rows); err != nil {
+			return m, err
+		}
+		validity = m.patches.children
+	}
+	m.valid, err = n.validityFrom(validity, rows)
+	return m, err
 }
 
 // packedBlocks is buffer 0 of the node, the blocks of rows values of w bits from value off of

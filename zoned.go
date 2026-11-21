@@ -238,21 +238,47 @@ func (d *dict) finish() {
 func (d *dict) units(base int, out *[]*unit) int { return d.codes.units(base, out) }
 
 func (d *dict) take(n int) (*array.Array, error) {
-	if d.vals == nil {
-		opt := d.opt
-		opt.Pool, opt.Arena = nil, d.varena // the values live as long as the reader
-		r, err := d.f.newReader(d.values, d.t, opt, d.path, 0, int(d.values.rowCount))
-		if err != nil {
-			return nil, err
-		}
-		if d.vals, err = readAll(r, d.t); err != nil {
-			return nil, err
-		}
+	if err := d.load(); err != nil {
+		return nil, err
 	}
 	codes, err := d.codes.take(n)
 	if err != nil {
 		return nil, err
 	}
+	return d.rowsOf(codes)
+}
+
+// takeSel makes the rows kept from their codes, when the codes can be decoded for them only.
+func (d *dict) takeSel(n int, sel []int) (*array.Array, bool, error) {
+	if err := d.load(); err != nil {
+		return nil, false, err
+	}
+	codes, ok, err := takeSel(d.codes, n, sel)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	a, err := d.rowsOf(codes)
+	return a, err == nil, err
+}
+
+// load reads the values, once.
+func (d *dict) load() error {
+	if d.vals == nil {
+		opt := d.opt
+		opt.Pool, opt.Arena = nil, d.varena // the values live as long as the reader
+		r, err := d.f.newReader(d.values, d.t, opt, d.path, 0, int(d.values.rowCount))
+		if err != nil {
+			return err
+		}
+		if d.vals, err = readAll(r, d.t); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// rowsOf makes the rows of the codes of a batch.
+func (d *dict) rowsOf(codes *array.Array) (*array.Array, error) {
 	// The rows are made in the memory of the ones of the batch before, which stays in the
 	// cache of the processor.
 	d.arena.Release()
@@ -278,4 +304,8 @@ func readAll(r reader, t array.DType) (*array.Array, error) {
 		return parts[0], nil
 	}
 	return array.Concat(t, parts), nil
+}
+
+func (z *zoned) takeSel(n int, sel []int) (*array.Array, bool, error) {
+	return takeSel(z.reader, n, sel)
 }

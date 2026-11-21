@@ -25,6 +25,22 @@ type reader interface {
 	units(base int, out *[]*unit) int
 }
 
+// selReader is a reader that can decode some rows of its next rows only.
+type selReader interface {
+	// takeSel returns the rows sel, in increasing order, of the next n rows, and moves past
+	// the n rows. It is not ok when the reader has no such path for these rows: nothing is
+	// read then, and the caller takes the n rows.
+	takeSel(n int, sel []int) (*array.Array, bool, error)
+}
+
+// takeSel is r.takeSel when r is a selReader, and not ok otherwise.
+func takeSel(r reader, n int, sel []int) (*array.Array, bool, error) {
+	if s, ok := r.(selReader); ok {
+		return s.takeSel(n, sel)
+	}
+	return nil, false, nil
+}
+
 // newReader makes the reader of the rows lo to hi (excluded) of a layout whose rows have
 // type t. Only what these rows need is read: a chunk outside the range is never touched.
 func (f *File) newReader(l *layoutNode, t array.DType, opt array.Options, path string, lo, hi int) (reader, error) {
@@ -80,17 +96,21 @@ var _ = edition.Register(edition.KindLayout, readerLayoutIDs)
 
 // flat is vortex.flat: one segment, no child. Its metadata is ignored.
 type flat struct {
-	f    *File
-	arr  *array.Array
-	u    *unit // the unit of the scan, nil when the flat is read on its own
-	path string
-	t    array.DType
-	opt  array.Options
-	slot array.Array // the rows take returns
-	seg  uint32
-	rows int // the rows of the segment
-	pos  int
-	end  int
+	f     *File
+	arr   *array.Array
+	u     *unit // the unit of the scan, nil when the flat is read on its own
+	path  string
+	t     array.DType
+	opt   array.Options
+	open  *array.Rows  // the segment, whose rows takeSel decodes
+	sel   *array.Arena // the buffers of the rows takeSel returned last
+	idx   []int        // the rows of the segment takeSel decodes
+	slot  array.Array  // the rows take returns
+	rows  int          // the rows of the segment
+	pos   int
+	end   int
+	seg   uint32
+	whole bool // an encoding of the segment decodes every row or none
 }
 
 func (f *File) newFlat(l *layoutNode, t array.DType, opt array.Options, path string, lo, hi int) (reader, error) {
@@ -144,6 +164,42 @@ func (r *flat) take(n int) (*array.Array, error) {
 	return a, nil
 }
 
+// takeSel decodes the rows kept of a segment that the loader read and did not decode: the
+// segment of a column that the filter does not read, when the filter keeps few rows.
+func (r *flat) takeSel(n int, sel []int) (*array.Array, bool, error) {
+	if r.arr != nil || r.u == nil || !r.u.late || r.whole {
+		return nil, false, nil
+	}
+	seg, err := r.u.ld.segment(r.u)
+	if err != nil || seg == nil {
+		return nil, false, err
+	}
+	r.idx = r.idx[:0]
+	for _, i := range sel {
+		r.idx = append(r.idx, r.pos+i)
+	}
+	if r.open == nil {
+		r.sel = r.opt.Pool.NewArena()
+		if r.open, err = array.OpenRows(seg, r.f.arrayEncodings, r.opt); err != nil {
+			return nil, false, r.decodeErr(err)
+		}
+	}
+	r.sel.Release() // the rows of the batch before
+	a, ok, err := r.open.Decode(r.t, r.rows, r.idx, r.sel)
+	if err != nil {
+		return nil, false, r.decodeErr(err)
+	}
+	if !ok {
+		r.whole = true
+		return nil, false, nil
+	}
+	if r.pos += n; r.pos == r.end {
+		r.opt.Pool.Retire(r.sel) // the batch is the last one to read them
+	}
+	r.done()
+	return a, true, nil
+}
+
 // load reads and decodes the segment, through the loader of the scan when there is one.
 func (r *flat) load() (*array.Array, error) {
 	if r.u != nil {
@@ -166,13 +222,18 @@ func (r *flat) decode(buf []byte, ar *array.Arena) (*array.Array, error) {
 	opt.Arena = ar
 	a, err := array.Decode(buf, r.f.arrayEncodings, r.t, r.rows, opt)
 	if err != nil {
-		off := r.f.segments[r.seg].Offset
-		if errors.Is(err, errors.ErrUnsupported) {
-			return nil, fmt.Errorf("vortex: column %q: segment at offset %d: %w", r.path, off, err)
-		}
-		return nil, fmt.Errorf("%w: column %q: array at offset %d: %w", ErrCorrupt, r.path, off, err)
+		return nil, r.decodeErr(err)
 	}
 	return a, nil
+}
+
+// decodeErr names the column and the segment of an array that could not be decoded.
+func (r *flat) decodeErr(err error) error {
+	off := r.f.segments[r.seg].Offset
+	if errors.Is(err, errors.ErrUnsupported) {
+		return fmt.Errorf("vortex: column %q: segment at offset %d: %w", r.path, off, err)
+	}
+	return fmt.Errorf("%w: column %q: array at offset %d: %w", ErrCorrupt, r.path, off, err)
 }
 
 // ioErr names the column and the layout of a failed read, whose offset err gives. The array
@@ -354,6 +415,10 @@ func (c *chunked) units(base int, out *[]*unit) int {
 func (c *chunked) skip(n int) { c.chunks[c.i].skip(n) }
 
 func (c *chunked) take(n int) (*array.Array, error) { return c.chunks[c.i].take(n) }
+
+func (c *chunked) takeSel(n int, sel []int) (*array.Array, bool, error) {
+	return takeSel(c.chunks[c.i], n, sel)
+}
 
 // tolerant is a field of a struct layout that Options.Tolerate may skip: when its rows fail
 // with an unsupported encoding and the option accepts it, they are an array with Skipped set.
