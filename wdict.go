@@ -147,14 +147,15 @@ func (d *dictEnc) add(c *column, key []byte, null bool) (int, bool) {
 	return code, true
 }
 
-// encodeDict codes the rows lo to hi of the buffer.
-func (w *Writer) encodeDict(c *column, lo, hi int) {
-	d := c.dict
-	for i := lo; i < hi && w.err == nil; i++ {
+// codeRows codes the rows lo to hi of the buffer, up to the first one that needs a write: it
+// returns the row it stopped at, hi when there is none. full says that it stopped after a row
+// whose code fills a chunk of codes; otherwise the row it stopped at does not fit the run. It
+// only touches the column.
+func (d *dictEnc) codeRows(c *column, lo, hi int) (next int, full bool) {
+	for i := lo; i < hi; i++ {
 		code, ok := d.code(c, i)
 		if !ok {
-			w.endRun(c)
-			code, _ = d.code(c, i)
+			return i, false
 		}
 		if d.width == 1 {
 			d.codes = append(d.codes, byte(code))
@@ -163,7 +164,23 @@ func (w *Writer) encodeDict(c *column, lo, hi int) {
 		}
 		d.rows++
 		if len(d.codes) >= chunkBytes {
+			return i + 1, true
+		}
+	}
+	return hi, false
+}
+
+// encodeDict ends the coding of the rows of the buffer up to hi, which prepare began: it writes
+// the chunk of codes that is full, or ends the run that has no room for a row, and codes on.
+func (w *Writer) encodeDict(c *column, hi int) {
+	for i, full := c.coded, c.codesFull; w.err == nil; i, full = c.dict.codeRows(c, i, hi) {
+		switch {
+		case full:
 			w.flushCodes(c)
+		case i < hi:
+			w.endRun(c) // the first value of a run is always taken
+		default:
+			return
 		}
 	}
 }

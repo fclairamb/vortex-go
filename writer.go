@@ -97,6 +97,10 @@ type Writer struct {
 	comp      *compress.Compressor // the compressor of the arrays written now, see wcompress.go
 	pre       *encode.Node         // the array of the chunk being written, compressed before
 	queue     []*waiting           // the chunks that wait to be compressed
+	work      []colWork            // the columns of the Write being added, with their Data
+	valids    []validWork          // the validities of its structs
+	errs      []error              // the errors of its columns
+	cols      []Data               // its Data, while they are checked
 	decRaw    []byte
 	statsID   string
 	bufs      []buffer
@@ -301,24 +305,29 @@ func (w *Writer) writeRows(cols []Data) error {
 	if len(cols) > 0 && cols[0].body != nil {
 		n = cols[0].n
 	}
-	for i, f := range fields {
-		if err := checkData(f.Name, f.Type, cols[i], n); err != nil {
-			return err
-		}
+	if err := w.checkColumns(cols, n); err != nil {
+		return err
 	}
 	if n == 0 {
 		return nil
 	}
 	w.start()
+	w.work, w.valids = w.work[:0], w.valids[:0]
+	for i, f := range fields {
+		w.gather(w.root.kids[i], f.Type, cols[i])
+	}
 	// The columns advance together, a block at a time: the chunks that fill up in a block are
 	// then compressed together, on every core, whatever the rows of one Write.
 	for lo := 0; lo < n && w.err == nil; lo += rowBlock {
 		hi := min(n, lo+rowBlock)
 		w.ahead = n - lo
-		for i, f := range fields {
-			w.writeNode(w.root.kids[i], f.Type, cols[i], lo, hi)
+		for _, v := range w.valids {
+			v.valid.add(v.nulls, lo, hi)
 		}
+		w.advance(lo, hi)
 	}
+	clear(w.work) // the Data of the caller is not kept
+	clear(w.valids)
 	w.drain()
 	w.rows += uint64(n)
 	return w.err
@@ -332,18 +341,19 @@ func (w *Writer) start() {
 	}
 }
 
-// writeNode adds the rows lo to hi of a column. A struct has no segment of its own: its
-// validity, when it has one, and its fields do.
-func (w *Writer) writeNode(l *layoutBuild, t Type, d Data, lo, hi int) {
+// gather lists the columns under l, with their Data of a Write, and the validities of the
+// structs. A struct has no segment of its own: its validity, when it has one, and its fields
+// do.
+func (w *Writer) gather(l *layoutBuild, t Type, d Data) {
 	if t.kind != Struct {
-		w.addRows(l.col, d, lo, hi)
+		w.work = append(w.work, colWork{l.col, d})
 		return
 	}
 	if l.valid != nil {
-		l.valid.add(d.nulls, lo, hi)
+		w.valids = append(w.valids, validWork{l.valid, d.nulls})
 	}
 	for i, f := range t.fields {
-		w.writeNode(l.kids[i], f.Type, d.kids[i], lo, hi)
+		w.gather(l.kids[i], f.Type, d.kids[i])
 	}
 }
 

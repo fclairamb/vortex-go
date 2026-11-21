@@ -1,7 +1,10 @@
 package vortex
 
 import (
+	"runtime"
 	"slices"
+	"sync"
+	"sync/atomic"
 
 	"github.com/fclairamb/vortex-go/internal/compress"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
@@ -52,15 +55,19 @@ type column struct {
 	zoneMeta []byte // the metadata of the zone map layout, nil when there is none
 	t        Type
 	ranger
-	block    int
-	size     int
-	rows     uint64
-	waiting  int // the chunks that wait to be compressed, see wcompress.go
-	slots    int // the waiting chunks made for the column
-	zoneSeg  uint32
-	mode     colMode
-	eligible bool
-	wide     bool // a chunk was many times the size of a chunk: the compressors are not kept
+	block     int
+	size      int
+	rows      uint64
+	rest      int // the row of the Data of the Write from which settle adds the rows
+	coded     int // the row of the buffer up to which prepare coded the rows of a dictionary
+	waiting   int // the chunks that wait to be compressed, see wcompress.go
+	slots     int // the waiting chunks made for the column
+	zoneSeg   uint32
+	mode      colMode
+	eligible  bool
+	wide      bool // a chunk was many times the size of a chunk: the compressors are not kept
+	full      bool // fill filled a block, which settle commits
+	codesFull bool // prepare stopped at a chunk of codes that is full
 }
 
 func newColumn(t Type, zoned bool) *column {
@@ -71,18 +78,102 @@ func newColumn(t Type, zoned bool) *column {
 	return c
 }
 
-// addRows adds the rows lo to n of d to the column, a block at a time.
-func (w *Writer) addRows(c *column, d Data, lo, n int) {
-	c.rows += uint64(n - lo)
-	c.reserve(w.ahead)
-	for lo < n && w.err == nil {
-		take := min(n-lo, rowBlock-(c.buf.n-c.block))
-		appendRows(c.buf, d.body, c.t, lo, lo+take, &c.arena)
-		lo += take
-		if c.buf.n-c.block == rowBlock {
-			w.consume(c, c.buf.n)
+// colWork is a column and its Data of the Write being added.
+type colWork struct {
+	c *column
+	d Data
+}
+
+// validWork is the validity of a struct and the nulls of its Data of the Write being added.
+type validWork struct {
+	valid *validBuild
+	nulls []bool
+}
+
+// parallelRows is the rows of a step from which the columns work on every core: under it,
+// starting the goroutines costs more than they save.
+const parallelRows = 1024
+
+// advance adds the rows lo to hi of the Write to every column. What a column does alone (the
+// copy of its rows, the statistics of a block, the choice and the codes of a dictionary) runs
+// on every core; what goes to the file is then done a column after the other, in order.
+func (w *Writer) advance(lo, hi int) {
+	work := w.work
+	if workers := min(len(work), runtime.GOMAXPROCS(0)); workers > 1 && hi-lo >= parallelRows {
+		each(workers, len(work), func(i int) { work[i].c.fill(w, work[i].d, lo, hi) })
+	} else {
+		for _, k := range work {
+			k.c.fill(w, k.d, lo, hi)
 		}
 	}
+	for _, k := range work {
+		w.settle(k.c, k.d, hi)
+	}
+}
+
+// each runs f(0) to f(n-1) on that many goroutines, and waits for them. It is a function of
+// its own so that a caller that does without it allocates nothing for it.
+func each(workers, n int, f func(i int)) {
+	var next atomic.Int32
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Go(func() {
+			for i := int(next.Add(1)) - 1; i < n; i = int(next.Add(1)) - 1 {
+				f(i)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+// checkColumns checks the Data of a Write against the fields, of n rows each: on every core
+// when there is enough of it. The error is the one of the first field that has one.
+func (w *Writer) checkColumns(cols []Data, n int) error {
+	fields := w.schema.root.fields
+	workers := min(len(fields), runtime.GOMAXPROCS(0))
+	if workers < 2 || n < parallelRows {
+		for i, f := range fields {
+			if err := checkData(f.Name, f.Type, cols[i], n); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	// The goroutines read a copy of cols: the slice of the caller stays on its stack.
+	w.cols = append(w.cols[:0], cols...)
+	w.errs = append(w.errs[:0], make([]error, len(fields))...)
+	each(workers, len(fields), func(i int) { w.errs[i] = checkData(fields[i].Name, fields[i].Type, w.cols[i], n) })
+	clear(w.cols)
+	for _, err := range w.errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// fill copies the rows lo to hi of d into the buffer of the column, up to the end of its
+// block, and prepares the block when it is full. It only touches the column.
+func (c *column) fill(w *Writer, d Data, lo, hi int) {
+	c.rows += uint64(hi - lo)
+	c.reserve(w.ahead)
+	take := min(hi-lo, rowBlock-(c.buf.n-c.block))
+	appendRows(c.buf, d.body, c.t, lo, lo+take, &c.arena)
+	c.rest = lo + take
+	if c.full = c.buf.n-c.block == rowBlock; c.full {
+		c.prepare(w, c.buf.n)
+	}
+}
+
+// settle does what fill left for the column: the block that is full goes to its dictionary or
+// to its chunk, and the rows after it are added.
+func (w *Writer) settle(c *column, d Data, hi int) {
+	if c.full {
+		c.full = false
+		w.commit(c, c.buf.n)
+	}
+	// A step is a block of rows at most: what is left after a full block starts the next one.
+	appendRows(c.buf, d.body, c.t, c.rest, hi, &c.arena)
 }
 
 // reserve makes room in the buffer for the rows that the Write still has for the column, up
@@ -118,6 +209,13 @@ func (c *column) reserve(ahead int) {
 // last rows of the column. Their statistics are recorded, then they go to a dictionary, or
 // they wait for the chunk to be full.
 func (w *Writer) consume(c *column, hi int) {
+	c.prepare(w, hi)
+	w.commit(c, hi)
+}
+
+// prepare is the part of consume that only touches the column: the statistics of the rows,
+// the choice of a dictionary, and their codes up to the first one that needs a write.
+func (c *column) prepare(w *Writer, hi int) {
 	lo := c.block
 	if c.zones != nil {
 		c.zones.add(c.buf, lo, hi)
@@ -130,11 +228,20 @@ func (w *Writer) consume(c *column, hi int) {
 		}
 	}
 	if c.mode == modeDict {
-		w.encodeDict(c, lo, hi)
-		c.empty()
+		c.coded, c.codesFull = c.dict.codeRows(c, lo, hi)
 		return
 	}
 	c.size += sizeOf(c.buf, c.t, lo, hi)
+}
+
+// commit is the part of consume that writes: the end of the codes of a dictionary, with its
+// runs and its chunks of codes, or the chunk that is full.
+func (w *Writer) commit(c *column, hi int) {
+	if c.mode == modeDict {
+		w.encodeDict(c, hi)
+		c.empty()
+		return
+	}
 	c.block = hi
 	if c.size >= chunkBytes {
 		w.flushPlain(c)
@@ -168,9 +275,15 @@ func (w *Writer) flushPlain(c *column) {
 
 // writeChunk writes the rows of b, a chunk of the column, as a flat layout.
 func (w *Writer) writeChunk(c *column, b *body) {
+	s := c.arrayStats(b)
+	w.writeChunkWith(c, b, &s)
+}
+
+// writeChunkWith is writeChunk with the statistics of the rows, found before.
+func (w *Writer) writeChunkWith(c *column, b *body, s *astat) {
 	w.start()
 	w.beginFlat()
-	w.stats, w.statsID = w.arrayStats(c, b), rootID(c.t)
+	w.stats, w.statsID = s.table(w.fb), rootID(c.t)
 	root := w.encode(c.t, Data{b}, b.n)
 	w.stats = 0
 	if seg, ok := w.endFlat(root); ok {

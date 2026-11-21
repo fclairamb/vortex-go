@@ -141,8 +141,8 @@ func encodeScalar(v *scalar.Value) []byte {
 	return out
 }
 
-// arrayStats writes the ArrayStats of the rows b of the column, and returns it.
-func (w *Writer) arrayStats(c *column, b *body) flatbuf.Off {
+// arrayStats is the ArrayStats of the rows b of the column. It only reads the column.
+func (c *column) arrayStats(b *body) astat {
 	n := b.n
 	s := astat{nulls: countNulls(b, c.t, 0, n)}
 	r := &c.ranger
@@ -168,7 +168,7 @@ func (w *Writer) arrayStats(c *column, b *body) flatbuf.Off {
 		}
 		s.constant, s.sorted = &constant, &sorted
 	}
-	return s.table(w.fb)
+	return s
 }
 
 // minMax sets the min and the max of the stats from the rows imin and imax of the buffer. A

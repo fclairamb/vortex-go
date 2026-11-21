@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"math"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -162,5 +163,36 @@ func TestWriteBuffer(t *testing.T) {
 		} else if sum != rows {
 			t.Errorf("Buffer %d: other rows", c.buffer)
 		}
+	}
+}
+
+// TestWriteChecksOnEveryCore checks that the Data of a large Write, checked on every core, is
+// refused for the first column that is wrong, as a small one is, and that the writer goes on
+// with the columns of the next Write.
+func TestWriteChecksOnEveryCore(t *testing.T) {
+	old := runtime.GOMAXPROCS(4)
+	defer runtime.GOMAXPROCS(old)
+	const n = 3 * parallelRows
+	s := NewSchema(Field{"a", Int64Type()}, Field{"b", Utf8Type()}, Field{"c", Utf8Type()})
+	good, bad := make([]string, n), make([]string, n)
+	for i := range good {
+		good[i], bad[i] = "ok", "ok"
+	}
+	bad[n-1] = "\xff"
+	var buf bytes.Buffer
+	w := NewWriter(&buf, s, WriteOptions{})
+	err := w.Write(Of(make([]int64, n)), OfStrings(bad), OfStrings(bad))
+	if err == nil || !strings.Contains(err.Error(), `"b"`) {
+		t.Fatalf("a string that is not UTF-8: %v", err)
+	}
+	w = NewWriter(&buf, s, WriteOptions{})
+	if err := w.Write(Of(make([]int64, n)), OfStrings(good), OfStrings(good)); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if f := openBytes(t, buf.Bytes()); f.NumRows() != n {
+		t.Fatalf("%d rows", f.NumRows())
 	}
 }
