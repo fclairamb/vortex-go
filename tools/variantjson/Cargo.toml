@@ -11,9 +11,9 @@ publish = false
 [dependencies]
 vortex = { version = "=0.93.0", default-features = false, features = ["files", "zstd", "tokio", "parquet-variant"] }
 vortex-parquet-variant = "=0.93.0"
-parquet-variant-compute = "59"
-parquet-variant-json = "59"
-arrow-array = "59"
+parquet-variant-compute = "60"
+parquet-variant-json = "60"
+arrow-array = "60"
 futures = "0.3"
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
