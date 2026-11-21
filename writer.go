@@ -88,7 +88,7 @@ type Writer struct {
 	force     string               // the encoding a test forces, see wforce.go
 	comp      *compress.Compressor // the compressor of the arrays written now, see wcompress.go
 	pre       *encode.Node         // the array of the chunk being written, compressed before
-	queue     []*column            // the chunks that wait to be compressed
+	queue     []*waiting           // the chunks that wait to be compressed
 	decRaw    []byte
 	statsID   string
 	bufs      []buffer
@@ -143,8 +143,8 @@ type validBuild struct {
 	seg   uint32
 }
 
-func (v *validBuild) add(nulls []bool, n int) {
-	for i := range n {
+func (v *validBuild) add(nulls []bool, lo, hi int) {
+	for i := lo; i < hi; i++ {
 		if v.rows&7 == 0 {
 			v.bits = append(v.bits, 0)
 		}
@@ -299,8 +299,13 @@ func (w *Writer) writeRows(cols []Data) error {
 		return nil
 	}
 	w.start()
-	for i, f := range fields {
-		w.writeNode(w.root.kids[i], f.Type, cols[i], n)
+	// The columns advance together, a block at a time: the chunks that fill up in a block are
+	// then compressed together, on every core, whatever the rows of one Write.
+	for lo := 0; lo < n && w.err == nil; lo += rowBlock {
+		hi := min(n, lo+rowBlock)
+		for i, f := range fields {
+			w.writeNode(w.root.kids[i], f.Type, cols[i], lo, hi)
+		}
 	}
 	w.drain()
 	w.rows += uint64(n)
@@ -315,18 +320,18 @@ func (w *Writer) start() {
 	}
 }
 
-// writeNode adds the rows of a column. A struct has no segment of its own: its validity,
-// when it has one, and its fields do.
-func (w *Writer) writeNode(l *layoutBuild, t Type, d Data, n int) {
+// writeNode adds the rows lo to hi of a column. A struct has no segment of its own: its
+// validity, when it has one, and its fields do.
+func (w *Writer) writeNode(l *layoutBuild, t Type, d Data, lo, hi int) {
 	if t.kind != Struct {
-		w.addRows(l.col, d, n)
+		w.addRows(l.col, d, lo, hi)
 		return
 	}
 	if l.valid != nil {
-		l.valid.add(d.nulls, n)
+		l.valid.add(d.nulls, lo, hi)
 	}
 	for i, f := range t.fields {
-		w.writeNode(l.kids[i], f.Type, d.kids[i], n)
+		w.writeNode(l.kids[i], f.Type, d.kids[i], lo, hi)
 	}
 }
 

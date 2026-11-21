@@ -2,7 +2,6 @@ package vortex
 
 import (
 	"github.com/fclairamb/vortex-go/internal/compress"
-	"github.com/fclairamb/vortex-go/internal/encode"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 	"github.com/fclairamb/vortex-go/internal/protowire"
 )
@@ -12,6 +11,9 @@ var (
 	rowBlock   = 8192    // the rows of a block: the unit of the chunks and of the zones
 	chunkBytes = 1 << 20 // the uncompressed bytes at which a chunk is cut, at a block
 )
+
+// wideChunks is the size, in chunks, from which a chunk is compressed and written alone.
+const wideChunks = 4
 
 type colMode uint8
 
@@ -38,26 +40,24 @@ type chunk struct {
 // column is a column that has no children: the rows that are not in a segment yet, and what
 // has been written of it.
 type column struct {
-	zones      *zoneAcc
-	dict       *dictEnc
-	buf        *body
-	spare      *body                // the chunk that waits to be compressed, see wcompress.go
-	comp       *compress.Compressor // made on the first chunk
-	node       *encode.Node         // the compressed array of the spare chunk
-	pieces     []piece
-	arena      []byte
-	spareArena []byte
-	decRaw     []byte
-	zoneMeta   []byte // the metadata of the zone map layout, nil when there is none
-	t          Type
+	zones    *zoneAcc
+	dict     *dictEnc
+	buf      *body
+	comp     *compress.Compressor // of the dictionaries, made on the first use
+	free     []*waiting           // the chunks written, whose buffers the next ones take
+	pieces   []piece
+	arena    []byte
+	zoneMeta []byte // the metadata of the zone map layout, nil when there is none
+	t        Type
 	ranger
 	block    int
 	size     int
 	rows     uint64
+	waiting  int // the chunks that wait to be compressed, see wcompress.go
+	slots    int // the waiting chunks made for the column
 	zoneSeg  uint32
 	mode     colMode
 	eligible bool
-	pending  bool // the spare chunk waits
 }
 
 func newColumn(t Type, zoned bool) *column {
@@ -68,9 +68,10 @@ func newColumn(t Type, zoned bool) *column {
 	return c
 }
 
-// addRows adds the first n rows of d to the column, a block at a time.
-func (w *Writer) addRows(c *column, d Data, n int) {
-	for lo := 0; lo < n && w.err == nil; {
+// addRows adds the rows lo to n of d to the column, a block at a time.
+func (w *Writer) addRows(c *column, d Data, lo, n int) {
+	c.rows += uint64(n - lo)
+	for lo < n && w.err == nil {
 		take := min(n-lo, rowBlock-(c.buf.n-c.block))
 		appendRows(c.buf, d.body, c.t, lo, lo+take, &c.arena)
 		lo += take
@@ -78,7 +79,6 @@ func (w *Writer) addRows(c *column, d Data, n int) {
 			w.consume(c, c.buf.n)
 		}
 	}
-	c.rows += uint64(n)
 }
 
 // consume takes the rows of the buffer from the last block to hi: a whole block, or the
@@ -121,10 +121,13 @@ func (w *Writer) flushPlain(c *column) {
 	switch {
 	case !w.compressing():
 		w.writeChunk(c, c.buf)
-	case w.leaves > 1:
-		w.queueChunk(c)
-	default: // nothing to compress in parallel: no chunk waits
+	case c.size > wideChunks*chunkBytes:
+		// A chunk of wide rows is a block, many times the size of a chunk: it does not wait,
+		// so that the writer holds one of them, not a queue of them.
+		w.drain()
 		w.withCompressor(c, func() { w.writeChunk(c, c.buf) })
+	default:
+		w.queueChunk(c)
 	}
 	c.empty()
 }
@@ -149,7 +152,7 @@ func (w *Writer) finish(c *column) {
 	}
 	if c.mode == modeDict {
 		w.endRun(c)
-	} else if c.buf.n > 0 || len(c.pieces) == 0 && !c.pending {
+	} else if c.buf.n > 0 || len(c.pieces) == 0 && c.waiting == 0 {
 		w.flushPlain(c)
 	}
 	if c.zones != nil && c.rows > 0 && w.err == nil {

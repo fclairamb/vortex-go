@@ -158,9 +158,13 @@ func (w *Writer) arrayStats(c *column, b *body) flatbuf.Off {
 		r.minMax(&s, b, imin, imax)
 	}
 	if r.class != scNone && s.nulls == 0 && nans == 0 && n > 0 {
-		constant, sorted := r.order(b, imin, imax) == 0, true
-		for i := 1; i < n && sorted; i++ {
-			sorted = r.order(b, i-1, i) <= 0
+		constant := r.order(b, imin, imax) == 0
+		sorted, fast := r.sortedFast(b)
+		if !fast {
+			sorted = true
+			for i := 1; i < n && sorted; i++ {
+				sorted = r.order(b, i-1, i) <= 0
+			}
 		}
 		s.constant, s.sorted = &constant, &sorted
 	}

@@ -12,14 +12,14 @@ import (
 )
 
 // The writer hands each chunk of a column to the compressor of the column (internal/compress),
-// unless the Compression is None or a test forces an encoding. When the file has more than one
-// column, a full chunk waits in the spare buffer of its column: at the end of a Write, at
-// Close, or when the column fills another one, the waiting chunks are compressed in parallel, a
-// goroutine per column up to GOMAXPROCS, then written one after the other in the order they
-// were filled, so that the file does not depend on the scheduling. A column keeps at most two
-// chunks, the one being filled and the one that waits. The chunks of a file of one column, and
-// those of the dictionary layout (its codes and its values), are compressed as they are
-// written.
+// unless the Compression is None or a test forces an encoding. A full chunk waits in a queue,
+// with its own buffer and its own compressor: at the end of a Write, at Close, or when the
+// queue is full, the waiting chunks are compressed in parallel, up to GOMAXPROCS at once, then
+// written one after the other in the order they were filled, so that the file does not depend
+// on the scheduling, nor on the number of cores: the length of the queue only depends on the
+// schema. Several chunks of one column can wait: a column of long strings fills its chunks
+// faster than the others, and costs more to compress. The chunks of the dictionary layout (its
+// codes and its values) are compressed as they are written.
 
 // compressing says whether the chunks are compressed.
 func (w *Writer) compressing() bool { return w.opt.Compression != None && w.force == "" }
@@ -27,13 +27,18 @@ func (w *Writer) compressing() bool { return w.opt.Compression != None && w.forc
 // compressor is the compressor of the column, made on the first use.
 func (w *Writer) compressor(c *column) *compress.Compressor {
 	if c.comp == nil {
-		mode := compress.Default
-		if w.opt.Compression == Compact {
-			mode = compress.Compact
-		}
-		c.comp = compress.NewLimited(mode, w.limit)
+		c.comp = w.newCompressor()
 	}
 	return c.comp
+}
+
+// newCompressor makes a compressor of the mode and of the edition of the file.
+func (w *Writer) newCompressor() *compress.Compressor {
+	mode := compress.Default
+	if w.opt.Compression == Compact {
+		mode = compress.Compact
+	}
+	return compress.NewLimited(mode, w.limit)
 }
 
 // ptypeOf is the type of the compressor of the numbers of a column of kind k. A Float16 is not
@@ -142,18 +147,42 @@ func (w *Writer) compressNumbers(p compress.PType, raw []byte) *encode.Node {
 	return w.comp.Numbers(p, raw, nil)
 }
 
+// waiting is a full chunk of a column that waits to be compressed, then written.
+type waiting struct {
+	c      *column
+	buf    *body
+	comp   *compress.Compressor
+	node   *encode.Node // the compressed array, nil for the plain one
+	arena  []byte
+	decRaw []byte
+}
+
+// queueLen is the chunks that wait at most: enough for every column to have one, and for a
+// column that fills faster to have several.
+func (w *Writer) queueLen() int { return max(2*w.leaves, minQueue) }
+
+// minQueue is the least chunks the queue holds. A variable so that the tests can lower it.
+var minQueue = 16
+
 // queueChunk makes the rows of the buffer of the column a chunk that waits to be compressed.
 func (w *Writer) queueChunk(c *column) {
-	if c.pending {
+	var q *waiting
+	if n := len(c.free); n > 0 {
+		q, c.free = c.free[n-1], c.free[:n-1]
+	} else {
+		q = &waiting{c: c, buf: newBody(c.t)}
+		if c.slots++; c.slots == 1 {
+			q.comp = w.compressor(c) // the one of the dictionaries: they never work at once
+		} else {
+			q.comp = w.newCompressor()
+		}
+	}
+	c.buf, q.buf = q.buf, c.buf
+	c.arena, q.arena = q.arena, c.arena
+	c.waiting++
+	if w.queue = append(w.queue, q); len(w.queue) >= w.queueLen() {
 		w.drain()
 	}
-	if c.spare == nil {
-		c.spare = newBody(c.t)
-	}
-	c.buf, c.spare = c.spare, c.buf
-	c.arena, c.spareArena = c.spareArena, c.arena
-	c.pending = true
-	w.queue = append(w.queue, c)
 }
 
 // drain compresses the chunks that wait, in parallel, then writes them in order.
@@ -165,7 +194,7 @@ func (w *Writer) drain() {
 	workers := min(len(q), runtime.GOMAXPROCS(0))
 	if workers == 1 {
 		for _, c := range q {
-			compressPending(w, c)
+			compressWaiting(c)
 		}
 	} else {
 		var next atomic.Int32
@@ -173,7 +202,7 @@ func (w *Writer) drain() {
 		for range workers {
 			wg.Go(func() {
 				for i := int(next.Add(1)) - 1; i < len(q); i = int(next.Add(1)) - 1 {
-					compressPending(w, q[i])
+					compressWaiting(q[i])
 				}
 			})
 		}
@@ -184,22 +213,21 @@ func (w *Writer) drain() {
 		if c.node == nil { // the children of a nested column are compressed as they are written
 			w.comp = c.comp
 		}
-		w.writeChunk(c, c.spare)
+		w.writeChunk(c.c, c.buf)
 		w.pre, w.hasPre, w.comp, c.node = nil, false, nil, nil
-		resetBody(c.spare)
-		c.spareArena = c.spareArena[:0]
-		c.pending = false
+		resetBody(c.buf)
+		c.arena = c.arena[:0]
+		c.c.waiting--
+		c.c.free = append(c.c.free, c)
 	}
 	clear(q)
 	w.queue = q[:0]
 }
 
-// compressPending compresses the chunk that waits in the spare buffer of the column. It only
-// touches the column.
-func compressPending(w *Writer, c *column) {
-	cp := w.compressor(c)
-	cp.Reset()
-	c.node = compressData(cp, c.t, Data{c.spare}, &c.decRaw)
+// compressWaiting compresses a chunk that waits. It only touches the chunk.
+func compressWaiting(q *waiting) {
+	q.comp.Reset()
+	q.node = compressData(q.comp, q.c.t, Data{q.buf}, &q.decRaw)
 }
 
 // withCompressor runs f with the compressor of the column as the one of the arrays written at
