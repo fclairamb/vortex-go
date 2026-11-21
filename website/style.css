@@ -9,7 +9,6 @@
   --bad: #b42318;
   --bar-go: #0b5cad;
   --bar-rust: #b45309;
-  --bar-parquet: #6b7280;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -24,7 +23,6 @@
     --bad: #ff8a80;
     --bar-go: #6cb2ff;
     --bar-rust: #f0a050;
-    --bar-parquet: #9aa5b0;
   }
 }
 
@@ -74,7 +72,6 @@ svg .muted { fill: var(--muted); }
 svg .axis { stroke: var(--line); stroke-width: 1; }
 svg .bar-go { fill: var(--bar-go); }
 svg .bar-rust { fill: var(--bar-rust); }
-svg .bar-parquet { fill: var(--bar-parquet); }
 svg .line-1 { stroke: var(--bar-go); fill: none; stroke-width: 2; }
 svg .line-n { stroke: var(--bar-rust); fill: none; stroke-width: 2; }
 svg .dot-1 { fill: var(--bar-go); }
@@ -85,7 +82,6 @@ svg .guide { stroke: var(--muted); stroke-dasharray: 4 3; stroke-width: 1; }
 .legend i { display: inline-block; width: 0.8rem; height: 0.8rem; margin-right: 0.3rem; border-radius: 2px; }
 .legend .go { background: var(--bar-go); }
 .legend .rust { background: var(--bar-rust); }
-.legend .parquet { background: var(--bar-parquet); }
 
 footer { border-top: 1px solid var(--line); margin-top: 3rem; padding-top: 1rem; padding-bottom: 2rem; color: var(--muted); font-size: 0.9rem; }
 

@@ -18,15 +18,18 @@ type result struct {
 	NsPerOp float64 `json:"ns_per_op"`
 }
 
-// benchCase is one case at one thread count. Rust and ParquetGo are absent when that harness
-// has no result for it.
+// benchCase is one case at one thread count. Rust is absent when that harness has no result
+// for it. GoRows and ParquetGo are the two libraries reading the same rows into the same
+// structs, and RatioToParquetGo is the time of the first over the time of the second.
 type benchCase struct {
-	Rust        *result  `json:"rust"`
-	ParquetGo   *result  `json:"parquet_go"`
-	RatioToRust *float64 `json:"ratio_to_rust"`
-	Name        string   `json:"name"`
-	Go          result   `json:"go"`
-	Threads     int      `json:"threads"`
+	Rust             *result  `json:"rust"`
+	GoRows           *result  `json:"go_rows"`
+	ParquetGo        *result  `json:"parquet_go"`
+	RatioToRust      *float64 `json:"ratio_to_rust"`
+	RatioToParquetGo *float64 `json:"ratio_to_parquet_go"`
+	Name             string   `json:"name"`
+	Go               result   `json:"go"`
+	Threads          int      `json:"threads"`
 }
 
 type machine struct {

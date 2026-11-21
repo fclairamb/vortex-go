@@ -38,6 +38,15 @@ jobs:
           make api
           git diff --exit-code
 
+      # bench/ is a module of its own that uses this one in place: when a dependency of the
+      # root moves, its go.mod must follow, or its benchmarks do not build. They did not from
+      # the klauspost/compress update to 2026-11-21, and no parquet-go number was recorded.
+      - name: bench/ builds
+        if: matrix.lint
+        run: |
+          go -C bench mod tidy -diff
+          go -C bench vet ./...
+
       # No cgo, standard library only, 100% coverage, race detector.
       - name: Gates
         run: make check

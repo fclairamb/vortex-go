@@ -44,7 +44,7 @@ func optNs(r *result) string {
 	return fmtNs(r.NsPerOp)
 }
 
-// ratioCell is a ratio to Rust, marked when we are slower.
+// ratioCell is a ratio to Rust or to parquet-go, marked when we are slower.
 func ratioCell(r *float64) (text, class string) {
 	switch {
 	case r == nil:
@@ -77,17 +77,38 @@ type group struct {
 	Height int
 }
 
+// row is a line of the table of the ratios to Rust, and of the one of the ratios to
+// parquet-go: Rust is empty in the second, Parquet in the first.
 type row struct {
-	Name, Threads, Go, Rust, Parquet, Raw string
-	Ratio, Class                          string
-	Index                                 int
+	Name, Threads, Go, Rust, Parquet string
+	Ratio, Class                     string
+	Index                            int
 }
 
 type speedView struct {
 	Machine, Commit, Date, Versions string
 	Rows                            []row
+	Parquet                         []row
 	Groups                          []group
 	Height                          int
+}
+
+// parquetRows is the cases that both libraries read, in the order of the report.
+func parquetRows(cases []benchCase) []row {
+	var rows []row
+	for i := range cases {
+		c := &cases[i]
+		if c.GoRows == nil || c.ParquetGo == nil {
+			continue
+		}
+		ratio, class := ratioCell(c.RatioToParquetGo)
+		rows = append(rows, row{
+			Index: len(rows), Name: c.Name, Threads: strconv.Itoa(c.Threads),
+			Go: fmtNs(c.GoRows.NsPerOp), Parquet: fmtNs(c.ParquetGo.NsPerOp),
+			Ratio: ratio, Class: class,
+		})
+	}
+	return rows
 }
 
 const (
@@ -121,6 +142,7 @@ func newSpeedView(r *report) speedView {
 		Commit:   short(r.Commit),
 		Date:     r.Date,
 		Versions: fmt.Sprintf("Vortex %s, %s, %s", r.VortexVersion, r.GoVersion, r.RustVersion),
+		Parquet:  parquetRows(r.Cases),
 	}
 	y := 0
 	cases := sorted(r.Cases)
@@ -129,7 +151,7 @@ func newSpeedView(r *report) speedView {
 		ratio, class := ratioCell(c.RatioToRust)
 		v.Rows = append(v.Rows, row{
 			Index: i, Name: c.Name, Threads: strconv.Itoa(c.Threads),
-			Go: fmtNs(c.Go.NsPerOp), Rust: optNs(c.Rust), Parquet: optNs(c.ParquetGo),
+			Go: fmtNs(c.Go.NsPerOp), Rust: optNs(c.Rust),
 			Ratio: ratio, Class: class,
 		})
 		g := group{Index: i, Label: fmt.Sprintf("%s, %d thread", c.Name, c.Threads), Y: y}
@@ -139,7 +161,7 @@ func newSpeedView(r *report) speedView {
 		series := []struct {
 			r            *result
 			class, label string
-		}{{&c.Go, "bar-go", "Go"}, {c.Rust, "bar-rust", "Rust"}, {c.ParquetGo, "bar-parquet", "parquet-go"}}
+		}{{&c.Go, "bar-go", "Go"}, {c.Rust, "bar-rust", "Rust"}}
 		longest := 0.0
 		for _, s := range series {
 			if s.r != nil {
