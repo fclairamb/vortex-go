@@ -57,7 +57,7 @@ for b, err := range f.Scan(ctx, q, "id", "price", "name") {
   list (regular offsets) and a map (`elems` is `OfStruct(keys, values)`).
 - **Errors name the field** (`a.b` for a struct field, `a[]` for the elements of a list) and
   close the writer for writing. A schema that cannot be written (decimal precision 0, a date in
-  seconds, a variant) is reported by the first `Write` or `Close`, since `NewWriter` returns
+  seconds, a variant before `core 2026.08.3`) is reported by the first `Write` or `Close`, since `NewWriter` returns
   no error.
 - **A non-nullable field takes no validity.** The reference reader rejects a validity child
   on a non-nullable dtype, so `Nulls` on such a field is an error when a row is null.
@@ -71,7 +71,20 @@ for b, err := range f.Scan(ctx, q, "id", "price", "name") {
   binary). A file with no row has one empty chunk. A struct needs one field at least to
   have a length. Rows reach the `io.Writer` when a chunk is full, and at `Close`.
 - **Lists are `vortex.listview`**, maps are `vortex.map` over a listview of structs: it is
-  the canonical form, and the one a map requires.
+  the canonical form, and the one a map requires. A compressed list (not `None`) is a
+  `vortex.list`, with no sizes.
+- **`WriteOptions.Edition` is the edition the file must be readable with**, as upstream
+  names them (`"core 2025.05.0"`); empty is the newest, `core 2026.08.3`. The writer only
+  makes what that edition has. Before `core 2026.08.0` a zone map is a `vortex.stats` layout
+  (the zone length, the bitset of the statistics, and a table of max, min, null count and NaN
+  count, a max and a min followed by a flag that says the bound is cut) and the file
+  statistics have no aggregate, so Vortex 0.83 and earlier open the file. Before
+  `core 2025.10.0` a list is always a `vortex.list`, and the compressor leaves out
+  `fastlanes.rle` and `vortex.masked`; before `core 2025.06.0` it leaves out `vortex.sequence`
+  and `vortex.zstd` too. A type the edition cannot hold is an error of the first `Write` or
+  `Close` that names the type and the edition: `fixed_size_list` before `core 2025.10.0`,
+  `map` before `core 2026.08.2`, `uuid` before `core 2026.08.3`. An unknown edition is an
+  error too.
 
 ## Opening, schema and errors
 
@@ -149,12 +162,21 @@ it is out of scope.
   allocates.
 - **The writer mirrors the table.** `Data` has the physical shape and the `*Schema` gives
   the logical type: `Of[int64]` for a timestamp, `OfBytes` for a UUID,
-  `OfList(offsets, OfStruct(keys, values))` for a map.
+  `OfList(offsets, OfStruct(keys, values))` for a map, `OfVariants([]any)` for a Variant.
 - **Variant is `any`.** A field of a row struct of type `any` takes a Variant column;
   `Column.Variant(i) (any, error)` decodes one value at the column level. It allocates, and
   the error is a damaged value: the bytes of a Variant are only parsed when a row is asked
   for. A decimal inside a Variant is `VariantDecimal{Value Decimal; Scale int}`: a Variant
   gives each decimal its own scale.
+- **Variants are written unshredded.** `VariantType()` and `OfVariants(vals []any)`: `nil` is a
+  null row, and a value is a `bool`, any Go integer or float (widened, an unsigned integer up
+  to the largest `int64`), a `string`, a `[]byte`, a `time.Time` (a timestamp in microseconds,
+  in nanoseconds when it has a finer part), a `VariantDecimal`, a `[]any` or a
+  `map[string]any` of these, up to 128 levels deep, so what `encoding/json` makes works as
+  it is (`json.Number` does not). Another Go type is an error of `Write` that names the type
+  and the row. A field of type `any` in a `RowWriter` is a nullable Variant column. The array
+  is a `vortex.variant` around a `vortex.parquet.variant` with a value and no `typed_value`;
+  its statistics are the null count only.
 
 ## Rules that go with it
 

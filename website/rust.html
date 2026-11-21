@@ -29,7 +29,7 @@
 
 <h2 id="differs">What differs</h2>
 <ul data-testid="differs-list">
-<li><strong>What the writer emits.</strong> Bit-packing, frame of reference, zigzag, run-length, run-end, dictionary, sequence, constant, sparse, ALP, ALP-RD, FSST, decimal byte parts, datetime parts and zstd. Not Pco and not OnPair: both are read, neither is written, so compact mode uses zstd for numbers. The matrix below has the rest.</li>
+<li><strong>What the writer emits.</strong> Bit-packing, frame of reference, zigzag, run-length, run-end, dictionary, sequence, constant, sparse, ALP, ALP-RD, FSST, OnPair, decimal byte parts, datetime parts, zstd and, in compact mode, Pco. The matrix below has the rest.</li>
 <li><strong>Not byte-identical.</strong> The format leaves layout, segment order and encoding choice to the writer. Our files are not the Rust writer's.</li>
 <li><strong>Non-goals.</strong> A query engine (projection and filters only, no joins or aggregations), Arrow in the core module, the <code>preview</code> and <code>unstable</code> editions and third-party encodings, big-endian platforms, object store clients (bring an <code>io.ReaderAt</code>), the <code>Union</code> type.</li>
 <li><strong>Self-contained.</strong> No cgo, no assembly. Nothing to install next to the Go toolchain.</li>
@@ -54,8 +54,8 @@
 <tr><td>array</td><td><code>vortex.alp</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.alprd</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.bool</code></td><td>yes</td><td>yes</td></tr>
-<tr><td>array</td><td><code>vortex.bytebool</code></td><td>yes</td><td>no</td></tr>
-<tr><td>array</td><td><code>vortex.chunked</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.bytebool</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.chunked</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.constant</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.datetimeparts</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.decimal</code></td><td>yes</td><td>yes</td></tr>
@@ -64,22 +64,22 @@
 <tr><td>array</td><td><code>vortex.ext</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.fixed_size_list</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.fsst</code></td><td>yes</td><td>yes</td></tr>
-<tr><td>array</td><td><code>vortex.list</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.list</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.listview</code></td><td>yes</td><td>yes</td></tr>
-<tr><td>array</td><td><code>vortex.map</code></td><td>yes</td><td>no</td></tr>
-<tr><td>array</td><td><code>vortex.masked</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.map</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.masked</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.null</code></td><td>yes</td><td>yes</td></tr>
-<tr><td>array</td><td><code>vortex.onpair</code></td><td>yes</td><td>no</td></tr>
-<tr><td>array</td><td><code>vortex.parquet.variant</code></td><td>yes</td><td>no</td></tr>
-<tr><td>array</td><td><code>vortex.pco</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.onpair</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.parquet.variant</code></td><td>yes</td><td>yes</td></tr>
+<tr><td>array</td><td><code>vortex.pco</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.primitive</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.runend</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.sequence</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.sparse</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.struct</code></td><td>yes</td><td>yes</td></tr>
-<tr><td>array</td><td><code>vortex.varbin</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.varbin</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.varbinview</code></td><td>yes</td><td>yes</td></tr>
-<tr><td>array</td><td><code>vortex.variant</code></td><td>yes</td><td>no</td></tr>
+<tr><td>array</td><td><code>vortex.variant</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.zigzag</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>array</td><td><code>vortex.zstd</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>dtype</td><td><code>vortex.date</code></td><td>yes</td><td>yes</td></tr>
@@ -89,7 +89,7 @@
 <tr><td>layout</td><td><code>vortex.chunked</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>layout</td><td><code>vortex.dict</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>layout</td><td><code>vortex.flat</code></td><td>yes</td><td>yes</td></tr>
-<tr><td>layout</td><td><code>vortex.stats</code></td><td>yes</td><td>no</td></tr>
+<tr><td>layout</td><td><code>vortex.stats</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>layout</td><td><code>vortex.struct</code></td><td>yes</td><td>yes</td></tr>
 <tr><td>layout</td><td><code>vortex.zoned</code></td><td>yes</td><td>yes</td></tr>
 </tbody>
@@ -117,7 +117,7 @@
 <h2 id="which">Which one to use</h2>
 <ul data-testid="which-list">
 <li>A Go program that reads or writes Vortex files: use vortex-go. No cgo, no sidecar, a few lines.</li>
-<li>The fastest scan, or an encoding we do not write (Pco, OnPair): use the Rust implementation, from Rust or through its bindings. The table above says by how much.</li>
+<li>The fastest scan, or an encoding we do not write: use the Rust implementation, from Rust or through its bindings. The table above says by how much.</li>
 <li>A query engine, joins, aggregations or Arrow: use the Rust implementation and its engines. We do projection and filters only.</li>
 <li>Files that both read: no choice to make. What one writes the other reads.</li>
 </ul>

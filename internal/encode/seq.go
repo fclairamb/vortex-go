@@ -2,6 +2,7 @@ package encode
 
 import (
 	"bytes"
+	"slices"
 
 	"github.com/fclairamb/vortex-go/internal/protowire"
 	"github.com/fclairamb/vortex-go/internal/unsafex"
@@ -136,4 +137,91 @@ func ConstantBools(e *Encoder, v []bool, nulls []bool) (*Node, bool) {
 	e.tmp = protowire.AppendUint(e.tmp[:0], scalarBool, uint64(boolInt(v[0])))
 	n.add(e.keep(e.tmp), 1)
 	return n, true
+}
+
+// Masked is the array of values under the validity of nulls: child 0 the values, child 1 the
+// validity, no metadata and no buffer. values is of the non-nullable type. The callers
+// only mask a chunk with a null row and a valid row.
+func Masked(e *Encoder, values *Node, nulls []bool, rows int) *Node {
+	n := e.node(IDMasked)
+	n.kid(values)
+	n.kid(e.validity(nulls, rows, rows))
+	return n
+}
+
+// ConstantMasked is Constant, and also the array of a chunk whose valid values are all equal
+// and some rows are null: the constant of that value under the validity. It returns false for
+// an empty array or one with two distinct valid values.
+func ConstantMasked[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
+	if n, ok := Constant(e, v, nulls); ok {
+		return n, true
+	}
+	first := firstValid(nulls, len(v))
+	if first < 0 {
+		return nil, false
+	}
+	w := unsafex.Size[T]()
+	raw := unsafex.Bytes(v)
+	for i := first + 1; i < len(v); i++ {
+		if !nulls[i] && getWidth(raw[i*w:], w) != getWidth(raw[first*w:], w) {
+			return nil, false
+		}
+	}
+	n := e.node(IDConstant)
+	e.tmp = appendScalar(e.tmp[:0], v[first])
+	n.add(e.keep(e.tmp), 1)
+	return Masked(e, n, nulls, len(v)), true
+}
+
+// ConstantBytesMasked is ConstantMasked for byte slices.
+func ConstantBytesMasked(e *Encoder, v [][]byte, nulls []bool, utf8 bool) (*Node, bool) {
+	if n, ok := ConstantBytes(e, v, nulls, utf8); ok {
+		return n, true
+	}
+	first := firstValid(nulls, len(v))
+	if first < 0 {
+		return nil, false
+	}
+	for i := first + 1; i < len(v); i++ {
+		if !nulls[i] && !bytes.Equal(v[i], v[first]) {
+			return nil, false
+		}
+	}
+	field := scalarBytes
+	if utf8 {
+		field = scalarString
+	}
+	n := e.node(IDConstant)
+	e.tmp = protowire.AppendBytes(e.tmp[:0], field, v[first])
+	n.add(e.keep(e.tmp), 1)
+	return Masked(e, n, nulls, len(v)), true
+}
+
+// ConstantBoolsMasked is ConstantMasked for booleans.
+func ConstantBoolsMasked(e *Encoder, v []bool, nulls []bool) (*Node, bool) {
+	if n, ok := ConstantBools(e, v, nulls); ok {
+		return n, true
+	}
+	first := firstValid(nulls, len(v))
+	if first < 0 {
+		return nil, false
+	}
+	for i := first + 1; i < len(v); i++ {
+		if !nulls[i] && v[i] != v[first] {
+			return nil, false
+		}
+	}
+	n := e.node(IDConstant)
+	e.tmp = protowire.AppendUint(e.tmp[:0], scalarBool, uint64(boolInt(v[first])))
+	n.add(e.keep(e.tmp), 1)
+	return Masked(e, n, nulls, len(v)), true
+}
+
+// firstValid is the first row that is not null, or -1 when the array is empty, has no null
+// (the constants handle it) or has no valid row.
+func firstValid(nulls []bool, rows int) int {
+	if rows == 0 || len(nulls) < rows {
+		return -1
+	}
+	return slices.Index(nulls[:rows], false)
 }

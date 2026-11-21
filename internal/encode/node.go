@@ -23,15 +23,21 @@ const (
 	IDDict       = "vortex.dict"
 	IDSequence   = "vortex.sequence"
 	IDConstant   = "vortex.constant"
+	IDMasked     = "vortex.masked"
 	IDSparse     = "vortex.sparse"
+	IDVarBin     = "vortex.varbin"
 	IDVarBinView = "vortex.varbinview"
+	IDByteBool   = "vortex.bytebool"
+	IDChunked    = "vortex.chunked"
 
 	IDALP           = "vortex.alp"
 	IDALPRD         = "vortex.alprd"
 	IDFSST          = "vortex.fsst"
+	IDOnPair        = "vortex.onpair"
 	IDDecimalBytes  = "vortex.decimal_byte_parts"
 	IDDateTimeParts = "vortex.datetimeparts"
 	IDZstd          = "vortex.zstd"
+	IDPco           = "vortex.pco"
 )
 
 // The numbers of the PType enum of the metadata messages.
@@ -72,7 +78,7 @@ type Buf struct {
 
 // Node is an encoded array.
 type Node struct {
-	kids  [4]*Node
+	kids  [5]*Node
 	ID    string
 	Meta  []byte
 	Bufs  []Buf
@@ -111,6 +117,8 @@ func (n *Node) Size() int {
 // The zero value is not usable: call New.
 type Encoder struct {
 	fs      *fsstState
+	op      *onPairState
+	pc      *pcoState
 	zenc    *zstd.Encoder
 	arena   []byte
 	pool    []*Node
@@ -325,8 +333,8 @@ func (e *Encoder) leafPadded(raw []byte, width int, nulls []bool, rows, padded i
 func Encodings() []string {
 	return []string{
 		IDPrimitive, IDBool, IDBitPacked, IDFoR, IDRLE, IDZigZag, IDRunEnd, IDDict, IDSequence,
-		IDConstant, IDSparse, IDVarBinView, IDALP, IDALPRD, IDFSST, IDDecimalBytes,
-		IDDateTimeParts, IDZstd,
+		IDConstant, IDMasked, IDSparse, IDVarBin, IDVarBinView, IDALP, IDALPRD, IDFSST, IDOnPair, IDDecimalBytes,
+		IDDateTimeParts, IDZstd, IDPco, IDByteBool, IDChunked,
 	}
 }
 

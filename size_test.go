@@ -23,7 +23,7 @@ import (
 
 // sizeLimits is the highest ratio each mode may have: 1.10 for Default, and for Compact the
 // highest ratio measured without a Pco encoder (1.157, tpch_orders), plus 2% (docs/goals.md).
-var sizeLimits = map[string]float64{"regular": 1.10, "compact": 1.18}
+var sizeLimits = map[string]float64{"regular": 1.10, "compact": 1.10}
 
 var sizeDatasets = []string{"tpch_lineitem", "tpch_orders", "clickbench_hits_5k"}
 

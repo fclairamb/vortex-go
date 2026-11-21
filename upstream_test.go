@@ -183,6 +183,27 @@ func TestBenchRustPinFollowsVortexVersion(t *testing.T) {
 	}
 }
 
+// The Variant reader of the interop tests is pinned to the same release, for the vortex crate and
+// for vortex-parquet-variant.
+func TestVariantJSONPinFollowsVortexVersion(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("tools", "variantjson", "Cargo.toml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	version := pinnedVersion(t)
+	pin, ok := cargoPin(string(raw))
+	if !ok {
+		t.Fatal("tools/variantjson/Cargo.toml has no `vortex = { version = \"=x.y.z\" }` line")
+	}
+	if pin != version {
+		t.Fatalf("tools/variantjson/Cargo.toml pins vortex %s, .vortex-version is %s: change both", pin, version)
+	}
+	m := regexp.MustCompile(`(?m)^vortex-parquet-variant\s*=\s*"=(\d+\.\d+\.\d+)"`).FindStringSubmatch(string(raw))
+	if m == nil || m[1] != version {
+		t.Fatalf("tools/variantjson/Cargo.toml: vortex-parquet-variant is %v, .vortex-version is %s: change both", m, version)
+	}
+}
+
 func TestCargoPin(t *testing.T) {
 	if v, ok := cargoPin("[dependencies]\nvortex = { version = \"=1.2.3\", features = [\"tokio\"] }\n"); !ok || v != "1.2.3" {
 		t.Errorf("got %q %v", v, ok)

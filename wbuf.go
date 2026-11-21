@@ -1,5 +1,7 @@
 package vortex
 
+import "github.com/fclairamb/vortex-go/internal/variant"
+
 // The buffer of a column: the rows that are not in a segment yet. Write copies the rows of
 // the caller into it (the caller may reuse its slices), a block at a time.
 
@@ -14,6 +16,8 @@ func newBody(t Type) *body {
 		return &body{kind: dBytes}
 	case KindDecimal:
 		return &body{kind: dDec}
+	case Variant:
+		return &body{kind: dVars, venc: &variant.Encoder{Decimal: variantDecimalOf}}
 	case Struct:
 		b := &body{kind: dStruct, kids: make([]Data, len(t.fields))}
 		for i, f := range t.fields {
@@ -35,7 +39,9 @@ func resetBody(b *body) {
 	b.raw, b.bools, b.nulls, b.decs = b.raw[:0], b.bools[:0], b.nulls[:0], b.decs[:0]
 	clear(b.strs)
 	clear(b.bins)
-	b.strs, b.bins = b.strs[:0], b.bins[:0]
+	clear(b.vbins)
+	clear(b.vars)
+	b.strs, b.bins, b.vbins, b.vars = b.strs[:0], b.bins[:0], b.vbins[:0], b.vars[:0]
 	b.n = 0
 	if b.offs != nil {
 		b.offs = b.offs[:1]
@@ -75,6 +81,8 @@ func appendRows(dst *body, src *body, t Type, lo, hi int, arena *[]byte) {
 		appendBytes(dst, src, lo, hi, arena)
 	case dDec:
 		dst.decs = append(dst.decs, src.decs[lo:hi]...)
+	case dVars:
+		appendVariants(dst, src, lo, hi, arena)
 	case dStruct:
 		for i, f := range t.fields {
 			appendRows(dst.kids[i].body, src.kids[i].body, f.Type, lo, hi, arena)
@@ -83,6 +91,16 @@ func appendRows(dst *body, src *body, t Type, lo, hi int, arena *[]byte) {
 		appendList(dst, src, t, lo, hi, arena)
 	}
 	dst.n += hi - lo
+}
+
+// appendVariants encodes the values lo to hi of src, which checkVariants checked, into the
+// metadata and the value of each row of dst.
+func appendVariants(dst, src *body, lo, hi int, arena *[]byte) {
+	for _, v := range src.vars[lo:hi] {
+		meta, value, _ := dst.venc.Encode(v)
+		dst.bins = append(dst.bins, copyBytes(arena, meta))
+		dst.vbins = append(dst.vbins, copyBytes(arena, value))
+	}
 }
 
 // appendBytes copies the strings of a utf8, binary or uuid column.
@@ -133,6 +151,10 @@ func sizeOf(b *body, t Type, lo, hi int) int {
 		size += 16 * n
 	case KindDecimal:
 		size += n * decimalWidth(t.precision)
+	case Variant:
+		for i := lo; i < hi; i++ {
+			size += len(b.bins[i]) + len(b.vbins[i]) + 32
+		}
 	case Struct:
 		for i, f := range t.fields {
 			size += sizeOf(b.kids[i].body, f.Type, lo, hi)

@@ -74,7 +74,7 @@ func intRuns[T Int]() map[string]run {
 }
 
 func numberRuns[T Number]() map[string]run {
-	return map[string]run{
+	m := map[string]run{
 		"rle": func(e *Encoder, raw []byte, nulls []bool, _ vparams) (*Node, bool) {
 			return RLE(e, unsafex.Slice[T](raw), nulls), true
 		},
@@ -94,6 +94,12 @@ func numberRuns[T Number]() map[string]run {
 			return Zstd(e, unsafex.Slice[T](raw), nulls), true
 		},
 	}
+	// Pco does not code 8-bit numbers: the encoder declines them
+	m["pco"] = func(e *Encoder, raw []byte, nulls []bool, _ vparams) (*Node, bool) {
+		n := Pco(e, unsafex.Slice[T](raw), nulls)
+		return n, n != nil
+	}
+	return m
 }
 
 func signedRuns[T Signed]() map[string]run {
@@ -239,6 +245,10 @@ func TestVectorsBytes(t *testing.T) {
 		}
 		if file.Encoding == "fsst" {
 			vectorFSST(t, e, v)
+			return
+		}
+		if file.Encoding == "onpair" {
+			vectorOnPair(t, e, v)
 			return
 		}
 		got, ok := runs[file.PType][file.Encoding](e, unhex(t, v.Input), nullsOf(t, v), v.Params)

@@ -91,6 +91,7 @@ fn main() {
     vortex_sparse::initialize(&session);
     vortex_alp::initialize(&session);
     vortex_fsst::initialize(&session);
+    vortex_onpair::initialize(&session);
     let ctx = Ctx { session };
     for (name, vectors) in enc::all(&ctx) {
         let d = dir.join(&name);

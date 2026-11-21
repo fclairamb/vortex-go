@@ -10,6 +10,7 @@ and sorted keys, so running it twice gives byte-identical files.
 """
 import hashlib
 import json
+import operator
 import re
 import struct
 import sys
@@ -376,12 +377,14 @@ def literal_of(dtype, value):
 
 def filter_expr(spec, dtype):
     """The predicate of a filter of a hashes file: the column compared with up to two bounds,
-    "ge", "gt", "le", "lt" and "eq" ({"column": "k", "ge": 10, "lt": 20})."""
+    "ge", "gt", "le", "lt" and "eq" ({"column": "k", "ge": 10, "lt": 20}). The comparisons are the
+    operators of the expression, which every release has (the functions gt_eq and lt_eq are
+    newer than 0.83)."""
     ve = vx.expr
     field = next(f["dtype"] for f in dtype["fields"] if f["name"] == spec["column"])
     col = ve.column(spec["column"])
     terms = [fn(col, literal_of(field, spec[op]))
-             for op, fn in (("ge", ve.gt_eq), ("gt", ve.gt), ("le", ve.lt_eq), ("lt", ve.lt), ("eq", ve.eq))
+             for op, fn in (("ge", operator.ge), ("gt", operator.gt), ("le", operator.le), ("lt", operator.lt), ("eq", operator.eq))
              if op in spec]
     pred = terms[0]
     for term in terms[1:]:

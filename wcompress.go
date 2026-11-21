@@ -31,7 +31,7 @@ func (w *Writer) compressor(c *column) *compress.Compressor {
 		if w.opt.Compression == Compact {
 			mode = compress.Compact
 		}
-		c.comp = compress.New(mode)
+		c.comp = compress.NewLimited(mode, w.limit)
 	}
 	return c.comp
 }
@@ -119,24 +119,27 @@ func (w *Writer) encodeCompressed(t Type, d Data) (flatbuf.Off, bool) {
 
 // encodeU32s writes the offsets or the sizes of a list, compressed when the chunk is, as the
 // reference does.
-func (w *Writer) encodeU32s(raw []byte) flatbuf.Off {
+func (w *Writer) encodeU32s(raw []byte) flatbuf.Off { return w.encodeOffsets(compress.U32, raw) }
+
+// encodeOffsets writes the unsigned numbers raw of type p, compressed when the chunk is.
+func (w *Writer) encodeOffsets(p compress.PType, raw []byte) flatbuf.Off {
 	w.depth++ // a child, whatever its encoding
 	var off flatbuf.Off
-	if node := w.compressU32s(raw); node != nil {
+	if node := w.compressNumbers(p, raw); node != nil {
 		off = w.emit(node)
 	} else {
-		off = w.leaf("vortex.primitive", raw, 4)
+		off = w.leaf("vortex.primitive", raw, p.Width())
 	}
 	w.depth--
 	return off
 }
 
-// compressU32s is the compressed array of the u32 values raw, nil for the plain one.
-func (w *Writer) compressU32s(raw []byte) *encode.Node {
+// compressNumbers is the compressed array of the numbers raw of type p, nil for the plain one.
+func (w *Writer) compressNumbers(p compress.PType, raw []byte) *encode.Node {
 	if w.comp == nil {
 		return nil
 	}
-	return w.comp.Numbers(compress.U32, raw, nil)
+	return w.comp.Numbers(p, raw, nil)
 }
 
 // queueChunk makes the rows of the buffer of the column a chunk that waits to be compressed.

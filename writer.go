@@ -32,6 +32,15 @@ const (
 
 // WriteOptions are the options of a Writer.
 type WriteOptions struct {
+	// Edition is the edition the file must be readable with, as the upstream names it
+	// ("core 2025.05.0"). Empty is the newest the library knows, "core 2026.08.3". The writer
+	// only makes what the edition has: a file for an edition before "core 2026.08.0" has the
+	// older zone maps (vortex.stats) and only the legacy file statistics, one before
+	// "core 2025.10.0" has no listview and no run-length or masked arrays, and so on. An
+	// unknown edition, or a type it cannot hold (a uuid before "core 2026.08.3", a map before
+	// "core 2026.08.2", a fixed-size list before "core 2025.10.0"), is an error of the first
+	// Write or Close.
+	Edition     string
 	Compression Compression
 }
 
@@ -60,7 +69,7 @@ var (
 // A column takes the Data its type calls for: Of for the numbers (the Go type is the one of
 // the column, int32 for Int32; the storage of a date, a time or a timestamp, and uint16 for
 // the bits of a Float16), OfBools, OfStrings or OfBytes for Utf8 and Binary, OfBytes for a
-// UUID, OfDecimals, OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map.
+// UUID, OfDecimals, OfVariants for a Variant, OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map.
 // Each Write adds rows. The rows of a column are cut into chunks that do not depend on how
 // the caller splits them: at multiples of 8,192 rows, about 1 MiB of data a chunk. Each
 // column carries the statistics a reader uses to skip a zone, and a column of few distinct
@@ -72,6 +81,7 @@ type Writer struct {
 	err       error
 	w         io.Writer
 	schema    *Schema
+	opt       WriteOptions
 	root      *layoutBuild
 	fb        *flatbuf.Builder
 	enc       *encode.Encoder      // the encoders of a forced encoding
@@ -99,11 +109,15 @@ type Writer struct {
 	used      int
 	stats     flatbuf.Off
 	lenBuf    [4]byte
-	opt       WriteOptions
+	limit     compress.Limits // the encodings of the edition that the compressor leaves out
 	started   bool
 	done      bool
 	hasPre    bool // pre is the array of the chunk, nil for the plain one
-	leaves    int  // the columns that have no children
+	// What the edition of the file has not: see WriteOptions.Edition.
+	legacyZones bool // zone maps are vortex.stats layouts, not vortex.zoned
+	legacyFile  bool // the file statistics have no aggregates
+	plainLists  bool // a list is a vortex.list, never a vortex.listview
+	leaves      int  // the columns that have no children
 }
 
 // buffer is a data buffer of the array being built, and the alignment its first byte needs.
@@ -177,6 +191,12 @@ func countLeaves(l *layoutBuild) int {
 func NewWriter(w io.Writer, s *Schema, o WriteOptions) *Writer {
 	wr := &Writer{w: w, schema: s, opt: o, fb: flatbuf.NewBuilder(1 << 10)}
 	wr.err = validType(s.root, "")
+	if wr.err == nil {
+		wr.err = wr.setEdition(o.Edition)
+	}
+	if wr.err == nil {
+		wr.err = validEdition(s.root, "", wr.opt.Edition)
+	}
 	wr.root = newLayoutBuild(s.root, false)
 	wr.leaves = countLeaves(wr.root)
 	wr.out = make([]byte, 0, smallWrites)
@@ -580,6 +600,11 @@ var filePTypes = map[Kind]uint8{
 	Float16: fbs.F16, Float32: fbs.F32, Float64: fbs.F64,
 }
 
+// simpleDTypes are the dtypes that have a nullability and nothing else.
+var simpleDTypes = map[Kind]fbs.Kind{
+	Bool: fbs.KindBool, Utf8: fbs.KindUtf8, Binary: fbs.KindBinary, Variant: fbs.KindVariant,
+}
+
 // dtypeTable writes the DType flatbuffer of t.
 func (w *Writer) dtypeTable(t Type) flatbuf.Off {
 	switch t.kind {
@@ -594,8 +619,8 @@ func (w *Writer) dtypeTable(t Type) flatbuf.Off {
 	case Null:
 		kind = fbs.KindNull
 		b.StartTable(0)
-	case Bool, Utf8, Binary:
-		kind = map[Kind]fbs.Kind{Bool: fbs.KindBool, Utf8: fbs.KindUtf8, Binary: fbs.KindBinary}[t.kind]
+	case Bool, Utf8, Binary, Variant:
+		kind = simpleDTypes[t.kind]
 		b.StartTable(1)
 		b.Uint8(0, boolByte(t.nullable), 0)
 	case KindDecimal:

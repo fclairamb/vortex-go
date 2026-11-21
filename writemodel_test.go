@@ -261,6 +261,11 @@ func (g *gen) values(t Type, n int) (Data, []val) {
 			return g.timesInDay(t, n)
 		}
 		fallthrough
+	case Date, Timestamp:
+		if g.inDay && t.kind != Time {
+			return g.nearEpoch(t, n)
+		}
+		fallthrough
 	default:
 		d, raws := g.numbers(storageKind(t), n)
 		for i := range vals {
@@ -420,6 +425,30 @@ func hashColumn(out map[string]hashEntry, path string, t Type, vals []val) {
 func describeVal(v val) string { return fmt.Sprintf("%+v", v) }
 
 // timesInDay makes n times of the type, all within [0, 1 day).
+// nearEpoch is dates and timestamps within a century of the epoch: the readers before
+// core 2026.08.0 fail on the statistics of the others.
+func (g *gen) nearEpoch(t Type, n int) (Data, []val) {
+	limit := int64(36500) // days
+	if t.kind == Timestamp || t.unit != Day {
+		limit *= 86400 * map[Unit]int64{Second: 1, Millisecond: 1e3, Microsecond: 1e6, Nanosecond: 1e9}[t.unit]
+	}
+	vals := make([]val, n)
+	if storageKind(t) == Int32 {
+		v := make([]int32, n)
+		for i := range v {
+			v[i] = int32(g.r.Int64N(2*limit) - limit)
+			vals[i].b = binary.LittleEndian.AppendUint32(nil, uint32(v[i]))
+		}
+		return Of(v), vals
+	}
+	v := make([]int64, n)
+	for i := range v {
+		v[i] = g.r.Int64N(2*limit) - limit
+		vals[i].b = binary.LittleEndian.AppendUint64(nil, uint64(v[i]))
+	}
+	return Of(v), vals
+}
+
 func (g *gen) timesInDay(t Type, n int) (Data, []val) {
 	day := int64(86400) * map[Unit]int64{Second: 1, Millisecond: 1e3, Microsecond: 1e6, Nanosecond: 1e9}[t.unit]
 	vals := make([]val, n)

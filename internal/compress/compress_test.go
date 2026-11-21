@@ -455,3 +455,188 @@ func TestNoAllocation(t *testing.T) {
 		t.Errorf("%v allocations", n)
 	}
 }
+
+// TestMaskedConstant: a chunk of one value among nulls is a constant under a validity, smaller
+// than the plain array, and the cases around it are not masked.
+func TestMaskedConstant(t *testing.T) {
+	const rows = 8192
+	nulls := make([]bool, rows)
+	for i := range nulls {
+		nulls[i] = i%10 < 3
+	}
+	c := New(Default)
+	want := "vortex.masked(vortex.constant vortex.bool)"
+	n := c.Numbers(I64, ints64(rows, func(int) int64 { return 7 }), nulls)
+	if got := tree(n); got != want {
+		t.Fatalf("numbers: %s", got)
+	}
+	if plain := numberCost(make([]int64, rows), nulls); cost(n) >= plain/10 {
+		t.Fatalf("masked costs %d, plain %d", cost(n), plain)
+	}
+	bins := make([][]byte, rows)
+	for i := range bins {
+		bins[i] = []byte("a string that is longer than twelve bytes")
+	}
+	if got := tree(c.Strings(bins, nulls, true)); got != want {
+		t.Fatalf("strings: %s", got)
+	}
+	bools := make([]bool, rows)
+	for i := range bools {
+		bools[i] = true
+	}
+	if got := tree(c.Bools(bools, nulls)); got != want {
+		t.Fatalf("bools: %s", got)
+	}
+	// no null: the constant alone; all null: the null constant; two values: not masked
+	if got := tree(c.Numbers(I64, ints64(rows, func(int) int64 { return 7 }), nil)); got != "vortex.constant" {
+		t.Fatalf("no null: %s", got)
+	}
+	all := slices.Repeat([]bool{true}, rows)
+	if got := tree(c.Numbers(I64, ints64(rows, func(int) int64 { return 7 }), all)); got != "vortex.constant" {
+		t.Fatalf("all null: %s", got)
+	}
+	two := ints64(rows, func(i int) int64 { return int64(i % 2) })
+	if got := tree(c.Numbers(I64, two, nulls)); strings.HasPrefix(got, "vortex.masked") {
+		t.Fatalf("two values: %s", got)
+	}
+}
+
+// TestVarBinForBinary: binary values of one width are a varbin whose offsets are a sequence,
+// and cost under 17 bytes a value (32 as views). A utf8 column never is a varbin, and a few
+// distinct binary values stay a dictionary.
+func TestVarBinForBinary(t *testing.T) {
+	r := rand.New(rand.NewPCG(5, 6))
+	c := New(Default)
+	v := make([][]byte, 10_000)
+	for i := range v {
+		v[i] = make([]byte, 16)
+		for k := range v[i] {
+			v[i][k] = byte(r.Uint32())
+		}
+	}
+	got := c.Strings(v, nil, false)
+	if got == nil || got.ID != encode.IDVarBin || got.Kids[0].ID != encode.IDSequence {
+		t.Fatalf("got %s, want a varbin of a sequence", tree(got))
+	}
+	if per := float64(cost(got)) / float64(len(v)); per >= 17 {
+		t.Errorf("%.2f bytes a value", per)
+	}
+	checkBins(t, got, v, nil, false)
+	c.Reset()
+	if got := c.Strings(v, nil, true); got != nil && got.ID == encode.IDVarBin {
+		t.Error("a utf8 column is a varbin")
+	}
+	c.Reset()
+	few := make([][]byte, 10_000)
+	for i := range few {
+		few[i] = v[i%3]
+	}
+	if got := c.Strings(few, nil, false); got == nil || got.ID != encode.IDDict {
+		t.Errorf("3 distinct values are %s", tree(got))
+	}
+}
+
+// ids is the identifiers of a tree.
+func ids(n *encode.Node) []string {
+	if n == nil {
+		return nil
+	}
+	out := []string{n.ID}
+	for _, k := range n.Kids {
+		out = append(out, ids(k)...)
+	}
+	return out
+}
+
+// TestLimits: the encodings of a limit are left out, and each is met with no limit, so that the
+// case does hold what it leaves out.
+func TestLimits(t *testing.T) {
+	const rows = 8192
+	nulls := make([]bool, rows)
+	for i := range nulls {
+		nulls[i] = i%10 < 3
+	}
+	r := rand.New(rand.NewPCG(3, 4))
+	floats := make([]float64, rows)
+	for i := range floats {
+		floats[i] = float64(i / 100) // runs of equal values
+	}
+	long := make([][]byte, rows)
+	for i := range long {
+		long[i] = []byte(fmt.Sprintf("a string that is longer than twelve bytes %d", r.IntN(1<<30)))
+	}
+	same := make([][]byte, rows)
+	for i := range same {
+		same[i] = []byte("a string that is longer than twelve bytes")
+	}
+	bools := slices.Repeat([]bool{true}, rows)
+	cases := []struct {
+		name string
+		id   string
+		mode Mode
+		off  Limits
+		run  func(c *Compressor) *encode.Node
+	}{
+		{"sequence", encode.IDSequence, Default, Limits{NoSequence: true}, func(c *Compressor) *encode.Node {
+			return c.Numbers(I64, ints64(rows, func(i int) int64 { return int64(3 * i) }), nil)
+		}},
+		{"masked ints", encode.IDMasked, Default, Limits{NoMasked: true}, func(c *Compressor) *encode.Node {
+			return c.Numbers(I64, ints64(rows, func(int) int64 { return 7 }), nulls)
+		}},
+		{"masked floats", encode.IDMasked, Default, Limits{NoMasked: true}, func(c *Compressor) *encode.Node {
+			return c.Numbers(F64, unsafex.Bytes(slices.Repeat([]float64{1.5}, rows)), nulls)
+		}},
+		{"masked strings", encode.IDMasked, Default, Limits{NoMasked: true}, func(c *Compressor) *encode.Node {
+			return c.Strings(same, nulls, true)
+		}},
+		{"masked bools", encode.IDMasked, Default, Limits{NoMasked: true}, func(c *Compressor) *encode.Node {
+			return c.Bools(bools, nulls)
+		}},
+		{"rle floats", encode.IDRLE, Default, Limits{NoRLE: true}, func(c *Compressor) *encode.Node {
+			v := make([]float64, rows)
+			for i := 0; i < rows; {
+				x := float64(r.Int64N(5000)*100003) * 1.37
+				for n := 1 + r.IntN(8); n > 0 && i < rows; n-- {
+					v[i] = x
+					i++
+				}
+			}
+			return c.Numbers(F64, unsafex.Bytes(v), nil)
+		}},
+		{"zstd floats", encode.IDZstd, Compact, Limits{NoZstd: true}, func(c *Compressor) *encode.Node {
+			v := make([]float64, rows)
+			for i := range v {
+				v[i] = float64(r.IntN(50)) / 3
+			}
+			return c.Numbers(F64, unsafex.Bytes(v), nil)
+		}},
+		{"zstd strings", encode.IDZstd, Compact, Limits{NoZstd: true}, func(c *Compressor) *encode.Node {
+			return c.Strings(long, nil, true)
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ids(tc.run(New(tc.mode))); !slices.Contains(got, tc.id) {
+				t.Fatalf("with no limit: %v, want %s in it", got, tc.id)
+			}
+			if got := ids(tc.run(NewLimited(tc.mode, tc.off))); slices.Contains(got, tc.id) {
+				t.Fatalf("with the limit: %v", got)
+			}
+		})
+	}
+}
+
+// TestIntLimits: run-end wins the runs before RLE, so the candidates of integers are the proof.
+func TestIntLimits(t *testing.T) {
+	st := intStats{runs: 10, valid: 8192, packW: 20, forW: 20}
+	has := func(c *Compressor, s scheme) bool {
+		l := intCands(c, st, c.top(), I64, 8192, true)
+		return slices.Contains(l.s[:l.n], s)
+	}
+	if c := New(Compact); !has(c, sRLE) || !has(c, sZstd) {
+		t.Fatal("no limit: RLE and zstd are candidates")
+	}
+	if c := NewLimited(Compact, Limits{NoRLE: true, NoZstd: true}); has(c, sRLE) || has(c, sZstd) {
+		t.Fatal("limited: RLE and zstd are left out")
+	}
+}

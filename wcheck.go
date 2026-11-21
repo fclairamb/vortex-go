@@ -2,7 +2,13 @@ package vortex
 
 import (
 	"fmt"
+	"strings"
 	"unicode/utf8"
+
+	"github.com/fclairamb/vortex-go/internal/compress"
+	"github.com/fclairamb/vortex-go/internal/edition"
+	"github.com/fclairamb/vortex-go/internal/encode"
+	"github.com/fclairamb/vortex-go/internal/variant"
 )
 
 // validType reports a type that cannot be written. path is the dotted name of its field.
@@ -16,8 +22,6 @@ func validType(t Type, path string) error {
 		}
 	case Date, Time, Timestamp:
 		msg = validTemporal(t)
-	case Variant:
-		msg = "a variant cannot be written"
 	case List, FixedSizeList:
 		return validType(*t.elem, path+"[]")
 	case Map:
@@ -102,6 +106,8 @@ func checkData(path string, t Type, d Data, n int) error {
 		return checkBytes(path, t, d)
 	case KindDecimal:
 		return checkDecimals(path, t, d)
+	case Variant:
+		return checkVariants(path, t, d)
 	case Struct:
 		return checkStruct(path, t, d)
 	case List, FixedSizeList, Map:
@@ -132,6 +138,8 @@ func hint(t Type) string {
 		return " (OfBytes)"
 	case KindDecimal:
 		return " (OfDecimals)"
+	case Variant:
+		return " (OfVariants)"
 	case Struct:
 		return " (OfStruct)"
 	case List, FixedSizeList, Map:
@@ -233,6 +241,22 @@ func checkDecimals(path string, t Type, d Data) error {
 	return nil
 }
 
+// variantChecker checks the values of the variant columns. It builds nothing, so it is shared.
+var variantChecker = variant.Encoder{Decimal: variantDecimalOf}
+
+// checkVariants checks that every value of a variant column is one the encoding holds.
+func checkVariants(path string, t Type, d Data) error {
+	if err := want(path, t, d, d.kind == dVars); err != nil {
+		return err
+	}
+	for i, v := range d.vars {
+		if err := variantChecker.Check(v); err != nil {
+			return wcheckf(path, "row %d: %v", i, err)
+		}
+	}
+	return nil
+}
+
 func checkStruct(path string, t Type, d Data) error {
 	if err := want(path, t, d, d.kind == dStruct); err != nil {
 		return err
@@ -298,4 +322,75 @@ func checkEntries(path string, t Type, elems Data) error {
 		return err
 	}
 	return checkData(path+".value", *t.value, elems.kids[1], elems.n)
+}
+
+// setEdition sets what the writer leaves out for the edition of the file, "" being the newest.
+func (w *Writer) setEdition(name string) error {
+	if name == "" {
+		name = edition.ID
+	}
+	if !edition.Known(name) {
+		return fmt.Errorf("vortex: NewWriter: unknown edition %q, want one of %s", name, strings.Join(edition.Names(), ", "))
+	}
+	w.opt.Edition = name
+	has := func(kind, id string) bool { return edition.Allows(name, kind, id) }
+	w.legacyZones = !has(edition.KindLayout, "vortex.zoned")
+	w.legacyFile = !has(edition.KindAggregate, aggMax)
+	w.plainLists = !has(edition.KindArray, "vortex.listview")
+	w.limit = compress.Limits{
+		NoRLE:      !has(edition.KindArray, encode.IDRLE),
+		NoMasked:   !has(edition.KindArray, encode.IDMasked),
+		NoSequence: !has(edition.KindArray, encode.IDSequence),
+		NoZstd:     !has(edition.KindArray, encode.IDZstd),
+		NoOnPair:   !has(edition.KindArray, encode.IDOnPair),
+		NoPco:      !has(edition.KindArray, encode.IDPco),
+	}
+	return nil
+}
+
+// validEdition reports a type that the edition of the file cannot hold. path is the dotted
+// name of its field.
+func validEdition(t Type, path, name string) error {
+	var kind, id string
+	switch t.kind {
+	case FixedSizeList:
+		kind, id = edition.KindArray, idFixedSizeList
+	case Map:
+		kind, id = edition.KindArray, idMap
+	case UUID:
+		kind, id = edition.KindDType, "vortex.uuid"
+	case Variant:
+		kind, id = edition.KindArray, idVariant
+	}
+	if id != "" && !edition.Allows(name, kind, id) {
+		return fmt.Errorf("vortex: NewWriter: field %q: a %s is not in the edition %q (%s %s is newer)",
+			path, t.kind, name, kind, id)
+	}
+	switch t.kind {
+	case List, FixedSizeList:
+		return validEdition(*t.elem, path+"[]", name)
+	case Map:
+		if err := validEdition(*t.elem, path+".key", name); err != nil {
+			return err
+		}
+		return validEdition(*t.value, path+".value", name)
+	case Struct:
+		for _, f := range t.fields {
+			if err := validEdition(f.Type, joinPath(path, f.Name), name); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// variantDecimalOf is how the variant encoder knows a VariantDecimal: its unscaled value as
+// little-endian bytes, and its scale.
+func variantDecimalOf(v any) ([]byte, int, bool) {
+	d, ok := v.(VariantDecimal)
+	if !ok {
+		return nil, 0, false
+	}
+	le := d.Value.le()
+	return le[:], d.Scale, true
 }
