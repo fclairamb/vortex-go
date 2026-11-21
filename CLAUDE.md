@@ -33,6 +33,15 @@ Read these before working here:
 - A spec's `## To verify` items are checked first, against upstream at the pinned tag. When
   upstream says otherwise, upstream wins: fix the spec in the same commit.
 
+## Releases
+
+release-please keeps a release pull request open (`.github/workflows/release-please.yml`,
+`release-please-config.json`). Its changelog is the titles of the merged pull requests, so a
+title is a conventional commit: `feat:`, `fix:` and `perf:` are in the changelog, the others
+are not. The first release is v0.1.0, and before v1 a breaking change is a minor version.
+Never tag by hand, and never edit `.release-please-manifest.json`: merging the release pull
+request does both.
+
 ## Before every push
 
 ```bash
