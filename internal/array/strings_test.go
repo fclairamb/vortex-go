@@ -49,6 +49,7 @@ type fsstIn struct {
 	ulen, offs            []int64
 	valid                 []byte
 	meta                  []byte
+	nullLens              bool // the lengths have a validity, which they must not
 }
 
 func newFSSTIn(syms []string, strs []string) fsstIn {
@@ -68,6 +69,9 @@ func (in fsstIn) bufs() []buf {
 
 func (in fsstIn) seg() []byte {
 	kids := []fbtest.Tab{pnode(3), pnode(4)}
+	if in.nullLens {
+		kids[0] = node(ePrim, nil, []uint16{3}, bnode(1))
+	}
 	if in.valid != nil {
 		kids = append(kids, bnode(5))
 	}
@@ -163,6 +167,7 @@ func TestFSSTHostile(t *testing.T) {
 			return in
 		}, "ends with an escape"},
 		{"row of fewer bytes", func() fsstIn { in := base(); in.ulen[0] = 4; return in }, "row 0 decodes to 3 bytes, declared 4"},
+		{"lengths with nulls", func() fsstIn { in := base(); in.nullLens = true; return in }, "uncompressed lengths: has nulls"},
 		{"row of more bytes", func() fsstIn { in := base(); in.ulen[0] = 2; return in }, "more than its 2 bytes"},
 		{"symbol past the row", func() fsstIn { in := base(); in.codes[2] = 3; in.ulen[1] = 3; return in }, "more than its 3 bytes"},
 		{"row of more bytes, with room after it", func() fsstIn {

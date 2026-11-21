@@ -102,7 +102,6 @@ type flat struct {
 	path  string
 	t     array.DType
 	opt   array.Options
-	open  *array.Rows  // the segment, whose rows takeSel decodes
 	sel   *array.Arena // the buffers of the rows takeSel returned last
 	idx   []int        // the rows of the segment takeSel decodes
 	slot  array.Array  // the rows take returns
@@ -127,11 +126,15 @@ func (f *File) newFlat(l *layoutNode, t array.DType, opt array.Options, path str
 // the memory of a scan. The reference writer cuts its chunks at 1 MiB, 8 Mi rows of booleans.
 var maxFlatRows uint64 = 1 << 24
 
+// partRatio is the rows of a segment for one row that a scan reads from which the segment is
+// not decoded whole: the rows read are decoded, a batch at a time, when its encodings can.
+const partRatio = 2
+
 func (r *flat) avail() int { return r.end - r.pos }
 
 func (r *flat) units(base int, out *[]*unit) int {
 	if r.pos < r.end {
-		r.u = &unit{fl: r, start: base}
+		r.u = &unit{fl: r, start: base, part: (r.end-r.pos)*partRatio <= r.rows}
 		*out = append(*out, r.u)
 	}
 	return r.end - r.pos
@@ -151,6 +154,16 @@ func (r *flat) done() {
 }
 
 func (r *flat) take(n int) (*array.Array, error) {
+	if r.arr == nil && r.u != nil && r.u.part && !r.whole {
+		// The scan reads a part of the segment: its rows are decoded without the others.
+		r.idx = r.idx[:0]
+		for i := range n {
+			r.idx = append(r.idx, r.pos+i)
+		}
+		if a, ok, err := r.decodeRows(n); err != nil || ok {
+			return a, err
+		}
+	}
 	if r.arr == nil {
 		a, err := r.load()
 		if err != nil {
@@ -167,37 +180,44 @@ func (r *flat) take(n int) (*array.Array, error) {
 // takeSel decodes the rows kept of a segment that the loader read and did not decode: the
 // segment of a column that the filter does not read, when the filter keeps few rows.
 func (r *flat) takeSel(n int, sel []int) (*array.Array, bool, error) {
-	if r.arr != nil || r.u == nil || !r.u.late || r.whole {
+	if r.arr != nil || r.u == nil || r.whole {
 		return nil, false, nil
-	}
-	seg, err := r.u.ld.segment(r.u)
-	if err != nil || seg == nil {
-		return nil, false, err
 	}
 	r.idx = r.idx[:0]
 	for _, i := range sel {
 		r.idx = append(r.idx, r.pos+i)
 	}
-	if r.open == nil {
+	return r.decodeRows(n)
+}
+
+// decodeRows decodes the rows r.idx of the segment, some of its next n rows, and moves past
+// the n rows. It is not ok, and nothing moves, when the segment is decoded already, or when
+// one of its encodings decodes every row or none.
+func (r *flat) decodeRows(n int) (*array.Array, bool, error) {
+	seg, err := r.u.ld.segment(r.u)
+	if err != nil || seg == nil {
+		r.whole = true // decoded ahead: it is read as the other segments are
+		return nil, false, err
+	}
+	if r.u.open == nil { // the loader could not open the segment
+		_, err := array.OpenRows(seg, r.f.arrayEncodings, r.opt)
+		return nil, false, r.decodeErr(err)
+	}
+	if r.sel == nil {
 		r.sel = r.opt.Pool.NewArena()
-		if r.open, err = array.OpenRows(seg, r.f.arrayEncodings, r.opt); err != nil {
-			return nil, false, r.decodeErr(err)
-		}
 	}
 	r.sel.Release() // the rows of the batch before
-	a, ok, err := r.open.Decode(r.t, r.rows, r.idx, r.sel)
+	a, ok, err := r.u.open.Decode(r.t, r.rows, r.idx, r.sel)
 	if err != nil {
 		return nil, false, r.decodeErr(err)
 	}
-	if !ok {
-		r.whole = true
-		return nil, false, nil
+	if r.whole = !ok; ok { // not ok: an encoding under one that decodes some rows does not
+		if r.pos += n; r.pos == r.end {
+			r.opt.Pool.Retire(r.sel) // the batch is the last one to read them
+		}
+		r.done()
 	}
-	if r.pos += n; r.pos == r.end {
-		r.opt.Pool.Retire(r.sel) // the batch is the last one to read them
-	}
-	r.done()
-	return a, true, nil
+	return a, ok, nil
 }
 
 // load reads and decodes the segment, through the loader of the scan when there is one.

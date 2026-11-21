@@ -11,6 +11,20 @@ import (
 // read at its place: a filter that keeps few rows, or a range of rows, then pays for the rows
 // it returns, not for the segment.
 
+// The encodings whose rows are decoded some at a time.
+const (
+	idPrimitive    = "vortex.primitive"
+	idBitPacked    = "fastlanes.bitpacked"
+	idFoR          = "fastlanes.for"
+	idZigZag       = "vortex.zigzag"
+	idALP          = "vortex.alp"
+	idSequence     = "vortex.sequence"
+	idExt          = "vortex.ext"
+	idDecimalParts = "vortex.decimal_byte_parts"
+	idFSST         = "vortex.fsst"
+	idConstant     = "vortex.constant"
+)
+
 // errNoRows says that an encoding of the tree has no way to decode some rows only.
 var errNoRows = errors.New("no decoding of some rows")
 
@@ -28,6 +42,31 @@ func OpenRows(seg []byte, specs []string, opt Options) (*Rows, error) {
 		return nil, err
 	}
 	return &Rows{ctx: ctx, root: root}, nil
+}
+
+// Can reports whether every encoding on the way to the rows of the array decodes some rows
+// only: Decode is then ok, unless the array is not what its tree says.
+func (r *Rows) Can() bool { return r.ctx.canRows(r.root) }
+
+// canRows reports whether rowsOf has a path for the node fb and for the children it reads by
+// rows.
+func (c *context) canRows(fb nodeRef) bool {
+	id, _ := c.spec(fb)
+	kids, _ := fb.Children()
+	child := func(i int) bool {
+		k, err := kids.At(i)
+		return err == nil && c.canRows(k)
+	}
+	switch id {
+	case idPrimitive, idBitPacked, idSequence, idConstant:
+		return true
+	case idFoR, idZigZag, idALP, idExt, idDecimalParts:
+		return child(0)
+	case idFSST:
+		bufs, _ := fb.Buffers()
+		return len(bufs) == 3 && child(0) && child(1)
+	}
+	return false
 }
 
 // Decode decodes the rows idx, in increasing order, of the array, of type t and of that many
@@ -59,19 +98,28 @@ func (c *context) rows(fb nodeRef, t DType, rows int, idx []int) (*Array, error)
 // rowsOf decodes the rows idx of the node, whose encoding is id.
 func (n *Node) rowsOf(id string, t DType, rows int, idx []int) (*Array, error) {
 	switch id {
-	case "vortex.primitive":
+	case idPrimitive:
 		return n.primitiveRows(t, rows, idx)
-	case "fastlanes.bitpacked":
+	case idBitPacked:
 		return n.bitPackedRows(t, rows, idx)
-	case "fastlanes.for":
+	case idFoR:
 		return n.forRows(t, rows, idx)
-	case "vortex.zigzag":
+	case idZigZag:
 		return n.zigZagRows(t, rows, idx)
-	case "vortex.alp":
+	case idALP:
 		return n.alpRows(t, rows, idx)
-	case "vortex.sequence":
+	case idSequence:
 		return n.sequenceRows(t, rows, idx)
-	case "vortex.constant":
+	case idExt:
+		if err := n.extParts(t); err != nil {
+			return nil, err
+		}
+		return n.childRows(0, *t.Storage, rows, idx)
+	case idDecimalParts:
+		return n.decimalPartsRows(t, rows, idx)
+	case idFSST:
+		return n.fsstRows(t, rows, idx)
+	case idConstant:
 		// Every row is the same: the rows asked for are as many rows of the array.
 		if err := checkRows(idx, rows); err != nil {
 			return nil, err
@@ -121,8 +169,12 @@ func (n *Node) primitiveRows(t DType, rows int, idx []int) (*Array, error) {
 	}
 	w := t.PType.Width()
 	out := &Array{Type: t, Len: len(idx), Data: n.ctx.opt.Arena.Bytes(len(idx)*w, false), fresh: true}
-	for k, i := range idx {
-		copy(out.Data[k*w:(k+1)*w], all.Data[i*w:])
+	if k := len(idx); k > 0 && idx[k-1]-idx[0] == k-1 {
+		copy(out.Data, all.Data[idx[0]*w:]) // rows that follow each other
+	} else {
+		for k, i := range idx {
+			copy(out.Data[k*w:(k+1)*w], all.Data[i*w:])
+		}
 	}
 	out.Validity = n.validityRows(all.Validity, idx)
 	return out, nil
@@ -174,7 +226,11 @@ func (n *Node) bitPackedRows(t DType, rows int, idx []int) (*Array, error) {
 	}
 	width := t.PType.Width()
 	a := &Array{Type: t, Len: len(idx), Data: n.ctx.opt.Arena.Bytes(len(idx)*width, false), fresh: true}
-	if m.w > 0 {
+	if k := len(idx); k > 0 && idx[k-1]-idx[0] == k-1 {
+		// Rows that follow each other are unpacked a block at a time, from the block of the first.
+		at := idx[0] + m.off
+		unpackWidth(width, a.Data, m.packed[at/blockSize*128*m.w:], m.w, at%blockSize, k)
+	} else if m.w > 0 {
 		switch width {
 		case 1:
 			unpackAt(a.Data, m.packed, m.w, m.off, idx)
@@ -281,4 +337,102 @@ func (n *Node) sequenceRows(t DType, rows int, idx []int) (*Array, error) {
 		copy(a.Data[k*width:(k+1)*width], b[:width])
 	}
 	return a, nil
+}
+
+// decimalPartsRows is decodeDecimalBytePartsV1 for the rows idx.
+func (n *Node) decimalPartsRows(t DType, rows int, idx []int) (*Array, error) {
+	p, err := n.decimalPartsType(t)
+	if err != nil {
+		return nil, err
+	}
+	msp, err := n.childRows(0, DType{Kind: Prim, PType: p, Nullable: t.Nullable}, rows, idx)
+	if err != nil {
+		return nil, err
+	}
+	return &Array{Type: t, Len: len(idx), Data: msp.Data, Width: p.Width(), Validity: msp.Validity}, nil
+}
+
+// intRows decodes the rows idx of child i, non-null integers of type p, as ints.
+func (n *Node) intRows(i int, what string, p PType, rows int, idx []int) ([]int, error) {
+	a, err := n.childRows(i, DType{Kind: Prim, PType: p}, rows, idx)
+	if err != nil {
+		return nil, err
+	}
+	if a.Validity != nil {
+		return nil, fmt.Errorf("%s: has nulls", what)
+	}
+	return toInts(n.ctx.opt.Arena, a, what, p, nil)
+}
+
+// fsstRows is decodeFSST for the rows idx, in the form with 3 buffers: the codes of the other
+// rows are not read.
+func (n *Node) fsstRows(t DType, rows int, idx []int) (*Array, error) {
+	m, lp, tbl, err := n.fsstHead(t)
+	if err != nil {
+		return nil, err
+	}
+	if n.NumBuffers() != 3 {
+		return nil, errNoRows
+	}
+	cp, err := intType("codes_offsets_ptype", m.varint[2])
+	if err != nil {
+		return nil, err
+	}
+	if c := n.NumChildren(); c != 2 && c != 3 {
+		return nil, fmt.Errorf("expected 2 or 3 children, got %d", c)
+	}
+	codes, err := n.Buffer(2)
+	if err != nil {
+		return nil, err
+	}
+	ulen, err := n.intRows(0, "uncompressed lengths", lp, rows, idx)
+	if err != nil {
+		return nil, err
+	}
+	starts, ends, err := n.codeRanges(cp, rows, idx, len(codes))
+	if err != nil {
+		return nil, err
+	}
+	ar := n.ctx.opt.Arena
+	a := &Array{Type: t, Len: len(idx)}
+	if n.NumChildren() == 3 {
+		valid, err := n.Validity(2, rows)
+		if err != nil {
+			return nil, err
+		}
+		a.Validity = n.validityRows(valid, idx)
+	}
+	total, err := outputSize(ulen, starts, ends, fsstMaxSymbol)
+	if err != nil {
+		return nil, err
+	}
+	a.Data = ar.Bytes(total, false)
+	a.Starts, a.Ends = ar.Ints(len(idx), false), ar.Ints(len(idx), false)
+	return a, tbl.decode(a.Data, a.Starts, a.Ends, codes, starts, ends, ulen)
+}
+
+// codeRanges is, for each of the rows idx of an FSST array, the range of its codes: the
+// offsets i and i+1 of child 1, of type p, read once each. The codes are that many bytes.
+func (n *Node) codeRanges(p PType, rows int, idx []int, codes int) (starts, ends []int, err error) {
+	ar := n.ctx.opt.Arena
+	at, first := ar.Ints(2*len(idx), false)[:0], ar.Ints(len(idx), false)
+	for k, i := range idx {
+		if len(at) == 0 || at[len(at)-1] != i {
+			at = append(at, i)
+		}
+		first[k] = len(at) - 1
+		at = append(at, i+1)
+	}
+	offs, err := n.intRows(1, "codes offsets", p, rows+1, at)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := checkOffsets(offs, codes); err != nil {
+		return nil, nil, err
+	}
+	starts, ends = ar.Ints(len(idx), false), ar.Ints(len(idx), false)
+	for k, f := range first {
+		starts[k], ends[k] = offs[f], offs[f+1]
+	}
+	return starts, ends, nil
 }

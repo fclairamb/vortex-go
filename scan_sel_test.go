@@ -166,3 +166,28 @@ func TestScanKeepsFewRowsErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestScanPartOfSegments checks the scans of a range of rows that is a part of the segments
+// it crosses, whose rows are decoded without the others: the rows are the ones of a scan of
+// the file at the same places, in the 3 compression modes, with one thread and with several.
+func TestScanPartOfSegments(t *testing.T) {
+	defer runtime.GOMAXPROCS(runtime.GOMAXPROCS(0))
+	cols := []string{"f", "a", "p", "city", "note", "n", "s"}
+	for _, comp := range []Compression{Default, None, Compact} {
+		f := openBytes(t, selFile(t, comp))
+		all, err := digestOf(f, Query{}, nil, cols)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.SplitAfter(all, "\n")
+		for _, r := range []Range{{Start: 100, End: 150}, {Start: 25_000, End: 29_000}, {Start: 59_990, End: 60_000}, {Start: 8191, End: 8193}} {
+			for _, procs := range []int{1, 4} {
+				runtime.GOMAXPROCS(procs)
+				got, err := digestOf(f, Query{Rows: r}, nil, cols)
+				if want := strings.Join(lines[r.Start:r.End], ""); err != nil || got != want {
+					t.Errorf("compression %d, rows %d to %d, %d threads: other rows (%v)", comp, r.Start, r.End, procs, err)
+				}
+			}
+		}
+	}
+}
