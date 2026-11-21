@@ -222,11 +222,20 @@ func sameAsRows(t *testing.T, seg []byte, dt DType, rows int, all *Array) {
 			if got.Null(j) != all.Null(i) {
 				t.Fatalf("row %d: null %v, want %v", i, got.Null(j), all.Null(i))
 			}
-			if got.Type.Kind != Prim || all.Null(i) {
+			if all.Null(i) {
 				continue
 			}
-			w := got.Type.PType.Width()
-			if g, e := got.Data[j*w:(j+1)*w], all.Data[i*w:(i+1)*w]; string(g) != string(e) {
+			var g, e []byte
+			switch got.Type.Kind {
+			case Prim:
+				w := got.Type.PType.Width()
+				g, e = got.Data[j*w:(j+1)*w], all.Data[i*w:(i+1)*w]
+			case Decimal:
+				g, e = got.Data[j*got.Width:(j+1)*got.Width], all.Data[i*all.Width:(i+1)*all.Width]
+			case Utf8, Binary:
+				g, e = got.Data[got.Starts[j]:got.Ends[j]], all.Data[all.Starts[i]:all.Ends[i]]
+			}
+			if string(g) != string(e) {
 				t.Fatalf("row %d: %x, want %x", i, g, e)
 			}
 		}

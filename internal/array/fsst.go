@@ -18,35 +18,12 @@ const fsstMaxSymbol = 8
 // validity. The older form has 2 buffers (the symbols and their lengths) and the children
 // codes, a varbin, then uncompressed lengths: its validity is the one of the codes.
 func decodeFSST(n *Node, t DType, rows int) (*Array, error) {
-	if !isBytes(t) {
-		return nil, fmt.Errorf("cannot be a %s", t)
-	}
-	m, err := readMessage(n.Metadata())
-	if err != nil {
-		return nil, err
-	}
-	lp, err := intType("uncompressed_lengths_ptype", m.varint[1])
-	if err != nil {
-		return nil, err
-	}
-	nb := n.NumBuffers()
-	if nb != 2 && nb != 3 {
-		return nil, fmt.Errorf("expected 2 or 3 buffers, got %d", nb)
-	}
-	syms, err := n.Buffer(0)
-	if err != nil {
-		return nil, err
-	}
-	lens, err := n.Buffer(1)
-	if err != nil {
-		return nil, err
-	}
-	tbl, err := newSymbolTable(syms, lens)
+	m, lp, tbl, err := n.fsstHead(t)
 	if err != nil {
 		return nil, err
 	}
 	var p fsstParts
-	if nb == 3 {
+	if n.NumBuffers() == 3 {
 		err = p.current(n, &m, lp, rows)
 	} else {
 		err = p.legacy(n, t, lp, rows)
@@ -67,6 +44,33 @@ func decodeFSST(n *Node, t DType, rows int) (*Array, error) {
 		return nil, err
 	}
 	return a, nil
+}
+
+// fsstHead reads what a vortex.fsst node of an array of type t says before its rows: its
+// metadata, the type of the lengths of the rows, and the symbols.
+func (n *Node) fsstHead(t DType) (m message, lp PType, tbl *symbolTable, err error) {
+	if !isBytes(t) {
+		return m, 0, nil, fmt.Errorf("cannot be a %s", t)
+	}
+	if m, err = readMessage(n.Metadata()); err != nil {
+		return m, 0, nil, err
+	}
+	if lp, err = intType("uncompressed_lengths_ptype", m.varint[1]); err != nil {
+		return m, 0, nil, err
+	}
+	if nb := n.NumBuffers(); nb != 2 && nb != 3 {
+		return m, 0, nil, fmt.Errorf("expected 2 or 3 buffers, got %d", nb)
+	}
+	syms, err := n.Buffer(0)
+	if err != nil {
+		return m, 0, nil, err
+	}
+	lens, err := n.Buffer(1)
+	if err != nil {
+		return m, 0, nil, err
+	}
+	tbl, err = newSymbolTable(syms, lens)
+	return m, lp, tbl, err
 }
 
 // fsstParts is what the children of an FSST array say about its rows.
