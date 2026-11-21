@@ -157,6 +157,30 @@ func (p *bufPool) put(b *ioBuf) {
 	p.mu.Unlock()
 }
 
+// scanMem is the memory of a scan: the buffers of its reads and of its decoded arrays. A scan
+// takes the one a scan of the file left, when there is one, so that scans that follow each
+// other work in the same memory in place of allocating theirs again. The collector frees the
+// ones nobody takes.
+type scanMem struct {
+	arrays array.Pool
+	bufs   bufPool
+}
+
+// takeMem returns the memory of a scan of the file that ended, or a new one.
+func (f *File) takeMem() *scanMem {
+	if m, ok := f.mem.Get().(*scanMem); ok {
+		return m
+	}
+	return new(scanMem)
+}
+
+// putMem keeps the memory of a scan that ended for the next one. What the last batch of the
+// scan reads is not in it: it was never given back.
+func (f *File) putMem(m *scanMem) {
+	m.arrays.Forget()
+	f.mem.Put(m)
+}
+
 // loader reads and decodes the units of a scan in parallel, a bounded number of units ahead
 // of the consumer. The consumer asks for the units one at a time with get; a unit nobody has
 // started yet is read by the consumer itself, so the order the consumer takes them in never
@@ -168,9 +192,9 @@ type loader struct {
 	progress chan struct{} // the consumer moved forward
 	stop     chan struct{} // closed when the scan ends
 	arrays   *array.Pool   // the buffers of the decoded arrays
+	pool     *bufPool      // the buffers of the reads
 	units    []*unit       // in the order of the scan
 	retired  []*unit       // the units done with in the current batch
-	pool     bufPool
 	wg       sync.WaitGroup
 	front    atomic.Int64 // the units the consumer has reached
 	sparse   atomic.Bool  // the filter keeps few rows: the late units are not decoded ahead
@@ -182,7 +206,7 @@ type loader struct {
 // newLoader plans the units of a scan: the flats of its readers, in the order of their first
 // row, without the ones whose rows the filter rules out. It starts the reads ahead.
 func newLoader(ctx context.Context, f *File, p *scanPlan, workers int) *loader {
-	l := &loader{ctx: ctx, f: f, gap: f.gap, maxRead: f.maxRead, arrays: p.pool,
+	l := &loader{ctx: ctx, f: f, gap: f.gap, maxRead: f.maxRead, arrays: p.pool, pool: &p.mem.bufs,
 		sem: make(chan struct{}, workers), progress: make(chan struct{}, 1), stop: make(chan struct{})}
 	// Until a batch says otherwise, a filter is taken to keep few rows: the units of the
 	// columns it does not read are not decoded before the first batch asks for their rows.
