@@ -163,7 +163,7 @@ func TestDictionaryRuns(t *testing.T) {
 	}
 	// The first value of a run is taken whatever its size.
 	lowered(t, &maxDictBytes, 1)
-	s, vals := strCase(300, func(i int) (string, bool) { return "a long value of more than twelve bytes", i%4 == 1 })
+	s, vals := strCase(300, func(i int) (string, bool) { return fmt.Sprintf("a long value of more than twelve bytes %d", i%2), i%4 == 1 })
 	f := roundTrip(t, Utf8Type().AsNullable(), s, vals, 300)
 	if got := layoutTree(f, f.layout.children[0]); !strings.Contains(got, "dict") {
 		t.Errorf("%s", got)

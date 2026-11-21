@@ -86,8 +86,8 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.alp` | yes | yes |
 | array | `vortex.alprd` | yes | yes |
 | array | `vortex.bool` | yes | yes |
-| array | `vortex.bytebool` | yes | no |
-| array | `vortex.chunked` | yes | no |
+| array | `vortex.bytebool` | yes | yes |
+| array | `vortex.chunked` | yes | yes |
 | array | `vortex.constant` | yes | yes |
 | array | `vortex.datetimeparts` | yes | yes |
 | array | `vortex.decimal` | yes | yes |
@@ -96,22 +96,22 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | array | `vortex.ext` | yes | yes |
 | array | `vortex.fixed_size_list` | yes | yes |
 | array | `vortex.fsst` | yes | yes |
-| array | `vortex.list` | yes | no |
+| array | `vortex.list` | yes | yes |
 | array | `vortex.listview` | yes | yes |
-| array | `vortex.map` | yes | no |
-| array | `vortex.masked` | yes | no |
+| array | `vortex.map` | yes | yes |
+| array | `vortex.masked` | yes | yes |
 | array | `vortex.null` | yes | yes |
-| array | `vortex.onpair` | yes | no |
-| array | `vortex.parquet.variant` | yes | no |
-| array | `vortex.pco` | yes | no |
+| array | `vortex.onpair` | yes | yes |
+| array | `vortex.parquet.variant` | yes | yes |
+| array | `vortex.pco` | yes | yes |
 | array | `vortex.primitive` | yes | yes |
 | array | `vortex.runend` | yes | yes |
 | array | `vortex.sequence` | yes | yes |
 | array | `vortex.sparse` | yes | yes |
 | array | `vortex.struct` | yes | yes |
-| array | `vortex.varbin` | yes | no |
+| array | `vortex.varbin` | yes | yes |
 | array | `vortex.varbinview` | yes | yes |
-| array | `vortex.variant` | yes | no |
+| array | `vortex.variant` | yes | yes |
 | array | `vortex.zigzag` | yes | yes |
 | array | `vortex.zstd` | yes | yes |
 | dtype | `vortex.date` | yes | yes |
@@ -121,7 +121,7 @@ writes. Generated from the decoder and encoder registries, never written by hand
 | layout | `vortex.chunked` | yes | yes |
 | layout | `vortex.dict` | yes | yes |
 | layout | `vortex.flat` | yes | yes |
-| layout | `vortex.stats` | yes | no |
+| layout | `vortex.stats` | yes | yes |
 | layout | `vortex.struct` | yes | yes |
 | layout | `vortex.zoned` | yes | yes |
 <!-- matrix:end -->
@@ -141,7 +141,6 @@ every merge to `main`, with the Rust reference measured on the same machine, in 
 - No Arrow in the core module, no `preview` or `unstable` edition, no third-party encodings.
 - Our files are not byte-identical to the Rust writer's: the format leaves the choice of
   encodings to the writer. They are at most 10% larger on TPC-H and ClickBench.
-- No Pco and no OnPair encoder: both are read, neither is written.
 
 See the non-goals in [docs/goals.md](docs/goals.md#non-goals).
 

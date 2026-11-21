@@ -36,7 +36,8 @@ Reader:
 Writer:
 
 - Every file written is opened by the reference reader and gives back the values we wrote.
-- A file only contains encodings of the target edition (see goal 3).
+- A file only contains encodings of the target edition (see goal 3), which is the newest
+  unless `WriteOptions.Edition` names an older one.
 
 ## 3. Complete
 
@@ -57,6 +58,9 @@ Reader, done when:
 Writer, done when:
 
 - Every logical type can be written.
+- A file can target any edition of the table, `core 2025.05.0` to the newest
+  (`WriteOptions.Edition`): it only holds what that edition has, and the readers of that
+  era (Vortex 0.64 and 0.83 for `core 2025.05.0`) open it.
 - The compressor picks encodings per chunk, like the reference one, and our files are at
   most 10% larger than the reference writer's on TPC-H and ClickBench.
 
@@ -65,34 +69,37 @@ docs/testing.md section 4):
 
 | Data | Default | Compact |
 |---|---|---|
-| TPC-H `lineitem` | 0.997 | 1.085 |
-| TPC-H `orders` | 1.000 | 1.157 |
-| ClickBench `hits_5k` | 1.077 | 1.060 |
+| TPC-H `lineitem` | 0.997 | 1.018 |
+| TPC-H `orders` | 1.000 | 1.047 |
+| ClickBench `hits_5k` | 0.984 | 0.987 |
 
-The gate is 1.10 in `Default`. In `Compact`, until a Pco encoder is decided, it is the highest
-ratio measured, 1.157, plus 2%: 1.18. That is what the missing Pco encoder costs: the
-reference's compact mode codes integers with Pco, which takes their deltas (`o_orderkey` of
-`orders`: 1 kB in Pco, 31 kB bit-packed by us), and dates and prices the same way, where zstd
-does not make up for it.
+`vortex.onpair` is written next to FSST: the compressor keeps the smaller of the two on the
+sample of each chunk, as the reference does. The reference file of `hits_5k` holds OnPair
+arrays, which is why its `Default` ratio fell from 1.077 to 0.984. On the string columns of
+`default_mixed`, our OnPair output is within a few bytes of the reference's.
 
-The writer does not have to emit every encoding. The reader has to decode every one. These
-are decoded and never written, each for a reason:
+`vortex.pco` is written in `Compact`, for the integers and floats of 16 bits and more, as the
+reference does (`vortex.integer.pco` and `vortex.float.pco`): it takes the deltas of keys and
+dates (`o_orderkey` of `orders`: 1 kB in Pco, 31 kB bit-packed) and the decimal multiples of
+prices. Our stream is not the crate's: the classic and float-multiplier modes, consecutive
+deltas of order 1 and 2, bins cut by an optimal partition of the sorted latents, and no
+lookback, convolution or integer-multiplier search. It is valid Pco that the reference decodes
+to the same numbers. That is what took `Compact` from 1.157 (`orders`) to 1.047, and the gate
+is 1.10 in both modes.
 
-- `vortex.pco`: no Pco encoder in this version. It is the largest format of the edition, and
-  compact mode uses `vortex.zstd` for numbers instead. The compressor measures what that costs
-  in file size against the reference (below).
-- `vortex.onpair`: a second string compressor next to FSST. This version writes FSST only; the
-  compressor can add OnPair if it saves bytes on the benchmarks against the reference.
-- `vortex.variant`, `vortex.parquet.variant`: the arrays of the Variant type, which the writer
-  has no column for yet. They are read for the files that other writers make.
-- `vortex.masked`: puts a validity over an array of another encoding. The encoders put the
-  validity on the array itself, so a column never needs it.
-- `vortex.bytebool`: bools one byte each, a wider form of `vortex.bool`, which holds the same
-  values in a bit each.
+The writer does not have to emit every encoding. The reader has to decode every one. Every
+encoding of the edition is written, none is only read.
+
+Two arrays are written only when a test forces them, and no compressor picks them:
+`vortex.bytebool` (bools one byte each, a wider form of `vortex.bool`, which holds the same
+values in a bit each) and the array `vortex.chunked` (several arrays end to end: the
+reference makes an array canonical before it compresses it, and the writer cuts its own
+chunks, one array per flat segment). Writing them brings no byte and no speed. It brings the
+proof, by the reference reader, that the bytes written for them are right.
 
 What the writer does emit, with the encoders of `internal/encode`: bit-packing, frame of
-reference, zigzag, run-length, run-end, dictionary, sequence, constant, sparse, ALP, ALP-RD,
-FSST, decimal byte parts, datetime parts and zstd.
+reference, zigzag, run-length, run-end, dictionary, sequence, constant, masked (a constant under a validity), sparse, ALP, ALP-RD,
+FSST, OnPair, decimal byte parts, datetime parts, zstd and Pco (in `Compact`).
 
 The support matrix in the README is generated from the code, never written by hand.
 
@@ -115,7 +122,7 @@ Speed targets, to revise after the first measurements:
 - **Standard library, plus one module.** `github.com/klauspost/compress` is the only
   dependency allowed, for zstd (Go 1.27 has no public zstd package). It is pure Go.
   Everything else is hand-written: flatbuffers, the protobuf wire format, FastLanes, ALP,
-  FSST and Pco.
+  FSST, OnPair and Pco.
 - No assembly in the first version.
 - `unsafe` only in one internal package, for two things: casting decoded bytes to typed
   slices, and writing the fields of a row struct.

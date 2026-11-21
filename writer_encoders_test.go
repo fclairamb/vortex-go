@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/fclairamb/vortex-go/internal/edition"
@@ -18,9 +19,10 @@ import (
 var encodingIDs = map[string]string{
 	"bitpacked": "fastlanes.bitpacked", "for": "fastlanes.for", "zigzag": "vortex.zigzag",
 	"rle": "fastlanes.rle", "runend": "vortex.runend", "dict": "vortex.dict",
-	"sequence": "vortex.sequence", "constant": "vortex.constant", "sparse": "vortex.sparse",
-	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "fsst": "vortex.fsst",
+	"sequence": "vortex.sequence", "constant": "vortex.constant", "masked": "vortex.masked", "sparse": "vortex.sparse",
+	"alp": "vortex.alp", "alprd": "vortex.alprd", "zstd": "vortex.zstd", "pco": "vortex.pco", "fsst": "vortex.fsst", "onpair": "vortex.onpair", "varbin": "vortex.varbin",
 	"decimal_byte_parts": "vortex.decimal_byte_parts", "datetimeparts": "vortex.datetimeparts",
+	"bytebool": "vortex.bytebool", "chunked": "vortex.chunked",
 }
 
 func numberTypes() map[Kind]Type {
@@ -40,7 +42,8 @@ func forcedTypes(enc string) []Kind {
 		switch {
 		case enc == "zigzag" && !isSigned, isFloat && slices.Contains([]string{"bitpacked", "for", "sequence"}, enc):
 		case !isFloat && (enc == "alp" || enc == "alprd"):
-		case enc == "fsst" || enc == "decimal_byte_parts" || enc == "datetimeparts": // not numbers
+		case enc == "pco" && numberWidth(k) == 1: // Pco does not code 8-bit numbers
+		case enc == "fsst" || enc == "onpair" || enc == "varbin" || enc == "decimal_byte_parts" || enc == "datetimeparts" || enc == "bytebool": // not numbers
 		default:
 			out = append(out, k)
 		}
@@ -105,9 +108,12 @@ func forcedColumn(enc string, k Kind, n int, withNulls bool) (Type, Data, []val)
 		"dict":     func(i int) int64 { return int64(i % 13) },
 		"sequence": func(i int) int64 { return int64(i*3 + 5) },
 		"zstd":     func(i int) int64 { return int64(i * 37 % 100) },
+		"pco":      func(i int) int64 { return int64(i*37%100) - 20 },
+		"chunked":  func(i int) int64 { return int64(i*37%100) - 20 },
 		"alp":      func(i int) int64 { return int64(i) },
 		"alprd":    func(i int) int64 { return int64(i) },
 		"constant": func(int) int64 { return 42 },
+		"masked":   func(int) int64 { return 42 },
 		"sparse": func(i int) int64 {
 			if i%17 == 5 {
 				return int64(i % 100)
@@ -225,6 +231,9 @@ func TestForcedEncodings(t *testing.T) {
 					if enc == "sequence" && withNulls {
 						return // a sequence has no null
 					}
+					if enc == "masked" && !withNulls {
+						return // without a null it is a constant
+					}
 					n := 100
 					if enc == "sequence" && numberWidth(k) == 1 {
 						n = 20 // 3*i+5 stays in a byte, twice
@@ -238,6 +247,60 @@ func TestForcedEncodings(t *testing.T) {
 			}
 		}
 	}
+}
+
+// boolsOf makes n booleans, and the rows they stand for.
+func boolsOf(n int, withNulls bool) (Data, []val) {
+	bools := make([]bool, n)
+	nulls := make([]bool, n)
+	vals := make([]val, n)
+	for i := range bools {
+		bools[i] = i%3 != 0
+		nulls[i] = withNulls && i%4 == 1
+		vals[i] = val{b: []byte{boolByte(bools[i] && !nulls[i])}, null: nulls[i]}
+	}
+	d := OfBools(bools)
+	if withNulls {
+		d = d.Nulls(nulls)
+	}
+	return d, vals
+}
+
+// TestForcedBoolsAndChunks: booleans as bytes and as chunks, and strings as chunks, with and
+// without nulls, from one row to more than 8,192.
+func TestForcedBoolsAndChunks(t *testing.T) {
+	for _, enc := range []string{"bytebool", "chunked"} {
+		for _, withNulls := range []bool{false, true} {
+			for _, n := range []int{0, 1, 2, 3, 100, 8193} {
+				ty := BoolType()
+				if withNulls {
+					ty = ty.AsNullable()
+				}
+				d, vals := boolsOf(n, withNulls)
+				if n > 0 && withNulls && n < 5 {
+					continue // no null among so few rows
+				}
+				checkForced(t, enc, ty, d, vals, n)
+			}
+		}
+	}
+	strs := make([]string, 400)
+	bins := make([][]byte, 400)
+	nulls := make([]bool, 400)
+	vals := make([]val, 400)
+	for i := range strs {
+		strs[i] = strings.Repeat("x", i%20)
+		bins[i] = []byte(strs[i])
+		nulls[i] = i%7 == 2
+		vals[i] = val{b: bins[i], null: nulls[i]}
+	}
+	checkForced(t, "chunked", Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 200, 200)
+	checkForced(t, "chunked", BinaryType(), OfBytes(bins), vals[:0:0], 0)
+	// every row of a part null, and a column of one row
+	all := []bool{true, true, true, true, true, true}
+	checkForced(t, "chunked", Int32Type().AsNullable(), Of([]int32{1, 2, 3, 4, 5, 6}).Nulls(all),
+		[]val{{null: true}, {null: true}, {null: true}, {null: true}, {null: true}, {null: true}}, 6)
+	checkForced(t, "chunked", Int32Type(), Of([]int32{9}), []val{{b: rawOf(int32(9))}}, 1)
 }
 
 func TestForcedLargeColumn(t *testing.T) {
@@ -259,10 +322,33 @@ func TestForcedStrings(t *testing.T) {
 		nulls[i] = i%9 == 4
 		vals[i] = val{b: bins[i], null: nulls[i]}
 	}
-	for _, enc := range []string{"dict", "fsst", "zstd"} {
+	checkForced(t, "varbin", BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
+	checkForced(t, "varbin", BinaryType(), OfBytes(bins), vals[:0:0], 0)
+	for _, enc := range []string{"dict", "fsst", "onpair", "zstd"} {
 		checkForced(t, enc, Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 300)
 		checkForced(t, enc, BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
 	}
+}
+
+// TestForcedMaskedStringsAndBools: strings and booleans of one value among nulls, as a constant
+// under a validity, and the other arrays are an error.
+func TestForcedMaskedStringsAndBools(t *testing.T) {
+	nulls := make([]bool, 300)
+	strs := make([]string, 300)
+	bins := make([][]byte, 300)
+	bools := make([]bool, 300)
+	vals := make([]val, 300)
+	bvals := make([]val, 300)
+	for i := range strs {
+		nulls[i] = i%3 != 1
+		strs[i], bools[i] = "a string that is longer than twelve bytes", true
+		bins[i] = []byte(strs[i])
+		vals[i] = val{b: bins[i], null: nulls[i]}
+		bvals[i] = val{b: []byte{1}, null: nulls[i]}
+	}
+	checkForced(t, "masked", Utf8Type().AsNullable(), OfStrings(strs).Nulls(nulls), vals, 300)
+	checkForced(t, "masked", BinaryType().AsNullable(), OfBytes(bins).Nulls(nulls), vals, 150, 150)
+	checkForced(t, "masked", BoolType().AsNullable(), OfBools(bools).Nulls(nulls), bvals, 300)
 }
 
 // TestForcedDecimalsAndTimestamps writes decimals that fit an i64, and timestamps of every unit,
@@ -310,15 +396,16 @@ func TestForcedErrors(t *testing.T) {
 		ty  Type
 		d   Data
 	}{
-		"not a sequence":     {"sequence", Int32Type(), Of([]int32{1, 5, 2})},
-		"not a constant":     {"constant", Int32Type(), Of([]int32{1, 5, 2})},
-		"negative":           {"bitpacked", Int32Type(), Of([]int32{1, -5, 2})},
-		"zigzag of unsigned": {"zigzag", Uint32Type(), Of([]uint32{1})},
-		"sequence of floats": {"sequence", Float64Type(), Of([]float64{1, 2})},
-		"all equal sparse":   {"sparse", Int32Type(), Of([]int32{})},
-		"unknown":            {"nothing", Int32Type(), Of([]int32{1})},
-		"alp of integers":    {"alp", Int32Type(), Of([]int32{1})},
-		"alprd of no row":    {"alprd", Float64Type(), Of([]float64{})},
+		"not a sequence":      {"sequence", Int32Type(), Of([]int32{1, 5, 2})},
+		"not a constant":      {"constant", Int32Type(), Of([]int32{1, 5, 2})},
+		"negative":            {"bitpacked", Int32Type(), Of([]int32{1, -5, 2})},
+		"zigzag of unsigned":  {"zigzag", Uint32Type(), Of([]uint32{1})},
+		"sequence of floats":  {"sequence", Float64Type(), Of([]float64{1, 2})},
+		"all equal sparse":    {"sparse", Int32Type(), Of([]int32{})},
+		"bytebool of numbers": {"bytebool", Int32Type(), Of([]int32{1})},
+		"unknown":             {"nothing", Int32Type(), Of([]int32{1})},
+		"alp of integers":     {"alp", Int32Type(), Of([]int32{1})},
+		"alprd of no row":     {"alprd", Float64Type(), Of([]float64{})},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -326,5 +413,67 @@ func TestForcedErrors(t *testing.T) {
 				t.Fatal("no error")
 			}
 		})
+	}
+}
+
+// TestForcedMaskedBoolsThatDiffer: booleans of two values among nulls are not a constant under
+// a validity, so they are written with another encoding and read back unchanged.
+func TestForcedMaskedBoolsThatDiffer(t *testing.T) {
+	bools := make([]bool, 300)
+	nulls := make([]bool, 300)
+	vals := make([]val, 300)
+	for i := range bools {
+		bools[i], nulls[i] = i%2 == 0, i%3 != 1
+		vals[i] = val{b: []byte{boolByte(bools[i])}, null: nulls[i]}
+	}
+	ty := BoolType().AsNullable()
+	f, err := writeForced(t, "masked", NewSchema(Field{"c", ty}), []Data{OfBools(bools).Nulls(nulls)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := readBack(f, ty)
+	if err != nil || len(got) != len(vals) {
+		t.Fatalf("%d rows, %v, want %d", len(got), err, len(vals))
+	}
+	for i := range vals {
+		if !eqVal(got[i], vals[i]) {
+			t.Fatalf("row %d is %s, want %s", i, describeVal(got[i]), describeVal(vals[i]))
+		}
+	}
+	if slices.Contains(f.arrayEncodings, encodingIDs["masked"]) {
+		t.Fatalf("the file has %v, with a masked constant", f.arrayEncodings)
+	}
+}
+
+// TestNeverBytesNorChunks: a file written without force, in any mode, has neither vortex.bytebool
+// nor the array vortex.chunked.
+func TestNeverBytesNorChunks(t *testing.T) {
+	bd, _ := boolsOf(3000, true)
+	for _, c := range []Compression{Default, Compact, None} {
+		var buf bytes.Buffer
+		s := NewSchema(Field{"b", BoolType().AsNullable()}, Field{"i", Int32Type()})
+		w := NewWriter(&buf, s, WriteOptions{Compression: c})
+		nums := make([]int32, 3000)
+		for i := range nums {
+			nums[i] = int32(i)
+		}
+		if err := w.Write(bd, Of(nums)); err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Close(); err != nil {
+			t.Fatal(err)
+		}
+		f, err := Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := readBack(f, BoolType().AsNullable()); err != nil || len(f.arrayEncodings) == 0 {
+			t.Fatalf("%v, encodings %v", err, f.arrayEncodings)
+		}
+		for _, id := range []string{"vortex.bytebool", "vortex.chunked"} {
+			if slices.Contains(f.arrayEncodings, id) {
+				t.Fatalf("compression %v: the file has %s", c, id)
+			}
+		}
 	}
 }

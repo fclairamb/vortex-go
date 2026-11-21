@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand/v2"
+	"slices"
 	"strings"
 	"testing"
 
@@ -63,7 +64,12 @@ var strEncoders = map[string]strEnc{
 			return EstimateFSSTStrings(e, asStrings(v), nulls, rows)
 		},
 	},
-	"zstd-bytes": {run: ZstdBytes, estim: EstimateZstdBytes},
+	"onpair-bytes": {run: OnPairBytes, estim: EstimateOnPairBytes},
+	"zstd-bytes":   {run: ZstdBytes, estim: EstimateZstdBytes},
+	"varbin": {
+		run:   VarBinBytes,
+		estim: func(_ *Encoder, v [][]byte, nulls []bool, rows int) int { return EstimateVarBinBytes(v, nulls, rows) },
+	},
 	"zstd-strings": {
 		run: func(e *Encoder, v [][]byte, nulls []bool) *Node { return ZstdStrings(e, asStrings(v), nulls) },
 		estim: func(e *Encoder, v [][]byte, nulls []bool, rows int) int {
@@ -339,15 +345,19 @@ func TestNoAllocationFSSTZstd(t *testing.T) {
 		many[i] = int32(i % 1000)
 	}
 	for name, f := range map[string]func(){
-		"zstd frames":    func() { e.Reset(); Zstd(e, many, nil) },
-		"fsst bytes":     func() { e.Reset(); FSSTBytes(e, col, nulls) },
-		"fsst strings":   func() { e.Reset(); FSSTStrings(e, strs, nulls) },
-		"zstd bytes":     func() { e.Reset(); ZstdBytes(e, col, nulls) },
-		"zstd strings":   func() { e.Reset(); ZstdStrings(e, strs, nulls) },
-		"estimate fsst":  func() { e.Reset(); EstimateFSSTBytes(e, col[:500], nulls[:500], len(col)) },
-		"estimate zstd":  func() { e.Reset(); EstimateZstdStrings(e, strs[:500], nulls[:500], len(col)) },
-		"alprd estimate": func() { e.Reset(); EstimateALPRD(e, []float64{1.5, 2.5, 3.5}, nil, 3) },
-		"alp estimate":   func() { e.Reset(); EstimateALP(e, []float64{1.5, 2.5, 3.5}, nil, 3) },
+		"zstd frames":     func() { e.Reset(); Zstd(e, many, nil) },
+		"fsst bytes":      func() { e.Reset(); FSSTBytes(e, col, nulls) },
+		"fsst strings":    func() { e.Reset(); FSSTStrings(e, strs, nulls) },
+		"onpair bytes":    func() { e.Reset(); OnPairBytes(e, col, nulls) },
+		"estimate onpair": func() { e.Reset(); EstimateOnPairBytes(e, col[:500], nulls[:500], len(col)) },
+		"zstd bytes":      func() { e.Reset(); ZstdBytes(e, col, nulls) },
+		"zstd strings":    func() { e.Reset(); ZstdStrings(e, strs, nulls) },
+		"varbin":          func() { e.Reset(); VarBinBytes(e, col, nulls) },
+		"estimate varbin": func() { e.Reset(); EstimateVarBinBytes(col[:500], nulls[:500], len(col)) },
+		"estimate fsst":   func() { e.Reset(); EstimateFSSTBytes(e, col[:500], nulls[:500], len(col)) },
+		"estimate zstd":   func() { e.Reset(); EstimateZstdStrings(e, strs[:500], nulls[:500], len(col)) },
+		"alprd estimate":  func() { e.Reset(); EstimateALPRD(e, []float64{1.5, 2.5, 3.5}, nil, 3) },
+		"alp estimate":    func() { e.Reset(); EstimateALP(e, []float64{1.5, 2.5, 3.5}, nil, 3) },
 	} {
 		for range 3 { // the arena of the Encoder grows until it holds a whole call
 			f()
@@ -355,5 +365,18 @@ func TestNoAllocationFSSTZstd(t *testing.T) {
 		if got := testing.AllocsPerRun(5, f); got != 0 {
 			t.Errorf("%s: %v allocations", name, got)
 		}
+	}
+}
+
+// TestVarBinLayout: the offsets are the narrowest unsigned type, and a null row has no byte.
+func TestVarBinLayout(t *testing.T) {
+	e := New()
+	n := VarBinBytes(e, [][]byte{[]byte("ab"), []byte("zzz"), []byte("cd")}, []bool{false, true, false})
+	if string(n.Bufs[0].Data) != "abcd" || !slices.Equal(n.Kids[0].Bufs[0].Data, []byte{0, 2, 2, 4}) || n.Kids[1] == nil {
+		t.Fatalf("data %q, offsets %v", n.Bufs[0].Data, n.Kids[0].Bufs[0].Data)
+	}
+	big := VarBinBytes(e, [][]byte{make([]byte, 70_000)}, nil)
+	if len(big.Kids[0].Bufs[0].Data) != 8 || len(big.Kids) != 1 {
+		t.Fatalf("%d offset bytes, %d children", len(big.Kids[0].Bufs[0].Data), len(big.Kids))
 	}
 }

@@ -333,7 +333,7 @@ func TestDictionaryProbe(t *testing.T) {
 	}
 }
 
-// TestNestedChildrenCompressed: the elements, the offsets and the sizes of a list are
+// TestNestedChildrenCompressed: the elements and the offsets of a list are
 // compressed as the reference does, in a file of one column and in one of two (whose chunks
 // wait to be compressed together).
 func TestNestedChildrenCompressed(t *testing.T) {
@@ -350,7 +350,7 @@ func TestNestedChildrenCompressed(t *testing.T) {
 	for _, s := range []*Schema{NewSchema(Field{"l", ty}), NewSchema(Field{"l", ty}, Field{"n", Int8Type()})} {
 		cols := []Data{list, Of(make([]int8, 1000))}[:len(s.Fields())]
 		f := openBytes(t, writeWith(t, Default, s, cols, 1000))
-		for _, id := range []string{encode.IDBitPacked, encode.IDSequence, encode.IDConstant} {
+		for _, id := range []string{encode.IDBitPacked, encode.IDSequence} {
 			if !slices.Contains(f.arrayEncodings, id) {
 				t.Errorf("%d columns: no %s in %v", len(cols), id, f.arrayEncodings)
 			}

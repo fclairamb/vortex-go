@@ -167,6 +167,32 @@ func ExampleFile_Scan() {
 	// Output: 4 [1000 1001 1002 1003]
 }
 
+// Write a file that Vortex 0.83 and older can open: the edition is the oldest one.
+func ExampleWriteOptions_edition() {
+	s := vortex.NewSchema(vortex.Field{Name: "id", Type: vortex.Int64Type()})
+	var buf bytes.Buffer
+	w := vortex.NewWriter(&buf, s, vortex.WriteOptions{Edition: "core 2025.05.0"})
+	if err := w.Write(vortex.Of([]int64{1, 2, 3})); err != nil {
+		log.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		log.Fatal(err)
+	}
+	f, err := vortex.Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(f.NumRows(), f.Schema())
+
+	// A type the edition does not have is an error.
+	u := vortex.NewSchema(vortex.Field{Name: "id", Type: vortex.UUIDType()})
+	err = vortex.NewWriter(&buf, u, vortex.WriteOptions{Edition: "core 2025.05.0"}).Close()
+	fmt.Println(err)
+	// Output:
+	// 3 struct{id: i64}
+	// vortex: NewWriter: field "id": a uuid is not in the edition "core 2025.05.0" (dtype vortex.uuid is newer)
+}
+
 // Write columns: a schema, then one Write per chunk with a Data per column.
 func ExampleNewWriter() {
 	s := vortex.NewSchema(

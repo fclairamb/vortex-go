@@ -200,6 +200,14 @@ func OfStruct(fields ...Data) Data
     OfStruct is the values of a struct column: one Data per field, of the same
     length.
 
+func OfVariants(vals []any) Data
+    OfVariants is the values of a Variant column, one of: nil (a null row),
+    bool, any Go integer (an unsigned one up to the largest int64), float32,
+    float64, string, []byte, time.Time (a timestamp, in microseconds,
+    or in nanoseconds when it has a finer part), VariantDecimal, []any and
+    map[string]any of these, up to 128 levels deep. Another Go type is an error
+    of Write that names the type and the row.
+
 func (d Data) Nulls(null []bool) Data
     Nulls returns the Data with these rows marked null: null[i] is true when row
     i is null. It has as many values as the Data has rows. A column that is not
@@ -421,6 +429,9 @@ type RowWriter[T any] struct {
         (s, ms, us or ns) and a zone name, and date a date in days;
       - time.Duration is a time of day in nanoseconds; the option time(unit)
         picks another unit;
+      - any is a Variant, nullable: nil is a null row, and the other values are
+        the ones that OfVariants takes (see Column.Variant for what Rows gives
+        back);
       - sql.Null[X] and *X are nullable, anything else is not;
       - a struct is a struct, []X a list, [N]X a fixed-size list and map[K]V a
         map, whose keys are not nullable and whose order of entries is the one
@@ -551,6 +562,11 @@ func Uint8Type() Type
 func Utf8Type() Type
     Utf8Type is the type of UTF-8 strings.
 
+func VariantType() Type
+    VariantType is the type of Variant values: any tree of nulls, bools,
+    numbers, strings, binary, times, decimals, arrays and objects, in the
+    Parquet Variant encoding. Its Data is OfVariants.
+
 func (t Type) AsNullable() Type
     AsNullable returns the type, nullable.
 
@@ -623,6 +639,15 @@ func (d VariantDecimal) String() string
     String prints the decimal, like Decimal.Text with the scale of the value.
 
 type WriteOptions struct {
+	// Edition is the edition the file must be readable with, as the upstream names it
+	// ("core 2025.05.0"). Empty is the newest the library knows, "core 2026.08.3". The writer
+	// only makes what the edition has: a file for an edition before "core 2026.08.0" has the
+	// older zone maps (vortex.stats) and only the legacy file statistics, one before
+	// "core 2025.10.0" has no listview and no run-length or masked arrays, and so on. An
+	// unknown edition, or a type it cannot hold (a uuid before "core 2026.08.3", a map before
+	// "core 2026.08.2", a fixed-size list before "core 2025.10.0"), is an error of the first
+	// Write or Close.
+	Edition     string
 	Compression Compression
 }
     WriteOptions are the options of a Writer.
@@ -632,14 +657,14 @@ type Writer struct {
 }
     Writer writes a Vortex file. It needs an io.Writer and never seeks.
 
-    A column takes the Data its type calls for: Of for the numbers (the Go
-    type is the one of the column, int32 for Int32; the storage of a date,
-    a time or a timestamp, and uint16 for the bits of a Float16), OfBools,
-    OfStrings or OfBytes for Utf8 and Binary, OfBytes for a UUID, OfDecimals,
-    OfNulls, OfStruct, and OfList for a list, a fixed-size list and a map.
-    Each Write adds rows. The rows of a column are cut into chunks that do not
-    depend on how the caller splits them: at multiples of 8,192 rows, about 1
-    MiB of data a chunk. Each column carries the statistics a reader uses to
+    A column takes the Data its type calls for: Of for the numbers (the Go type
+    is the one of the column, int32 for Int32; the storage of a date, a time or
+    a timestamp, and uint16 for the bits of a Float16), OfBools, OfStrings or
+    OfBytes for Utf8 and Binary, OfBytes for a UUID, OfDecimals, OfVariants for
+    a Variant, OfNulls, OfStruct, and OfList for a list, a fixed-size list and a
+    map. Each Write adds rows. The rows of a column are cut into chunks that do
+    not depend on how the caller splits them: at multiples of 8,192 rows, about
+    1 MiB of data a chunk. Each column carries the statistics a reader uses to
     skip a zone, and a column of few distinct values is written as a dictionary.
     Write copies the rows into a buffer of a few MiB a column, so they reach the
     io.Writer when a chunk is full, and at Close.

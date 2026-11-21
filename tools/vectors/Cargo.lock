@@ -2046,6 +2046,7 @@ dependencies = [
  "vortex-error",
  "vortex-fastlanes",
  "vortex-fsst",
+ "vortex-onpair",
  "vortex-sequence",
  "vortex-sparse",
  "vortex-zigzag",

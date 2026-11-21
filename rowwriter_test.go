@@ -606,7 +606,7 @@ type (
 	}
 	rwNested struct{ In struct{ C chan int } }
 	rwList   struct{ L []chan int }
-	rwAny    struct{ A any }
+	rwAny    struct{ A fmt.Stringer }
 	rwPP     struct{ P **int }
 	rwSN     struct{ P sql.Null[*int] }
 	rwNN     struct{ P sql.Null[sql.Null[int]] }
@@ -628,7 +628,7 @@ func TestRowWriterErrors(t *testing.T) {
 		{"a pointer", errOf[*rwTagged](), "vortex: RowWriter: *vortex.rwTagged is not a struct"},
 		{"chan", errOf[rwChan](), "vortex: RowWriter: field C (chan int): no Vortex type holds a Go chan"},
 		{"complex", errOf[rwFloat](), "field C (complex128): no Vortex type holds a Go complex128"},
-		{"any", errOf[rwAny](), "field A (interface {}): no Vortex type holds a Go interface"},
+		{"any", errOf[rwAny](), "field A (fmt.Stringer): only the empty interface any holds a Variant"},
 		{"map key", errOf[rwKeyCh](), "field M (map[chan int]int): map key: no Vortex type holds a Go chan"},
 		{"nullable map key", errOf[rwKeyPtr](), "field M (map[*int]int): map key: *int is nullable, a key cannot be"},
 		{"map value", errOf[rwValCh](), "field M (map[int]chan int): map value: no Vortex type holds a Go chan"},

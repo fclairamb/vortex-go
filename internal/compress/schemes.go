@@ -124,25 +124,36 @@ func statsOfInts[T encode.Int](v []T, nulls []bool) intStats {
 	return st
 }
 
+// constantNumbers is the constant array of the numbers v, under their validity when the compressor
+// may mask.
+func constantNumbers[T encode.Number](c *Compressor, x at, v []T, nulls []bool) (*encode.Node, bool) {
+	if c.limit.NoMasked {
+		return encode.Constant(x.e, v, nulls)
+	}
+	return encode.ConstantMasked(x.e, v, nulls)
+}
+
 // zigzagFn is ZigZag for a signed type, nil for an unsigned one.
 type zigzagFn[T encode.Int] func(*encode.Encoder, []T, []bool) *encode.Node
 
 // ints is the compressed array of integers.
 func ints[T encode.Int](c *Compressor, x at, p PType, v []T, nulls []bool, zigzag zigzagFn[T]) *encode.Node {
-	if n, ok := encode.Sequence(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
+	if !c.limit.NoSequence {
+		if n, ok := encode.Sequence(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
+			return n
+		}
+	}
+	if n, ok := constantNumbers(c, x, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
-	if n, ok := encode.Constant(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
-		return n
-	}
-	l := intCands(statsOfInts(v, nulls), x, p, len(v), zigzag != nil, c.mode)
+	l := intCands(c, statsOfInts(v, nulls), x, p, len(v), zigzag != nil)
 	apply := func(x at, s scheme, v []T, nulls []bool) *encode.Node { return applyInt(c, x, p, s, v, nulls, zigzag) }
 	return pick(c, x, v, nulls, &l, numberCost[T], sampleNumbers[T], apply)
 }
 
 // intCands is the schemes to try on integers, in the order of the reference
 // (vortex-btrblocks/src/session.rs), which wins the ties.
-func intCands(st intStats, x at, p PType, rows int, signed bool, mode Mode) cands {
+func intCands(c *Compressor, st intStats, x at, p PType, rows int, signed bool) cands {
 	valid := st.valid > 0
 	runs := st.long(rows) && x.parent != sRunEnd && x.parent != sRLE
 	cascade := x.cascades()
@@ -153,8 +164,9 @@ func intCands(st intStats, x at, p PType, rows int, signed bool, mode Mode) cand
 	l.add(sSparse, x.parent != sSparse && valid)
 	l.add(sDict, cascade && x.parent != sDict && valid)
 	l.add(sRunEnd, cascade && runs)
-	l.add(sRLE, cascade && runs)
-	l.add(sZstd, mode == Compact)
+	l.add(sRLE, cascade && runs && !c.limit.NoRLE)
+	l.add(sPco, valid && c.pco(p.Width()))
+	l.add(sZstd, c.zstd())
 	return l
 }
 
@@ -178,6 +190,8 @@ func applyInt[T encode.Int](c *Compressor, x at, p PType, s scheme, v []T, nulls
 		n = encode.Dict(x.e, v, nulls)
 	case sSparse:
 		n, _ = encode.Sparse(x.e, v, nulls)
+	case sPco:
+		n = encode.Pco(x.e, v, nulls)
 	default:
 		n = encode.Zstd(x.e, v, nulls)
 	}
@@ -189,7 +203,7 @@ func applyInt[T encode.Int](c *Compressor, x at, p PType, s scheme, v []T, nulls
 
 // floats is the compressed array of floats.
 func floats[T encode.Float](c *Compressor, x at, p PType, v []T, nulls []bool) *encode.Node {
-	if n, ok := encode.Constant(x.e, v, nulls); ok && cost(n) < numberCost(v, nulls) {
+	if n, ok := constantNumbers(c, x, v, nulls); ok && cost(n) < numberCost(v, nulls) {
 		return n
 	}
 	runs, valid := runsOf(v, nulls)
@@ -199,8 +213,9 @@ func floats[T encode.Float](c *Compressor, x at, p PType, v []T, nulls []bool) *
 	l.add(sALPRD, valid > 0)
 	l.add(sDict, cascade && x.parent != sDict && valid > 0)
 	l.add(sSparse, x.parent != sSparse && valid > 0 && 10*(len(v)-valid) > 9*len(v)) // dominated by nulls
-	l.add(sRLE, cascade && valid > 0 && len(v) >= runThreshold*runs && x.parent != sRLE)
-	l.add(sZstd, c.mode == Compact)
+	l.add(sRLE, cascade && valid > 0 && len(v) >= runThreshold*runs && x.parent != sRLE && !c.limit.NoRLE)
+	l.add(sPco, valid > 0 && c.pco(p.Width()))
+	l.add(sZstd, c.zstd())
 	apply := func(x at, s scheme, v []T, nulls []bool) *encode.Node { return applyFloat(c, x, p, s, v, nulls) }
 	return pick(c, x, v, nulls, &l, numberCost[T], sampleNumbers[T], apply)
 }
@@ -232,6 +247,8 @@ func applyFloat[T encode.Float](c *Compressor, x at, p PType, s scheme, v []T, n
 		n, _ = encode.Sparse(x.e, v, nulls) // there is a valid value
 	case sRLE:
 		n = encode.RLE(x.e, v, nulls)
+	case sPco:
+		n = encode.Pco(x.e, v, nulls)
 	default:
 		n = encode.Zstd(x.e, v, nulls)
 	}

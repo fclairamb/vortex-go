@@ -33,8 +33,17 @@ func binsCost(v [][]byte, nulls []bool) int {
 	return total
 }
 
+// constantBytes is the constant array of the strings v, under their validity when the compressor
+// may mask.
+func (c *Compressor) constantBytes(x at, v [][]byte, nulls []bool, utf8 bool) (*encode.Node, bool) {
+	if c.limit.NoMasked {
+		return encode.ConstantBytes(x.e, v, nulls, utf8)
+	}
+	return encode.ConstantBytesMasked(x.e, v, nulls, utf8)
+}
+
 func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.Node {
-	if n, ok := encode.ConstantBytes(x.e, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
+	if n, ok := c.constantBytes(x, v, nulls, utf8); ok && cost(n) < binsCost(v, nulls) {
 		return n
 	}
 	valid := 0
@@ -47,7 +56,11 @@ func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.
 	var l cands
 	l.add(sDict, x.cascades() && x.parent != sDict && valid > 0)
 	l.add(sFSST, utf8 && valid > 0)
-	l.add(sZstd, c.mode == Compact)
+	// the second scheme of fragments of strings, kept when the sample says it is smaller
+	l.add(sOnPair, utf8 && valid > 0 && !c.limit.NoOnPair)
+	// the reference tries it for binary only, between the dictionary and zstd
+	l.add(sVarBin, !utf8)
+	l.add(sZstd, c.zstd())
 	return pick(c, x, v, nulls, &l, binsCost, sampleBins, func(x at, s scheme, v [][]byte, nulls []bool) *encode.Node {
 		return c.applyStrings(x, s, v, nulls, utf8)
 	})
@@ -69,10 +82,44 @@ func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8
 			c.kid(x.child(s), n, 0, I32)
 			c.kid(x.child(s), n, 1, intOf(n.Kids[1].Bufs[0].Align))
 		}
+	case sOnPair:
+		n = encode.OnPairBytes(x.e, v, nulls)
+		if x.cascades() {
+			kid := c.kid
+			if x.trial {
+				kid = c.packedKid // a trial does not try every scheme on the four children
+			}
+			kid(x.child(s), n, 0, U32)
+			kid(x.child(s), n, 1, U16)
+			kid(x.child(s), n, 2, uintOf(n.Kids[2].Bufs[0].Align))
+			kid(x.child(s), n, 3, U32)
+		}
+	case sVarBin:
+		n = encode.VarBinBytes(x.e, v, nulls)
+		if x.cascades() {
+			c.kid(x.child(s), n, 0, uintOf(n.Kids[0].Bufs[0].Align))
+		}
 	default:
 		n = encode.ZstdBytes(x.e, v, nulls)
 	}
 	return n
+}
+
+// packedKid is kid with the one scheme that always pays for integers of a known width,
+// bit-packing, for the sample trial of OnPair, whose four children would cost more to try
+// scheme by scheme than the whole of the trial of FSST. The chosen array is compressed with kid.
+func (c *Compressor) packedKid(x at, n *encode.Node, i int, p PType) {
+	var out *encode.Node
+	switch raw := n.Kids[i].Bufs[0].Data; p {
+	case U16:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[uint16](raw), nil)
+	case U32:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[uint32](raw), nil)
+	}
+	// the offsets of more than 2^32 codes, in u64, stay as they are in a trial
+	if out != nil {
+		n.Kids[i] = out
+	}
 }
 
 // dictValues compresses the values of a dictionary of strings, a varbinview, in place.
@@ -133,7 +180,11 @@ func (c *Compressor) Timestamps(v []int64, nulls []bool, ticks int64) *encode.No
 
 // Bools is the compressed array of booleans, or nil for the plain array: a constant, or nothing.
 func (c *Compressor) Bools(v, nulls []bool) *encode.Node {
-	n, _ := encode.ConstantBools(c.e, v, nulls)
+	constant := encode.ConstantBoolsMasked
+	if c.limit.NoMasked {
+		constant = encode.ConstantBools
+	}
+	n, _ := constant(c.e, v, nulls)
 	if n != nil && cost(n) >= nodeOverhead+bufferOverhead+(len(v)+7)/8+validityCost(nulls, len(v)) {
 		return nil
 	}

@@ -285,6 +285,11 @@ func BinaryType() Type { return primitiveType(Binary) }
 // NullType is the type whose values are all null. It is always nullable.
 func NullType() Type { return Type{kind: Null, nullable: true} }
 
+// VariantType is the type of Variant values: any tree of nulls, bools, numbers, strings,
+// binary, times, decimals, arrays and objects, in the Parquet Variant encoding. Its Data is
+// OfVariants.
+func VariantType() Type { return primitiveType(Variant) }
+
 // UUIDType is the type of 16-byte identifiers.
 func UUIDType() Type { return primitiveType(UUID) }
 

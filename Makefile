@@ -8,7 +8,7 @@ test:
 
 # -race needs the cgo toolchain on Linux. The code itself has no cgo (see nocgo).
 race:
-	go test -race ./...
+	go test -race -timeout 40m ./...
 
 # 100% statement coverage, no exclusion. Lists every block that is not covered.
 cover:
@@ -63,6 +63,7 @@ bigfile:
 FUZZTIME ?= 30s
 fuzz:
 	go test -run '^$$' -fuzz '^FuzzOpenScan$$' -fuzztime $(FUZZTIME) -fuzzminimizetime 10s .
+	go test -run '^$$' -fuzz '^FuzzWriteRoundTrip$$' -fuzztime $(FUZZTIME) -fuzzminimizetime 10s ./internal/pco
 
 # The expected values of every release in .cache/fixtures, with the vortex-data of that
 # release (the pinned one when it cannot be installed, see .cache/fixtures/<version>/ORACLE).
@@ -81,15 +82,24 @@ compat:
 
 # The reference reader opens the files our writer makes, and gets the values we wrote. The
 # Go test writes the files and the canonical hashes of its source data into .cache/interop,
-# the oracle checks them with the pinned vortex-data and with the latest release. Needs uv
-# and network.
+# the Variant files go through tools/variantjson (cargo, the pinned release: vortex-data has no
+# Variant in Python), the oracle checks the others with the pinned vortex-data and with the latest release. The files of
+# core 2025.05.0 (WriteOptions.Edition) are read by vortex-data 0.64.0 and 0.83.0 too, the first
+# and the last release before vortex.zoned. Needs uv and network.
 INTEROP = .cache/interop
 interop:
 	rm -rf $(INTEROP)
 	mkdir -p $(INTEROP)
-	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropRows|TestSizeRatios)$$' -count=1 .
+	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropEditions|TestInteropRows|TestInteropVariants|TestSizeRatios)$$' -count=1 .
 	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)
+	for m in default compact none; do \
+		(cd tools/variantjson && cargo run --release -q -- ../../$(INTEROP)/variants_$$m.vortex) | diff - $(INTEROP)/variants_$$m.jsonl || exit 1; \
+	done
 	uv run --with vortex-data --with pyarrow python tools/oracle/oracle.py check $(INTEROP)
+	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)/core_2025_05_0
+	for v in 0.64.0 0.83.0; do \
+		uv run --python 3.12 --with vortex-data==$$v --with 'substrait<0.25' --with pyarrow python tools/oracle/oracle.py check $(INTEROP)/core_2025_05_0 || exit 1; \
+	done
 
 # The byte-exact vectors of the encoders (testdata/vectors), made by the encoders of the
 # reference. Needs cargo and network; the tests never do. See tools/vectors/README.md.

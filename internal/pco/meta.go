@@ -292,6 +292,24 @@ func readLatentVar(r *bitReader, nb int) (*latentVar, error) {
 	return v, v.buildTable(weights, lowers, offBits)
 }
 
+// spreadSymbols spreads the symbols over the states of a tANS table, symbols having one entry per
+// state, the symbol s taking weights[s] of them: the spread_state_symbols algorithm of the
+// reference.
+func spreadSymbols(symbols, weights []uint32) {
+	size := uint32(len(symbols))
+	stride := 3 * size / 5
+	if stride%2 == 0 {
+		stride++
+	}
+	step := uint32(0)
+	for sym, w := range weights {
+		for range w {
+			symbols[(stride*step)&(size-1)] = uint32(sym)
+			step++
+		}
+	}
+}
+
 // buildTable spreads the symbols over the tANS states (the spread_state_symbols algorithm of
 // the reference) and derives the decoder from them.
 func (v *latentVar) buildTable(weights []uint32, lowers []uint64, offBits []uint8) error {
@@ -306,18 +324,8 @@ func (v *latentVar) buildTable(weights []uint32, lowers []uint64, offBits []uint
 	if sum != size {
 		return corrupt("the bin weights add up to %d, the tANS size is %d", sum, size)
 	}
-	stride := 3 * size / 5
-	if stride%2 == 0 {
-		stride++
-	}
 	symbols := make([]uint32, size)
-	step := uint32(0)
-	for sym, w := range weights {
-		for range w {
-			symbols[(stride*step)&(size-1)] = uint32(sym)
-			step++
-		}
-	}
+	spreadSymbols(symbols, weights)
 	next := slicesClone(weights) // x_s of the tANS paper
 	v.nodes = make([]ansNode, size)
 	v.lowers = make([]uint64, size)

@@ -17,6 +17,8 @@ func mustEncode(enc, kind string, nulls string, p string, n int) bool {
 		return kind == "constant" && nulls == "none" || nulls == "all"
 	case "sequence":
 		return kind == "steps" && nulls == "none" && (n <= 127 || ptypes[p].Width() > 1)
+	case "pco":
+		return ptypes[p].Width() > 1 // Pco does not code 8-bit numbers
 	}
 	return enc != "bitpacked" && enc != "sparse"
 }

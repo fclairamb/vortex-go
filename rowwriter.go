@@ -33,6 +33,8 @@ const rowBatch = 8192
 //     timestamp(unit) and timestamp(unit,zone) pick another unit (s, ms, us or ns) and a zone
 //     name, and date a date in days;
 //   - time.Duration is a time of day in nanoseconds; the option time(unit) picks another unit;
+//   - any is a Variant, nullable: nil is a null row, and the other values are the ones that
+//     OfVariants takes (see Column.Variant for what Rows gives back);
 //   - sql.Null[X] and *X are nullable, anything else is not;
 //   - a struct is a struct, []X a list, [N]X a fixed-size list and map[K]V a map, whose keys
 //     are not nullable and whose order of entries is the one of Go's iteration. The options
@@ -159,6 +161,7 @@ const (
 	rkList
 	rkFixed // a fixed-size list
 	rkMap
+	rkVariant // any: a variant, nil being a null row
 )
 
 // rwNode is a column of the file, or a part of one, and the buffers its values go to.
@@ -385,6 +388,9 @@ func newRwNode(gt reflect.Type, opts []tagOpt, label string) (*rwNode, error) {
 	if len(opts) > 0 {
 		return nil, fmt.Errorf("the option %q does not apply to %s", opts[0].raw, gt)
 	}
+	if n.kind == rkVariant && null != notNull {
+		return nil, errors.New("any is nullable already: nil is a null row")
+	}
 	n.full, n.null = full, null
 	if null != notNull {
 		n.t = n.t.AsNullable()
@@ -474,22 +480,39 @@ func (n *rwNode) buildOther(opts *[]tagOpt, label string) (Type, error) {
 		n.kids = []*rwNode{e}
 		return FixedSizeListOf(e.t, gt.Len()), err
 	case reflect.Map:
-		n.kind = rkMap
-		k, err := newRwNode(gt.Key(), nil, label)
-		if err != nil {
-			return Type{}, fmt.Errorf("map key: %w", err)
-		}
-		if k.null != notNull {
-			return Type{}, fmt.Errorf("map key: %s is nullable, a key cannot be", gt.Key())
-		}
-		v, err := newRwNode(gt.Elem(), nil, label)
-		if err != nil {
-			return Type{}, fmt.Errorf("map value: %w", err)
-		}
-		n.kids = []*rwNode{k, v}
-		return MapOf(k.t, v.t), nil
+		return n.buildMap(label)
+	case reflect.Interface:
+		return n.buildVariant()
 	}
 	return Type{}, fmt.Errorf("no Vortex type holds a Go %s", gt.Kind())
+}
+
+// buildMap sets the kind and the children of the node of a map.
+func (n *rwNode) buildMap(label string) (Type, error) {
+	gt := n.gt
+	n.kind = rkMap
+	k, err := newRwNode(gt.Key(), nil, label)
+	if err != nil {
+		return Type{}, fmt.Errorf("map key: %w", err)
+	}
+	if k.null != notNull {
+		return Type{}, fmt.Errorf("map key: %s is nullable, a key cannot be", gt.Key())
+	}
+	v, err := newRwNode(gt.Elem(), nil, label)
+	if err != nil {
+		return Type{}, fmt.Errorf("map value: %w", err)
+	}
+	n.kids = []*rwNode{k, v}
+	return MapOf(k.t, v.t), nil
+}
+
+// buildVariant sets the kind of the node of an any, which is a nullable Variant.
+func (n *rwNode) buildVariant() (Type, error) {
+	if n.gt.NumMethod() != 0 {
+		return Type{}, errors.New("only the empty interface any holds a Variant")
+	}
+	n.kind = rkVariant
+	return VariantType().AsNullable(), nil
 }
 
 // elemNode is the node of the elements of a list: they take the options of the list.
@@ -514,6 +537,8 @@ func (n *rwNode) init() {
 		b.kind = dDec
 	case rkBool:
 		b.kind = dBool
+	case rkVariant:
+		b.kind = dVars
 	case rkString:
 		b.kind = dStr
 	case rkBytes, rkUUID:
@@ -541,6 +566,8 @@ func (n *rwNode) reset() {
 	n.n = 0
 	b.raw, b.bools, b.nulls = b.raw[:0], b.bools[:0], b.nulls[:0]
 	b.strs, b.bins, b.decs = b.strs[:0], b.bins[:0], b.decs[:0]
+	clear(b.vars)
+	b.vars = b.vars[:0]
 	n.uuids = n.uuids[:0]
 	b.offs = b.offs[:0]
 	if n.kind == rkList || n.kind == rkFixed || n.kind == rkMap {
@@ -556,7 +583,7 @@ func (n *rwNode) reset() {
 func (n *rwNode) seal() {
 	b := n.b
 	b.n = n.n
-	if n.null == notNull {
+	if n.null == notNull && n.kind != rkVariant {
 		b.nulls = nil
 	}
 	switch n.kind {
@@ -589,6 +616,9 @@ func (n *rwNode) add(v reflect.Value) {
 		b.bools = append(b.bools, v.Bool())
 	case rkString:
 		b.strs = append(b.strs, v.String())
+	case rkVariant:
+		b.vars = append(b.vars, v.Interface())
+		b.nulls = append(b.nulls, v.IsNil())
 	case rkBytes:
 		b.bins = append(b.bins, v.Bytes())
 	case rkUUID:

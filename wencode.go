@@ -2,7 +2,9 @@ package vortex
 
 import (
 	"encoding/binary"
+	"math"
 
+	"github.com/fclairamb/vortex-go/internal/compress"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 	"github.com/fclairamb/vortex-go/internal/protowire"
 )
@@ -90,9 +92,11 @@ func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
 	case Bool:
 		return w.encodeBool(d, n)
 	case Utf8, Binary:
-		return w.encodeStrings(d)
+		return w.encodeStrings(t, d)
 	case KindDecimal:
 		return w.encodeDecimals(t, d, n)
+	case Variant:
+		return w.encodeVariants(d, n)
 	case Struct:
 		return w.encodeStruct(t, d, n)
 	case List, Map:
@@ -101,7 +105,7 @@ func (w *Writer) encodeNode(t Type, d Data, n int) flatbuf.Off {
 		base := len(w.stack)
 		w.push(w.encode(*t.elem, d.kids[0], n*t.Size()))
 		w.validity(d, n)
-		return w.node("vortex.fixed_size_list", nil, len(w.bufs), 0, base)
+		return w.node(idFixedSizeList, nil, len(w.bufs), 0, base)
 	case UUID:
 		return w.arrayExtension(w.encodeUUID(d, n))
 	case Date, Time, Timestamp:
@@ -177,6 +181,9 @@ func numberWidth(k Kind) int {
 }
 
 func (w *Writer) encodeBool(d Data, n int) flatbuf.Off {
+	if off, ok := w.encodeForcedBools(d); ok {
+		return off
+	}
 	bits := w.alloc((n + 7) / 8)
 	for i, v := range d.bools {
 		if v {
@@ -193,8 +200,8 @@ func (w *Writer) encodeBool(d Data, n int) flatbuf.Off {
 // encodeStrings writes a varbinview: the data buffers, then the views, 16 bytes per row. A
 // string of up to 12 bytes is in its view, a longer one is in a data buffer that its view
 // points to.
-func (w *Writer) encodeStrings(d Data) flatbuf.Off {
-	if off, ok := w.encodeForcedStrings(d); ok {
+func (w *Writer) encodeStrings(t Type, d Data) flatbuf.Off {
+	if off, ok := w.encodeForcedStrings(t, d); ok {
 		return off
 	}
 	first := len(w.bufs)
@@ -277,6 +284,22 @@ func widthIndex(width int) int {
 	return i
 }
 
+// encodeVariants writes a vortex.variant that holds no shredded type: its only child is a
+// vortex.parquet.variant with a value and no typed_value, whose children are the validity
+// (when a row is null), the metadata and the value of each row, both binary arrays that go
+// through the compressor.
+func (w *Writer) encodeVariants(d Data, n int) flatbuf.Off {
+	base := len(w.stack)
+	w.validity(d, n)
+	w.push(w.encode(BinaryType(), Data{&body{kind: dBytes, n: n, bins: d.bins}}, n))
+	w.push(w.encode(BinaryType(), Data{&body{kind: dBytes, n: n, bins: d.vbins}}, n))
+	meta := protowire.AppendUint(w.meta[:0], 1, 1) // has_value
+	core := w.node(idParquetVar, meta, len(w.bufs), 0, base)
+	w.meta = meta[:0]
+	w.push(core)
+	return w.node(idVariant, nil, len(w.bufs), 0, base)
+}
+
 func (w *Writer) encodeStruct(t Type, d Data, n int) flatbuf.Off {
 	base := len(w.stack)
 	w.validity(d, n)
@@ -287,10 +310,14 @@ func (w *Writer) encodeStruct(t Type, d Data, n int) flatbuf.Off {
 }
 
 // encodeList writes a listview: the elements, the offset and the size of every row, and the
-// validity. A map is a vortex.map around a listview of its entries.
+// validity. A map is a vortex.map around a listview of its entries. A compressed list is a
+// vortex.list instead: the elements, the rows + 1 offsets and the validity, with no sizes.
 func (w *Writer) encodeList(t Type, d Data, n int) flatbuf.Off {
 	elems := d.kids[0]
 	base := len(w.stack)
+	if t.kind == List && (w.comp != nil || w.plainLists) {
+		return w.encodePlainList(t, d, n)
+	}
 	if t.kind == Map {
 		w.push(w.encodeEntries(t, elems))
 	} else {
@@ -313,7 +340,47 @@ func (w *Writer) encodeList(t Type, d Data, n int) flatbuf.Off {
 		return view
 	}
 	w.push(view)
-	return w.node("vortex.map", nil, len(w.bufs), 0, base)
+	return w.node(idMap, nil, len(w.bufs), 0, base)
+}
+
+// encodePlainList writes a vortex.list: the offsets are narrowed to the smallest unsigned type
+// that holds the last one, then compressed like those of a listview.
+func (w *Writer) encodePlainList(t Type, d Data, n int) flatbuf.Off {
+	elems := d.kids[0]
+	base := len(w.stack)
+	w.push(w.encode(*t.elem, elems, elems.n))
+	last := d.offs[n]
+	p := offsetType(last)
+	raw := w.alloc((n + 1) * p.Width())
+	for i, o := range d.offs {
+		switch p {
+		case compress.U8:
+			raw[i] = byte(o)
+		case compress.U16:
+			binary.LittleEndian.PutUint16(raw[2*i:], uint16(o))
+		default:
+			binary.LittleEndian.PutUint32(raw[4*i:], uint32(o))
+		}
+	}
+	w.push(w.encodeOffsets(p, raw))
+	w.validity(d, n)
+	meta := protowire.AppendUint(w.meta[:0], 1, uint64(elems.n))
+	meta = protowire.AppendUint(meta, 2, uint64(p))
+	node := w.node("vortex.list", meta, len(w.bufs), 0, base)
+	w.meta = meta[:0]
+	return node
+}
+
+// offsetType is the narrowest unsigned type that holds the last offset of a list: the offsets
+// never decrease, and there are at most maxListElems of them.
+func offsetType(last int) compress.PType {
+	switch {
+	case last > math.MaxUint16:
+		return compress.U32
+	case last > math.MaxUint8:
+		return compress.U16
+	}
+	return compress.U8
 }
 
 // encodeEntries writes the entries of a map: a struct of keys and values.
@@ -335,5 +402,5 @@ func (w *Writer) encodeUUID(d Data, n int) flatbuf.Off {
 	base := len(w.stack)
 	w.push(w.leaf("vortex.primitive", bytes, 1))
 	w.validity(d, n)
-	return w.node("vortex.fixed_size_list", nil, len(w.bufs), 0, base)
+	return w.node(idFixedSizeList, nil, len(w.bufs), 0, base)
 }

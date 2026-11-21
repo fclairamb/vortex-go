@@ -7,6 +7,7 @@ use vortex::array::arrays::VarBinViewArray;
 use vortex::array::{ArrayRef, IntoArray};
 use vortex_alp::{Exponents, RDEncoder, RDEncoderExt, alp_encode};
 use vortex_fsst::{fsst_compress, fsst_train_compressor};
+use vortex_onpair::{onpair_compress, DEFAULT_CONFIG};
 
 use crate::cases::Rng;
 use crate::enc::{Files, file, validities, vector};
@@ -173,7 +174,19 @@ fn noise(rng: &mut Rng, n: usize) -> Vec<Vec<u8>> {
     (0..n).map(|_| (0..30).map(|_| b'a' + (rng.next() % 26) as u8).collect()).collect()
 }
 
-fn fsst_strings(ctx: &Ctx) -> Files {
+/// What an encoding of strings makes of the strings of a vector.
+type Compress = fn(&ArrayRef, &Ctx) -> ArrayRef;
+
+fn fsst_compress_all(a: &ArrayRef, ctx: &Ctx) -> ArrayRef {
+    let c = fsst_train_compressor(a, &mut ctx.exec()).unwrap();
+    fsst_compress(a, &c, &mut ctx.exec()).unwrap().into_array()
+}
+
+fn onpair_compress_all(a: &ArrayRef, ctx: &Ctx) -> ArrayRef {
+    onpair_compress(a, DEFAULT_CONFIG, &mut ctx.exec()).unwrap()
+}
+
+fn strings_vectors(ctx: &Ctx, encoding: &str, compress: Compress) -> Files {
     let mut rng = Rng(43);
     let mut files = vec![];
     for (kind, utf8) in [("utf8", true), ("binary", false)] {
@@ -205,8 +218,7 @@ fn fsst_strings(ctx: &Ctx) -> Files {
                         ),
                     }
                     .into_array();
-                    let c = fsst_train_compressor(&a, &mut ctx.exec()).unwrap();
-                    let x = fsst_compress(&a, &c, &mut ctx.exec()).unwrap();
+                    let x = compress(&a, ctx);
                     let input: Vec<String> = data.iter().map(|s| hex(s)).collect();
                     vs.push(json!({
                         "name": format!("{name}_n{n}{suffix}"),
@@ -214,12 +226,12 @@ fn fsst_strings(ctx: &Ctx) -> Files {
                         "strings": input,
                         "valid": valid.as_ref().map(|v| bitmap(v)),
                         "params": {},
-                        "output": ctx.dump(&x.into_array()),
+                        "output": ctx.dump(&x),
                     }));
                 }
             }
         }
-        files.push(file("fsst", kind, vs));
+        files.push(file(encoding, kind, vs));
     }
     files
 }
@@ -233,7 +245,7 @@ fn node_size(v: &Value) -> usize {
 /// What the reference's FSST makes of the strings of the default_mixed fixture, which the Go test
 /// writes to the file MIXED_STRINGS names (see fsst_mixed_test.go): the sizes of the arrays. It
 /// writes nothing when the variable is not set, and leaves the vectors of the last run.
-fn default_mixed(ctx: &Ctx) -> Option<Files> {
+fn default_mixed(ctx: &Ctx, compress: Compress) -> Option<Files> {
     let path = std::env::var("MIXED_STRINGS").ok()?;
     let input: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
     let mut columns = serde_json::Map::new();
@@ -252,10 +264,9 @@ fn default_mixed(ctx: &Ctx) -> Option<Files> {
             data.iter().zip(&valid).map(|(s, ok)| ok.then(|| std::str::from_utf8(s).unwrap())),
         )
         .into_array();
-        let c = fsst_train_compressor(&a, &mut ctx.exec()).unwrap();
-        let x = fsst_compress(&a, &c, &mut ctx.exec()).unwrap();
+        let x = compress(&a, ctx);
         let bytes: usize = data.iter().zip(&valid).filter(|(_, ok)| **ok).map(|(s, _)| s.len()).sum();
-        columns.insert(name.clone(), json!({"rows": data.len(), "bytes": bytes, "reference": node_size(&ctx.dump(&x.into_array()))}));
+        columns.insert(name.clone(), json!({"rows": data.len(), "bytes": bytes, "reference": node_size(&ctx.dump(&x))}));
     }
     Some(vec![("default_mixed".to_string(), json!({"columns": columns}))])
 }
@@ -267,12 +278,16 @@ pub fn all(ctx: &Ctx) -> Vec<(String, Files)> {
     vec![
         f("alp", vec![("f32", alp!(f32, gen32, 10u8, ctx)), ("f64", alp!(f64, gen64, 18u8, ctx))]),
         f("alprd", vec![("f32", alprd!(f32, gen32, 32u8, ctx)), ("f64", alprd!(f64, gen64, 64u8, ctx))]),
-        ("fsst".to_string(), fsst_strings(ctx)),
+        ("fsst".to_string(), strings_vectors(ctx, "fsst", fsst_compress_all)),
+        ("onpair".to_string(), strings_vectors(ctx, "onpair", onpair_compress_all)),
     ]
     .into_iter()
     .map(|(n, mut files)| {
         if n == "fsst" {
-            files.extend(default_mixed(ctx).unwrap_or_default());
+            files.extend(default_mixed(ctx, fsst_compress_all).unwrap_or_default());
+        }
+        if n == "onpair" {
+            files.extend(default_mixed(ctx, onpair_compress_all).unwrap_or_default());
         }
         (n, files)
     })

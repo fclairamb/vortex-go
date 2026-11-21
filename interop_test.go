@@ -29,9 +29,43 @@ func interopDir(t *testing.T) string {
 // One file per type, in one chunk and in four, then every type side by side.
 func TestInterop(t *testing.T) {
 	dir := interopDir(t)
+	writeInteropTypes(t, dir, true)
+	writeInteropEncoders(t, dir)
+}
+
+// interopEdition is the edition the files of writeInterop target, empty for the newest.
+var interopEdition string
+
+// interopEditions are the older editions whose files the older readers must open.
+var interopEditions = []string{"core 2025.05.0"}
+
+// TestInteropEditions writes the files of TestInterop that an older edition can hold, and the
+// filters, for each of the interopEditions, into a folder of INTEROP_DIR named after it:
+// `make interop` has the readers of that edition, and the newest, open them.
+func TestInteropEditions(t *testing.T) {
+	root := interopDir(t)
+	for _, ed := range interopEditions {
+		dir := filepath.Join(root, strings.NewReplacer(" ", "_", ".", "_").Replace(ed))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		interopEdition = ed
+		writeInteropTypes(t, dir, false)
+		writeInteropFilters(t, dir)
+		interopEdition = ""
+	}
+}
+
+// writeInteropTypes writes the files of each type the edition holds: one file per type, in one
+// chunk and in four, then every type side by side. The files of no row are only for the newest
+// edition, which has the types they leave out.
+func writeInteropTypes(t *testing.T, dir string, newest bool) {
 	types := allTypes()
 	var fields []Field
 	for _, name := range slices.Sorted(maps.Keys(types)) {
+		if validEdition(types[name], "", interopEdition) != nil && interopEdition != "" {
+			continue
+		}
 		fields = append(fields, Field{Name: name, Type: types[name]})
 		file := "type_" + strings.NewReplacer("?", "_null").Replace(name)
 		writeInterop(t, dir, file, fields[len(fields)-1:], []int{200})
@@ -45,12 +79,14 @@ func TestInterop(t *testing.T) {
 	}
 	writeInterop(t, dir, "wide", fields, []int{500, 1, 77})
 	writeInterop(t, dir, "wide_one_row", fields, []int{1})
+	if !newest {
+		return
+	}
 	// The reference's Python package cannot make an empty arrow array of a list of structs with
 	// an extension type in it, so the files of no row leave that one out.
 	empty := slices.DeleteFunc(slices.Clone(fields), func(f Field) bool { return f.Name == "list_struct" })
 	writeInterop(t, dir, "wide_empty", empty, nil)
 	writeInterop(t, dir, "wide_empty_write", empty, []int{0})
-	writeInteropEncoders(t, dir)
 }
 
 // writeInteropEncoders writes a file per encoder of internal/encode, forced on every type it
@@ -69,6 +105,9 @@ func writeInteropEncoders(t *testing.T, dir string) {
 				if enc == "sequence" && withNulls {
 					continue // a sequence has no null
 				}
+				if enc == "masked" && !withNulls {
+					continue // without a null it is a constant
+				}
 				ty, d, vals := forcedColumn(enc, k, n, withNulls)
 				name := fmt.Sprintf("%s_%v", k, withNulls)
 				fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
@@ -76,8 +115,15 @@ func writeInteropEncoders(t *testing.T, dir string) {
 			}
 		}
 		switch enc {
-		case "dict", "fsst", "zstd":
+		case "masked":
+			fields, data = addInteropMasked(fields, data, hashes, n)
+		case "dict", "fsst", "onpair", "zstd", "varbin":
 			fields, data = addInteropStrings(fields, data, hashes, n)
+		case "bytebool", "chunked":
+			fields, data = addInteropBools(fields, data, hashes, n)
+			if enc == "chunked" {
+				fields, data = addInteropStrings(fields, data, hashes, n)
+			}
 		case "decimal_byte_parts", "datetimeparts":
 			fields, data = addInteropParts(enc, fields, data, hashes, n)
 		}
@@ -134,6 +180,28 @@ func addInteropParts(enc string, fields []Field, data []Data, hashes map[string]
 	return fields, data
 }
 
+// addInteropMasked adds the columns of one value among nulls, as a constant under a validity:
+// utf8, binary and bool.
+func addInteropMasked(fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
+	bins := make([][]byte, n)
+	bools := make([]bool, n)
+	nulls := make([]bool, n)
+	svals, bvals := make([]val, n), make([]val, n)
+	for i := range bins {
+		bins[i], bools[i], nulls[i] = []byte("a string that is longer than twelve bytes"), true, i%4 != 1
+		svals[i], bvals[i] = val{b: bins[i], null: nulls[i]}, val{b: []byte{1}, null: nulls[i]}
+	}
+	for _, ty := range []Type{Utf8Type().AsNullable(), BinaryType().AsNullable()} {
+		name := "masked_" + ty.String()
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins).Nulls(nulls))
+		hashColumn(hashes, name, ty, svals)
+	}
+	ty := BoolType().AsNullable()
+	fields, data = append(fields, Field{Name: "masked_bool", Type: ty}), append(data, OfBools(bools).Nulls(nulls))
+	hashColumn(hashes, "masked_bool", ty, bvals)
+	return fields, data
+}
+
 // addInteropStrings adds the string columns of the dictionary file: utf8 and binary, nullable.
 func addInteropStrings(fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
 	words := []string{"", "a", "abcdefghijkl", "a string that is longer than twelve bytes", "zz"}
@@ -150,6 +218,31 @@ func addInteropStrings(fields []Field, data []Data, hashes map[string]hashEntry,
 		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins).Nulls(nulls))
 		hashColumn(hashes, name, ty, vals)
 	}
+	// and without a null
+	plain := make([]val, n)
+	for i := range plain {
+		plain[i] = val{b: bins[i]}
+	}
+	for _, ty := range []Type{Utf8Type(), BinaryType()} {
+		name := "plain_" + ty.String()
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, OfBytes(bins))
+		hashColumn(hashes, name, ty, plain)
+	}
+	return fields, data
+}
+
+// addInteropBools adds the booleans, with and without nulls, to the columns of a file.
+func addInteropBools(fields []Field, data []Data, hashes map[string]hashEntry, n int) ([]Field, []Data) {
+	for _, withNulls := range []bool{false, true} {
+		ty := BoolType()
+		if withNulls {
+			ty = ty.AsNullable()
+		}
+		d, vals := boolsOf(n, withNulls)
+		name := fmt.Sprintf("bool_%v", withNulls)
+		fields, data = append(fields, Field{Name: name, Type: ty}), append(data, d)
+		hashColumn(hashes, name, ty, vals)
+	}
 	return fields, data
 }
 
@@ -163,7 +256,7 @@ var interopModes = []struct {
 // writeInterop writes a file with one Write per size, and its hashes, in each compression level.
 func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 	t.Helper()
-	g := &gen{r: rand.New(rand.NewPCG(11, uint64(len(file)))), inDay: strings.HasPrefix(file, "inday_")}
+	g := &gen{r: rand.New(rand.NewPCG(11, uint64(len(file)))), inDay: strings.HasPrefix(file, "inday_") || interopEdition != ""}
 	all := make([][]val, len(fields))
 	var writes [][]Data
 	total := 0
@@ -187,7 +280,7 @@ func writeInterop(t *testing.T, dir, file string, fields []Field, sizes []int) {
 	}
 	for _, m := range interopModes {
 		var buf bytes.Buffer
-		w := NewWriter(&buf, NewSchema(fields...), WriteOptions{Compression: m.c})
+		w := NewWriter(&buf, NewSchema(fields...), WriteOptions{Compression: m.c, Edition: interopEdition})
 		for _, cols := range writes {
 			if err := w.Write(cols...); err != nil {
 				t.Fatalf("%s: %v", file, err)
@@ -275,8 +368,9 @@ type filterCase struct {
 // TestInteropFilters writes a file in writes of every size, and hashes of what a filter
 // keeps of it: the reference reader prunes the zones with our statistics, so a wrong bound
 // loses rows and the hashes differ.
-func TestInteropFilters(t *testing.T) {
-	dir := interopDir(t)
+func TestInteropFilters(t *testing.T) { writeInteropFilters(t, interopDir(t)) }
+
+func writeInteropFilters(t *testing.T, dir string) {
 	cols := filterColumns()
 	names := slices.Sorted(maps.Keys(cols))
 	fields := make([]Field, len(names))
@@ -284,7 +378,7 @@ func TestInteropFilters(t *testing.T) {
 		fields[i] = Field{Name: n, Type: cols[n].t}
 	}
 	var buf bytes.Buffer
-	w := NewWriter(&buf, NewSchema(fields...), WriteOptions{})
+	w := NewWriter(&buf, NewSchema(fields...), WriteOptions{Edition: interopEdition})
 	sizes := []int{1, 1, 8191, 3, 40000, 7, 1000}
 	for lo, i := 0, 0; lo < filterRows; i++ {
 		hi := min(lo+sizes[i%len(sizes)], filterRows)
