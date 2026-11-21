@@ -14,7 +14,7 @@ func TestTakeDictSkipped(t *testing.T) {
 		"values": {{Type: typ, Len: 2, Skipped: skip}, codes},
 		"codes":  {ok, {Type: codes.Type, Len: 3, Skipped: skip}},
 	} {
-		a, err := TakeDict(c[0], c[1], U8, typ)
+		a, err := TakeDict(nil, c[0], c[1], U8, typ)
 		if err != nil || a.Skipped != skip || a.Len != 3 {
 			t.Errorf("%s: %+v, %v", name, a, err)
 		}

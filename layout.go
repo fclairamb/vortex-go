@@ -153,14 +153,16 @@ func (r *flat) load() (*array.Array, error) {
 	if err := readFull(r.f.r, buf, int64(r.f.segments[r.seg].Offset)); err != nil {
 		return nil, r.ioErr(err)
 	}
-	return r.decode(buf)
+	return r.decode(buf, nil)
 }
 
 func (r *flat) segLen() int { return int(r.f.segments[r.seg].Length) }
 
-// decode decodes the segment, in buf.
-func (r *flat) decode(buf []byte) (*array.Array, error) {
-	a, err := array.Decode(buf, r.f.arrayEncodings, r.t, r.rows, r.opt)
+// decode decodes the segment, in buf, into buffers of the arena ar.
+func (r *flat) decode(buf []byte, ar *array.Arena) (*array.Array, error) {
+	opt := r.opt
+	opt.Arena = ar
+	a, err := array.Decode(buf, r.f.arrayEncodings, r.t, r.rows, opt)
 	if err != nil {
 		off := r.f.segments[r.seg].Offset
 		if errors.Is(err, errors.ErrUnsupported) {

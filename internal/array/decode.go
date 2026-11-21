@@ -24,6 +24,11 @@ type Options struct {
 	// file (the elements of a list, the codes of a dictionary), and a node that expands
 	// without a buffer to bound it (a constant, a sequence) allocates as many.
 	MaxRows int
+	// Pool, when not nil, is where a scan takes the buffers of its arrays from.
+	Pool *Pool
+	// Arena, when not nil, is where the buffers of the decoded array come from: the array
+	// must not be read once the arena is released.
+	Arena *Arena
 }
 
 type context struct {

@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/fclairamb/vortex-go/internal/protowire"
+	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
 
 // The powers of ten of the alp crate (0.0.6): F10[i] is 10^i and IF10[i] is 10^-i, each one
@@ -62,7 +63,7 @@ func decodeALP(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &Array{Type: t, Len: rows, Validity: ints.Validity, Data: alpFloats(ints.Data, t.PType, e, f)}
+	out := &Array{Type: t, Len: rows, Validity: ints.Validity, Data: alpFloats(n.ctx.opt.Arena, ints.Data, t.PType, e, f)}
 	if !meta.hasBlob[3] {
 		if n.NumChildren() != 1 {
 			return nil, fmt.Errorf("expected 1 child without patches, got %d", n.NumChildren())
@@ -81,20 +82,20 @@ func decodeALP(n *Node, t DType, rows int) (*Array, error) {
 }
 
 // alpFloats turns the encoded integers into the bits of floats of type p.
-func alpFloats(ints []byte, p PType, e, f uint64) []byte {
-	out := make([]byte, len(ints))
+func alpFloats(ar *Arena, ints []byte, p PType, e, f uint64) []byte {
+	out := ar.Bytes(len(ints), false)
 	if p == F32 {
 		m, inv := f10f32[f], if10f32[e]
-		for i := 0; i < len(ints); i += 4 {
-			v := float32(int32(binary.LittleEndian.Uint32(ints[i:]))) * m * inv
-			binary.LittleEndian.PutUint32(out[i:], math.Float32bits(v))
+		dst := unsafex.Slice[float32](out)
+		for i, v := range unsafex.Slice[int32](ints) {
+			dst[i] = float32(float32(v)*m) * inv
 		}
 		return out
 	}
 	m, inv := f10f64[f], if10f64[e]
-	for i := 0; i < len(ints); i += 8 {
-		v := float64(int64(binary.LittleEndian.Uint64(ints[i:]))) * m * inv
-		binary.LittleEndian.PutUint64(out[i:], math.Float64bits(v))
+	dst := unsafex.Slice[float64](out)
+	for i, v := range unsafex.Slice[int64](ints) {
+		dst[i] = float64(float64(v)*m) * inv
 	}
 	return out
 }
@@ -235,7 +236,7 @@ func (n *Node) rdParts(p PType, t DType, rows int) (left, right *Array, err erro
 // leftBits maps the codes of the left parts through the dictionary. Every valid code must be in
 // it, patched or not. The rows that are null are 0.
 func (m *alpRDMeta) leftBits(left *Array, rows int) ([]uint64, error) {
-	codes, err := toInts(left, "left parts", m.left, left.Validity)
+	codes, err := toInts(nil, left, "left parts", m.left, left.Validity)
 	if err != nil {
 		return nil, err
 	}
@@ -263,7 +264,7 @@ func (n *Node) patchLeftBits(m *alpRDMeta, bits []uint64, rows int) error {
 	if err != nil {
 		return err
 	}
-	vals, err := toInts(pt.values, "left patch values", m.left, nil)
+	vals, err := toInts(n.ctx.opt.Arena, pt.values, "left patch values", m.left, nil)
 	if err != nil {
 		return err
 	}

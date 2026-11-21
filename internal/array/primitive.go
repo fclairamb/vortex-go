@@ -1,6 +1,10 @@
 package array
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/fclairamb/vortex-go/internal/unsafex"
+)
 
 // decodePrimitive decodes vortex.primitive: buffer 0 is the values, little-endian, child 0
 // the validity.
@@ -21,6 +25,10 @@ func decodePrimitive(n *Node, t DType, rows int) (*Array, error) {
 	valid, err := n.optionalValidity(rows)
 	if err != nil {
 		return nil, err
+	}
+	if !unsafex.Aligned(buf, t.PType.Width()) {
+		// The values are read as numbers, where they are: they move once, to aligned memory.
+		buf = append(n.ctx.opt.Arena.Bytes(len(buf), false)[:0], buf...)
 	}
 	return &Array{Type: t, Len: rows, Data: buf, Validity: valid}, nil
 }

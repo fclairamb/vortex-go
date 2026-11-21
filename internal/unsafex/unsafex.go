@@ -32,6 +32,12 @@ func Slice[T Number](b []byte) []T {
 	return out
 }
 
+// Aligned reports whether the first byte of b is at a multiple of align, a power of two: a
+// number of that size can then be read where it is. An empty slice is aligned.
+func Aligned(b []byte, align int) bool {
+	return len(b) == 0 || uintptr(unsafe.Pointer(&b[0]))&uintptr(align-1) == 0
+}
+
 // Put stores vals[i] in the field of row i of rows, a slice of structs, that sits off bytes
 // into the row. V must be the exact type of the field, or have its layout: the destination is
 // typed memory of rows, so the garbage collector sees every pointer that a V holds, and the

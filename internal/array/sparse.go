@@ -46,5 +46,5 @@ func decodeSparse(n *Node, t DType, rows int) (*Array, error) {
 	for k := range pt.index {
 		idx[pt.row(k)] = k + 1
 	}
-	return withType(take(Concat(fill.Type, []*Array{fill, pt.values}), idx), t), nil
+	return withType(take(n.ctx.opt.Arena, Concat(fill.Type, []*Array{fill, pt.values}), idx), t), nil
 }

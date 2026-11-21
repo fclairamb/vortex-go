@@ -217,6 +217,7 @@ func (f *File) plan(o scanOptions) (*scanPlan, error) {
 		}
 	}
 	o.array.MaxRows = f.maxNodeRows()
+	o.array.Pool = new(array.Pool)
 	if err = f.openSource(p, o.array, need); err != nil {
 		return nil, err
 	}
@@ -334,9 +335,12 @@ func (s *scanner) step(pos int64) (*Batch, int, error) {
 	s.sel = s.sel[:0]
 	if p.wantFilter {
 		p.filter.bind(s.arrs)
-		for i := range n {
-			if p.filter.eval(i) == triTrue {
-				s.sel = append(s.sel, i)
+		var fast bool
+		if s.sel, fast = p.filter.selectFast(n, s.sel); !fast {
+			for i := range n {
+				if p.filter.eval(i) == triTrue {
+					s.sel = append(s.sel, i)
+				}
 			}
 		}
 		if len(s.sel) == 0 {

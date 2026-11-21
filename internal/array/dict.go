@@ -33,13 +33,13 @@ func decodeDict(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, fmt.Errorf("values: %w", err)
 	}
-	return TakeDict(values, codes, p, t)
+	return TakeDict(n.ctx.opt.Arena, values, codes, p, t)
 }
 
-// TakeDict makes the array of type t whose row i is the value of values at the code of row i
+// TakeDict makes the array of type t, in the arena ar, whose row i is the value of values at the code of row i
 // of codes, an array of integers of type p. A null code is a null row. A code past the values
 // is an error. When values or codes were skipped, the result is skipped too.
-func TakeDict(values, codes *Array, p PType, t DType) (*Array, error) {
+func TakeDict(ar *Arena, values, codes *Array, p PType, t DType) (*Array, error) {
 	if values.Skipped != nil || codes.Skipped != nil {
 		err := values.Skipped
 		if err == nil {
@@ -48,7 +48,7 @@ func TakeDict(values, codes *Array, p PType, t DType) (*Array, error) {
 		return &Array{Type: t, Len: codes.Len, Skipped: err}, nil
 	}
 	vlen := values.Len
-	idx, err := toInts(codes, "codes", p, codes.Validity)
+	idx, err := toInts(ar, codes, "codes", p, codes.Validity)
 	if err != nil {
 		return nil, err
 	}
@@ -60,5 +60,5 @@ func TakeDict(values, codes *Array, p PType, t DType) (*Array, error) {
 			return nil, fmt.Errorf("code %d at row %d is past the %d values", c, i, vlen)
 		}
 	}
-	return withType(take(values, idx), t), nil
+	return withType(take(ar, values, idx), t), nil
 }

@@ -168,8 +168,9 @@ type dict struct {
 	path   string
 	t      array.DType
 	opt    array.Options
-	slot   array.Array // the rows take returns
-	off    int         // the next row of cur
+	arena  *array.Arena // the buffers of cur
+	slot   array.Array  // the rows take returns
+	off    int          // the next row of cur
 	ptype  array.PType
 }
 
@@ -189,7 +190,8 @@ func (f *File) newDict(l *layoutNode, t array.DType, opt array.Options, path str
 	if err != nil {
 		return nil, err
 	}
-	return &dict{f: f, values: l.children[0], codes: codes, t: t, opt: opt, ptype: ptype, path: path}, nil
+	return &dict{f: f, values: l.children[0], codes: codes, t: t, opt: opt, ptype: ptype, path: path,
+		arena: opt.Pool.NewArena()}, nil
 }
 
 // parseDict reads the metadata of a vortex.dict layout, {codes_ptype, is_nullable_codes?,
@@ -244,7 +246,9 @@ func (d *dict) units(base int, out *[]*unit) int { return d.codes.units(base, ou
 
 func (d *dict) take(n int) (*array.Array, error) {
 	if d.vals == nil {
-		r, err := d.f.newReader(d.values, d.t, d.opt, d.path, 0, int(d.values.rowCount))
+		opt := d.opt
+		opt.Pool = nil // the values outlive every batch
+		r, err := d.f.newReader(d.values, d.t, opt, d.path, 0, int(d.values.rowCount))
 		if err != nil {
 			return nil, err
 		}
@@ -257,7 +261,8 @@ func (d *dict) take(n int) (*array.Array, error) {
 		if err != nil {
 			return nil, err
 		}
-		if d.cur, err = array.TakeDict(d.vals, codes, d.ptype, d.t); err != nil {
+		d.arena.Release() // the rows of the chunk before
+		if d.cur, err = array.TakeDict(d.arena, d.vals, codes, d.ptype, d.t); err != nil {
 			return nil, fmt.Errorf("%w: layout: dict: %v", ErrCorrupt, err)
 		}
 		d.off = 0

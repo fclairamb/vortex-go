@@ -41,7 +41,8 @@ type unit struct {
 	ready chan struct{} // closed once arr and err are set
 	arr   *array.Array
 	err   error
-	buf   *ioBuf // the buffer of the read, released when the unit is dropped
+	buf   *ioBuf       // the buffer of the read, released when the unit is dropped
+	arena *array.Arena // the buffers of arr, released with buf
 	mu    sync.Mutex
 	start int // the row of the file the flat starts at
 	idx   int // the place of the unit in the order of the scan
@@ -69,16 +70,17 @@ func (u *unit) claim() bool {
 }
 
 // finish stores the result of a read, the buffer b holding the segment.
-func (u *unit) finish(b *ioBuf, a *array.Array, err error) {
+func (u *unit) finish(b *ioBuf, ar *array.Arena, a *array.Array, err error) {
 	u.mu.Lock()
 	u.arr, u.err, u.state = a, err, unitDone
 	drop := u.drop
 	if !drop {
-		u.buf = b
+		u.buf, u.arena = b, ar
 	}
 	u.mu.Unlock()
 	if drop {
 		b.release()
+		ar.Release()
 	}
 	close(u.ready)
 }
@@ -95,11 +97,12 @@ func (u *unit) dropped() bool {
 func (u *unit) release() {
 	u.mu.Lock()
 	u.drop = true
-	b := u.buf
-	u.arr, u.buf = nil, nil
+	b, ar := u.buf, u.arena
+	u.arr, u.buf, u.arena = nil, nil, nil
 	u.mu.Unlock()
 	if b != nil {
 		b.release()
+		ar.Release()
 	}
 }
 
@@ -326,19 +329,24 @@ func (u *unit) off() int64 { return int64(u.fl.f.segments[u.fl.seg].Offset) }
 
 // read runs one extent: one read, then the decoding of each of its units.
 func (l *loader) read(e extent) {
-	b := l.pool.get(int(e.end-e.off), int32(len(e.units)))
-	err := readFull(l.f.r, b.b, e.off)
+	// The bytes sit in memory as they are aligned in the file: a buffer of numbers is then
+	// read where it is, not copied.
+	pad := e.off & 7
+	b := l.pool.get(int(pad+e.end-e.off), int32(len(e.units)))
+	err := readFull(l.f.r, b.b[pad:], e.off)
 	for _, u := range e.units {
 		var a *array.Array
+		var ar *array.Arena
 		var uerr error
 		switch {
 		case err != nil:
 			uerr = u.fl.ioErr(err)
 		case !u.dropped():
-			start := u.off() - e.off
-			a, uerr = u.fl.decode(b.b[start : start+int64(u.fl.segLen())])
+			start := pad + u.off() - e.off
+			ar = u.fl.opt.Pool.NewArena()
+			a, uerr = u.fl.decode(b.b[start:start+int64(u.fl.segLen())], ar)
 		}
-		u.finish(b, a, uerr)
+		u.finish(b, ar, a, uerr)
 	}
 }
 

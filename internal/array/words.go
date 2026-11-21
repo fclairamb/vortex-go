@@ -3,6 +3,8 @@ package array
 import (
 	"encoding/binary"
 	"fmt"
+
+	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
 
 // word is an unsigned integer as the integer decoders work on it.
@@ -74,85 +76,51 @@ func storeWords[T word](dst []byte, src []T, bits int) {
 	}
 }
 
-// mapWords reads src as words of type T, applies op to runs of at most 1024 of them, and
-// writes the result to dst, which is as long as src.
-func mapWords[T word](dst, src []byte, op func([]T)) {
-	bits := bitsOf[T]()
-	w := bits / 8
-	var buf [1024]T
-	for len(src) > 0 {
-		n := min(1024, len(src)/w)
-		loadWords(buf[:n], src, bits)
-		op(buf[:n])
-		storeWords(dst, buf[:n], bits)
-		src, dst = src[n*w:], dst[n*w:]
+// words views b as words of T: the memory of b when it is aligned, a copy otherwise.
+func words[T integer](b []byte) []T { return unsafex.Slice[T](b) }
+
+// addWords is src plus c, wrapping, into dst.
+func addWords[T word](dst, src []T, c T) {
+	for i, v := range src {
+		dst[i] = v + c
 	}
 }
 
-// mapInts applies op, per integer width, to the values of src, into a new slice.
-func mapInts(
-	src []byte, width int, op8 func([]uint8), op16 func([]uint16), op32 func([]uint32), op64 func([]uint64),
-) []byte {
-	dst := make([]byte, len(src))
+// addConst is src, little-endian integers of width bytes, plus c, wrapping.
+func addConst(ar *Arena, src []byte, width int, c uint64) []byte {
+	dst := ar.Bytes(len(src), false)
 	switch width {
 	case 1:
-		mapWords(dst, src, op8)
+		addWords(dst, src, uint8(c))
 	case 2:
-		mapWords(dst, src, op16)
+		addWords(words[uint16](dst), words[uint16](src), uint16(c))
 	case 4:
-		mapWords(dst, src, op32)
+		addWords(words[uint32](dst), words[uint32](src), uint32(c))
 	default:
-		mapWords(dst, src, op64)
+		addWords(words[uint64](dst), words[uint64](src), c)
 	}
 	return dst
 }
 
-// addConst is src, little-endian integers of width bytes, plus c, wrapping.
-func addConst(src []byte, width int, c uint64) []byte {
-	return mapInts(src, width,
-		func(v []uint8) {
-			for i := range v {
-				v[i] += uint8(c)
-			}
-		},
-		func(v []uint16) {
-			for i := range v {
-				v[i] += uint16(c)
-			}
-		},
-		func(v []uint32) {
-			for i := range v {
-				v[i] += uint32(c)
-			}
-		},
-		func(v []uint64) {
-			for i := range v {
-				v[i] += c
-			}
-		})
+// unzigzagWords is src, zigzag-encoded, decoded into dst: (n >> 1) ^ -(n & 1).
+func unzigzagWords[T word](dst, src []T) {
+	for i, n := range src {
+		dst[i] = n>>1 ^ -(n & 1)
+	}
 }
 
-// unzigzag is src, zigzag-encoded integers of width bytes, decoded: (n >> 1) ^ -(n & 1).
-func unzigzag(src []byte, width int) []byte {
-	return mapInts(src, width,
-		func(v []uint8) {
-			for i, n := range v {
-				v[i] = n>>1 ^ -(n & 1)
-			}
-		},
-		func(v []uint16) {
-			for i, n := range v {
-				v[i] = n>>1 ^ -(n & 1)
-			}
-		},
-		func(v []uint32) {
-			for i, n := range v {
-				v[i] = n>>1 ^ -(n & 1)
-			}
-		},
-		func(v []uint64) {
-			for i, n := range v {
-				v[i] = n>>1 ^ -(n & 1)
-			}
-		})
+// unzigzag is src, zigzag-encoded integers of width bytes, decoded.
+func unzigzag(ar *Arena, src []byte, width int) []byte {
+	dst := ar.Bytes(len(src), false)
+	switch width {
+	case 1:
+		unzigzagWords(dst, src)
+	case 2:
+		unzigzagWords(words[uint16](dst), words[uint16](src))
+	case 4:
+		unzigzagWords(words[uint32](dst), words[uint32](src))
+	default:
+		unzigzagWords(words[uint64](dst), words[uint64](src))
+	}
+	return dst
 }

@@ -331,50 +331,50 @@ func TestSparse(t *testing.T) {
 func TestTake(t *testing.T) {
 	cnst := func(dt DType, msg []byte, rows int) *Array { return mustDecode(t, constSeg(msg), dt, rows) }
 	// Booleans, numbers and decimals; -1 is a null row.
-	b := take(cnst(bl, sBool(true), 3), []int{0, -1, 2})
+	b := take(nil, cnst(bl, sBool(true), 3), []int{0, -1, 2})
 	if !b.Bits.Get(0) || b.Bits.Get(1) || !b.Null(1) || b.Null(0) {
 		t.Fatalf("bools = %+v", b)
 	}
-	if n := take(cnst(i32, sInt(7), 2), []int{1, 0}); n.Validity != nil || i32s(t, n)[1] != 7 {
+	if n := take(nil, cnst(i32, sInt(7), 2), []int{1, 0}); n.Validity != nil || i32s(t, n)[1] != 7 {
 		t.Fatalf("numbers = %+v", n)
 	}
-	n := take(cnst(i32n, sInt(7), 2), []int{-1, 1})
+	n := take(nil, cnst(i32n, sInt(7), 2), []int{-1, 1})
 	if got := i32s(t, n); got[0] != 0 || got[1] != 7 || !n.Null(0) {
 		t.Fatalf("numbers = %+v", n)
 	}
-	d := take(cnst(dec, sBytes([]byte{5, 0}), 2), []int{1, -1})
+	d := take(nil, cnst(dec, sBytes([]byte{5, 0}), 2), []int{1, -1})
 	if d.Width != 2 || d.Data[0] != 5 || d.Data[2] != 0 {
 		t.Fatalf("decimals = %+v", d)
 	}
 	// Strings and lists share the bytes and the elements.
-	s := take(cnst(utf8n, sStr("ab"), 2), []int{1, -1, 0})
+	s := take(nil, cnst(utf8n, sStr("ab"), 2), []int{1, -1, 0})
 	if str(s, 0) != "ab" || str(s, 1) != "" || !s.Null(1) || str(s, 2) != "ab" {
 		t.Fatalf("strings = %+v", s)
 	}
-	l := take(cnst(i32l, sList(sInt(1), sInt(2)), 2), []int{1, 0})
+	l := take(nil, cnst(i32l, sList(sInt(1), sInt(2)), 2), []int{1, 0})
 	if l.Starts[0] != 2 || l.Ends[1] != 2 || l.Elems.Len != 4 {
 		t.Fatalf("lists = %+v", l)
 	}
 	// Fixed size lists take their elements.
-	f := take(cnst(i32fs2, sList(sInt(1), sInt(2)), 2), []int{1, 0, 1})
+	f := take(nil, cnst(i32fs2, sList(sInt(1), sInt(2)), 2), []int{1, 0, 1})
 	if f.Len != 3 || f.Elems.Len != 6 || i32s(t, f.Elems)[5] != 2 {
 		t.Fatalf("fixed size lists = %+v", f)
 	}
-	f = take(cnst(DType{Kind: FixedSizeList, Elem: &i32, Size: 2, Nullable: true}, sList(sInt(1), sInt(2)), 1), []int{-1})
+	f = take(nil, cnst(DType{Kind: FixedSizeList, Elem: &i32, Size: 2, Nullable: true}, sList(sInt(1), sInt(2)), 1), []int{-1})
 	if f.Elems.Len != 2 || !f.Null(0) {
 		t.Fatalf("a null fixed size list = %+v", f)
 	}
 	// Structs take every field.
 	st := &Array{Type: structOf(false, i32, utf8t), Len: 2, Fields: []*Array{cnst(i32, sInt(3), 2), cnst(utf8t, sStr("q"), 2)}}
-	if g := take(st, []int{1}); g.Len != 1 || i32s(t, g.Fields[0])[0] != 3 || str(g.Fields[1], 0) != "q" {
+	if g := take(nil, st, []int{1}); g.Len != 1 || i32s(t, g.Fields[0])[0] != 3 || str(g.Fields[1], 0) != "q" {
 		t.Fatalf("struct = %+v", g)
 	}
 	// A skipped array stays skipped.
-	if sk := take(&Array{Type: i32, Len: 2, Skipped: errors2}, []int{0}); sk.Skipped == nil || sk.Len != 1 {
+	if sk := take(nil, &Array{Type: i32, Len: 2, Skipped: errors2}, []int{0}); sk.Skipped == nil || sk.Len != 1 {
 		t.Fatalf("skipped = %+v", sk)
 	}
 	// Nulls are nulls.
-	if nl := take(&Array{Type: nul, Len: 2}, []int{0, 1, -1}); nl.Len != 3 || !nl.Null(2) {
+	if nl := take(nil, &Array{Type: nul, Len: 2}, []int{0, 1, -1}); nl.Len != 3 || !nl.Null(2) {
 		t.Fatalf("nulls = %+v", nl)
 	}
 }
