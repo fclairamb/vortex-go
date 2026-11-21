@@ -191,6 +191,7 @@ type waiting struct {
 	node   *encode.Node // the compressed array, nil for the plain one
 	arena  []byte
 	decRaw []byte
+	stats  astat // the statistics of the rows, found with the compressed array
 }
 
 // queueLen is the chunks that wait at most, when WriteOptions.Buffer sets no size: enough for
@@ -260,7 +261,8 @@ func (w *Writer) drain() {
 		if c.node == nil { // the children of a nested column are compressed as they are written
 			w.comp = c.comp
 		}
-		w.writeChunk(c.c, c.buf)
+		w.writeChunkWith(c.c, c.buf, &c.stats)
+		c.stats = astat{}
 		w.pre, w.hasPre, w.comp, c.node = nil, false, nil, nil
 		resetBody(c.buf)
 		c.arena = c.arena[:0]
@@ -275,6 +277,7 @@ func (w *Writer) drain() {
 func compressWaiting(q *waiting) {
 	q.comp.Reset()
 	q.node = compressData(q.comp, q.c.t, Data{q.buf}, &q.decRaw)
+	q.stats = q.c.arrayStats(q.buf)
 }
 
 // withCompressor runs f with the compressor of the column as the one of the arrays written at
