@@ -182,6 +182,7 @@ type scanPlan struct {
 	late       []int // the fields only returned
 	filter     *node
 	pool       *array.Pool // the buffers of the arrays of the scan
+	mem        *scanMem    // the memory of the scan, which holds pool
 	src        source
 	lo, hi     int64
 	wantFilter bool
@@ -245,7 +246,8 @@ func (f *File) plan(o *scanOptions) (*scanPlan, error) {
 			p.late = append(p.late, i)
 		}
 	}
-	p.pool = new(array.Pool)
+	p.mem = f.takeMem()
+	p.pool = &p.mem.arrays
 	opt := o.array
 	opt.MaxRows, opt.Pool = f.maxNodeRows(), p.pool
 	if err = f.openSource(p, opt, need); err != nil {
@@ -292,6 +294,7 @@ func (f *File) scan(ctx context.Context, o *scanOptions) iter.Seq2[*Batch, error
 			yield(nil, err)
 			return
 		}
+		defer f.putMem(p.mem) // once the loader has stopped
 		ld := newLoader(ctx, f, p, workers())
 		defer ld.close()
 		s := newScanner(f, p, ld, o.batchRows)
