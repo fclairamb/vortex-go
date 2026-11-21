@@ -180,6 +180,9 @@ type loader struct {
 func newLoader(ctx context.Context, f *File, p *scanPlan, workers int) *loader {
 	l := &loader{ctx: ctx, f: f, gap: f.gap, maxRead: f.maxRead, arrays: p.pool,
 		sem: make(chan struct{}, workers), progress: make(chan struct{}, 1), stop: make(chan struct{})}
+	// Until a batch says otherwise, a filter is taken to keep few rows: the units of the
+	// columns it does not read are not decoded before the first batch asks for their rows.
+	l.sparse.Store(p.wantFilter)
 	var all []*unit
 	p.src.units(int(p.lo), &all)
 	for i, u := range all {
