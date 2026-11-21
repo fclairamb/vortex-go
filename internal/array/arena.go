@@ -32,6 +32,14 @@ func (p *Pool) Retire(a *Arena) {
 	p.mu.Unlock()
 }
 
+// Forget drops the retired arenas without releasing them: the scan ended, and what its last
+// batch reads stays as it is.
+func (p *Pool) Forget() {
+	p.mu.Lock()
+	p.retired = nil
+	p.mu.Unlock()
+}
+
 // Recycle releases the retired arenas: the consumer has moved on to the next batch.
 func (p *Pool) Recycle() {
 	p.mu.Lock()

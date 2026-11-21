@@ -191,3 +191,31 @@ func TestScanPartOfSegments(t *testing.T) {
 		}
 	}
 }
+
+// TestScansShareMemory checks that a scan that takes the memory of the scan before does not
+// write over what that scan returned last: the last batch of a scan is never given back.
+func TestScansShareMemory(t *testing.T) {
+	f := openBytes(t, selFile(t, Default))
+	var last *Batch
+	var want []int64
+	for b, err := range f.Scan(context.Background(), Query{}, "a", "p", "city") {
+		if err != nil {
+			t.Fatal(err)
+		}
+		last = b
+	}
+	v, err := Values[int64](last.Col(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = slices.Clone(v)
+	city := string(last.Col(2).Bytes(last.Len() - 1))
+	for range 3 { // these scans take the memory the first one left
+		if _, err := digestOf(f, Query{Filter: Col("f").Lt(int32(500))}, nil, []string{"p", "a", "note"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, _ := Values[int64](last.Col(0)); !slices.Equal(got, want) || string(last.Col(2).Bytes(last.Len()-1)) != city {
+		t.Fatal("a later scan wrote over the last batch of a scan")
+	}
+}

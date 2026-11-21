@@ -41,6 +41,7 @@ type File struct {
 	arrayEncodings  []string
 	layoutEncodings []string
 	readers         map[string]layoutMaker // the layout readers, by identifier
+	mem             sync.Pool // the memory of the scans that ended, see scanMem
 	segments        []fbs.SegmentSpec
 	size            int64
 	numRows         int64
