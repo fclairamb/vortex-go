@@ -44,7 +44,7 @@ and on `workflow_dispatch`, so that Go and Rust come from the same machine. It a
 to `history.jsonl` on the `bench-data` branch (an orphan branch with `history.jsonl` and the
 latest `bench.json`), and uploads `bench.json` as an artifact. On a pull request that touches
 the benchmarks it runs without the push. It is never a required check. The job is capped at 15
-minutes and has no schedule: the repository is private, its Actions minutes are counted.
+minutes and has no schedule.
 
 A line is:
 

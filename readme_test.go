@@ -118,10 +118,10 @@ func TestReadmeBadges(t *testing.T) {
 			badges = append(badges, line)
 		}
 	}
-	if len(badges) != 6 {
-		t.Fatalf("%d badges, want 6", len(badges))
+	if len(badges) != 7 {
+		t.Fatalf("%d badges, want 7", len(badges))
 	}
-	wantLabels := []string{"Build", "Coverage", "Go Reference", "Go Report Card", "Go", "License"}
+	wantLabels := []string{"Build", "Coverage", "Go Reference", "Go Report Card", "Go", "License", "Site"}
 	for i, line := range badges {
 		m := badgeRe.FindStringSubmatch(line)
 		if m == nil {
@@ -146,6 +146,9 @@ func TestReadmeBadges(t *testing.T) {
 	}
 	if m := badgeRe.FindStringSubmatch(badges[0]); m == nil || !strings.HasSuffix(m[3], "/workflows/build.yml") {
 		t.Errorf("Build badge does not link to build.yml: %q", badges[0])
+	}
+	if m := badgeRe.FindStringSubmatch(badges[6]); m == nil || m[3] != "https://fclairamb.github.io/vortex-go/" {
+		t.Errorf("Site badge does not link to the site: %q", badges[6])
 	}
 	if _, err := os.Stat(".github/workflows/build.yml"); err != nil {
 		t.Errorf("build workflow: %v", err)
