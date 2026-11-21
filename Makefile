@@ -137,8 +137,10 @@ bench-rust:
 	cd tools/bench-rust && cargo build --release
 
 # The three harnesses on the cases of bench/cases.json, merged into bench.json (one line, the
-# median of BENCH_RUNS runs): the Go benchmarks, parquet-go, and the Rust harness, with 1 thread
-# and with every core. Neither this nor bench-rust is part of check. VORTEX_BENCH_ROWS lowers the
+# median of BENCH_RUNS runs): the Go benchmarks, the ones of bench/ (the same rows read with
+# vortex-go and with parquet-go), and the Rust harness, with 1 thread and with every core. The
+# output of a harness goes to a file, then to the log: a harness that fails stops the target,
+# which a pipe to tee did not do. Neither this nor bench-rust is part of check. VORTEX_BENCH_ROWS lowers the
 # size of the generated file.
 BENCH_RUNS ?= 5
 PARQUET_RUNS ?= 3
@@ -146,8 +148,8 @@ BENCH_TMP = .cache/bench-json
 bench-json: bench-rust
 	mkdir -p $(BENCH_TMP)
 	cores=$$(getconf _NPROCESSORS_ONLN); cpus=1; [ "$$cores" -gt 1 ] && cpus="1,$$cores"; \
-	go test -run '^$$' -bench '^BenchmarkCases$$' -benchmem -count $(BENCH_RUNS) -benchtime 1x -cpu $$cpus . | tee $(BENCH_TMP)/go.txt && \
-	(cd bench && go test -run '^$$' -bench '^BenchmarkCases$$/./.*/parquet-go' -benchmem -count $(PARQUET_RUNS) -benchtime 1x -cpu 1 . | tee ../$(BENCH_TMP)/parquet.txt) && \
+	{ go test -run '^$$' -bench '^BenchmarkCases$$' -benchmem -count $(BENCH_RUNS) -benchtime 1x -cpu $$cpus . > $(BENCH_TMP)/go.txt; s=$$?; cat $(BENCH_TMP)/go.txt; [ $$s -eq 0 ]; } && \
+	{ go -C bench test -run '^$$' -bench '^BenchmarkCases$$' -benchmem -count $(PARQUET_RUNS) -benchtime 1x -cpu $$cpus . > $(BENCH_TMP)/parquet.txt; s=$$?; cat $(BENCH_TMP)/parquet.txt; [ $$s -eq 0 ]; } && \
 	tools/bench-rust/target/release/bench-rust --cases bench/cases.json --root . --runs $(BENCH_RUNS) --threads $$cpus > $(BENCH_TMP)/rust.jsonl && \
 	go -C bench run ./cmd/benchjson -cases cases.json -go ../$(BENCH_TMP)/go.txt -parquet ../$(BENCH_TMP)/parquet.txt \
 		-rust ../$(BENCH_TMP)/rust.jsonl -commit "$$(git rev-parse HEAD)" -vortex-version "$$(cat .vortex-version)" \
