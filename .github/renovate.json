@@ -95,6 +95,20 @@
       "prBodyNotes": [
         "This PR only changes `.vortex-version`. CI stays red until the Go implementation follows upstream `{{{currentVersion}}}` to `{{{newVersion}}}`. The procedure is in [docs/upstream-update.md](../blob/main/docs/upstream-update.md)."
       ]
+    },
+    {
+      "description": "tools/variantjson must use the arrow-rs version that the pinned vortex crates depend on: two arrow-array majors in one build do not type-check (arrow 60 broke Build on 2026-11-21). A major of these crates comes with a Vortex update, never alone.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "/^arrow/",
+        "/^parquet-variant/"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "enabled": false
     }
   ]
 }
