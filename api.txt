@@ -295,6 +295,22 @@ func Open(r io.ReaderAt, size int64) (*File, error)
 func OpenFile(path string) (*File, error)
     OpenFile opens the Vortex file at path. Close it when done.
 
+func OpenMapped(path string) (*File, error)
+    OpenMapped opens the Vortex file at path like OpenFile does, and maps
+    it in memory: a scan reads the segments where they are, without a copy,
+    so a scan that reads a part of the file (some columns, a range of rows,
+    the rows a filter keeps) only touches that part. Close it when done.
+
+    It is for a local file that nothing truncates while it is read. The
+    operating system reports a mapped byte that it cannot read, a truncated file
+    or a failing disk, by stopping the process, where OpenFile returns an error.
+    The columns of a batch are views of the file: they are not read after Close,
+    which gives the memory back once the scans still running have ended,
+    each with an error that wraps os.ErrClosed.
+
+    Where the platform cannot map a file, or refuses to map this one, OpenMapped
+    is OpenFile.
+
 func (f *File) Close() error
     Close closes the file that OpenFile opened: a scan still running returns
     an error that wraps os.ErrClosed. It does nothing for a File made by Open.

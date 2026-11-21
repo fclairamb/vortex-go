@@ -346,3 +346,30 @@ func TestBenchWriteCopy(t *testing.T) {
 		}
 	}
 }
+
+// BenchmarkMapped runs the scans of the generated file on a file that OpenMapped opened: the
+// same cases as BenchmarkCases/gen16, to read next to them.
+func BenchmarkMapped(b *testing.B) {
+	spec := loadBenchSpec(b)
+	d := spec.Data["gen16"]
+	for _, op := range []string{"scan_full", "scan_3col", "scan_filter", "scan_range"} {
+		b.Run(op, func(b *testing.B) {
+			f, err := vortex.OpenMapped(benchDataPath(b, d))
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { f.Close() })
+			q, cols := vortex.Query{}, d.Project
+			switch op {
+			case "scan_full":
+				cols = nil
+			case "scan_filter":
+				q.Filter = vortex.Col(d.Filter.Column).Lt(benchLiteral(b, d.Filter.Type, d.Filter.Lt))
+			case "scan_range":
+				n := float64(f.NumRows())
+				q.Rows, cols = vortex.Range{Start: int64(n * d.Range[0]), End: int64(n * d.Range[1])}, nil
+			}
+			benchScan(b, f, q, cols...)
+		})
+	}
+}

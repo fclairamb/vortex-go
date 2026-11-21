@@ -289,6 +289,14 @@ func (f *File) openSource(p *scanPlan, opt array.Options, need []bool) (err erro
 
 func (f *File) scan(ctx context.Context, o *scanOptions) iter.Seq2[*Batch, error] {
 	return func(yield func(*Batch, error) bool) {
+		if m := f.mapped; m != nil {
+			// The memory of a mapped file stays for as long as the scan reads it, its plan too.
+			if !m.begin() {
+				yield(nil, fmt.Errorf("vortex: Scan: %w", os.ErrClosed))
+				return
+			}
+			defer m.end()
+		}
 		p, err := f.plan(o)
 		if err != nil {
 			yield(nil, err)
