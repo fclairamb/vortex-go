@@ -215,17 +215,16 @@ func decimalWidth(precision uint8) int {
 
 // fits reports whether the value is held by its first width bytes, two's complement.
 func (d Decimal) fits(width int) bool {
-	le := d.le()
-	sign := byte(0)
-	if d.negative() {
-		sign = 0xff
-	}
-	for _, b := range le[width:] {
-		if b != sign {
+	// The words above the value are its sign, and so are the bits of its top word above it.
+	ext := uint64(int64(d.w[3]) >> 63)
+	word, bits := (width-1)/8, 8*(1+(width-1)%8)
+	for _, w := range d.w[word+1:] {
+		if w != ext {
 			return false
 		}
 	}
-	return le[width-1]&0x80 == sign&0x80
+	top := int64(d.w[word]) << (64 - bits) >> (64 - bits) // its low bits, with their sign
+	return uint64(top) == d.w[word] && uint64(top>>63) == ext
 }
 
 func checkDecimals(path string, t Type, d Data) error {

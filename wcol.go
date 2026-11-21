@@ -180,8 +180,13 @@ func (w *Writer) settle(c *column, d Data, hi int) {
 // to a chunk of them: a buffer that grows as the rows come is copied many times over.
 func (c *column) reserve(ahead int) {
 	b := c.buf
-	rows := rowBlock // a dictionary takes the rows a block at a time
-	if c.mode != modeDict {
+	// A dictionary takes the rows a block at a time, and so does a column that has not chosen:
+	// only its codes grow with the rows.
+	rows := rowBlock
+	switch c.mode {
+	case modeDict:
+		c.dict.codes = slices.Grow(c.dict.codes, min(ahead*c.dict.width, chunkBytes+2-len(c.dict.codes)))
+	case modePlain:
 		rows = min(ahead, 8*rowBlock)
 		if b.kind == dPrim {
 			rows = min(ahead, chunkBytes/numberWidth(b.pk)+rowBlock)

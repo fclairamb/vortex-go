@@ -70,7 +70,12 @@ func (c *column) decide(w *Writer, lo, hi int) {
 // startDict makes the column a dictionary.
 func (c *column) startDict() {
 	c.mode = modeDict
-	c.dict = &dictEnc{idx: map[string]int{}, nullCode: -1, width: c.codeWidth()}
+	c.dict = &dictEnc{nullCode: -1, width: c.codeWidth()}
+	if c.buf.kind == dPrim {
+		c.dict.num = map[uint64]int{}
+	} else {
+		c.dict.idx = map[string]int{}
+	}
 }
 
 // dictKey is the bytes that make the value of row i.
@@ -82,11 +87,19 @@ func dictKey(c *column, i int) []byte {
 	return c.buf.raw[i*w : (i+1)*w]
 }
 
+// numberBits is the bits of a number of at most 8 bytes, little-endian.
+func numberBits(key []byte) uint64 {
+	var b [8]byte
+	copy(b[:], key)
+	return binary.LittleEndian.Uint64(b[:])
+}
+
 // dictEnc is the run being built.
 type dictEnc struct {
-	idx      map[string]int
-	raw      []byte   // the values of a column of numbers
-	vals     [][]byte // the values of a column of strings
+	idx      map[string]int // the code of a value of a column of strings
+	num      map[uint64]int // the code of a value of a column of numbers, by its bits
+	raw      []byte         // the values of a column of numbers
+	vals     [][]byte       // the values of a column of strings
 	arena    []byte
 	nulls    []bool // the null values, nil until there is one
 	codes    []byte
@@ -108,7 +121,11 @@ func (d *dictEnc) code(c *column, i int) (int, bool) {
 		return d.add(c, nil, true)
 	}
 	key := dictKey(c, i)
-	if code, ok := d.idx[string(key)]; ok {
+	if d.num != nil {
+		if code, ok := d.num[numberBits(key)]; ok {
+			return code, true
+		}
+	} else if code, ok := d.idx[string(key)]; ok {
 		return code, true
 	}
 	return d.add(c, key, false)
@@ -131,7 +148,11 @@ func (d *dictEnc) add(c *column, key []byte, null bool) (int, bool) {
 		d.nulls = append(d.nulls, make([]bool, code-len(d.nulls))...)
 		d.nulls = append(d.nulls, true)
 	} else {
-		d.idx[string(key)] = code
+		if d.num != nil {
+			d.num[numberBits(key)] = code
+		} else {
+			d.idx[string(key)] = code
+		}
 		if d.nulls != nil {
 			d.nulls = append(d.nulls, false)
 		}
@@ -221,6 +242,7 @@ func (w *Writer) endRun(c *column) {
 		c.pieces = append(c.pieces, piece{rows: uint64(d.rows), seg: seg, nvals: d.n, codes: d.chunks})
 	}
 	clear(d.idx)
+	clear(d.num)
 	clear(d.vals)
 	d.raw, d.vals, d.arena, d.nulls, d.chunks = d.raw[:0], d.vals[:0], d.arena[:0], nil, nil
 	d.nullCode, d.n, d.bytes, d.rows = -1, 0, 0, 0

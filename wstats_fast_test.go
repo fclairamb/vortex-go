@@ -196,3 +196,32 @@ func TestWriteChecksOnEveryCore(t *testing.T) {
 		t.Fatalf("%d rows", f.NumRows())
 	}
 }
+
+// TestDecimalFits checks Decimal.fits against the bytes of the value: the ones above the
+// width are its sign, and so is the top bit of the last one below.
+func TestDecimalFits(t *testing.T) {
+	words := []uint64{0, 1, 5, 0x7f, 0x80, 0xff, 0x7fff, 0x8000, 1 << 31, 1<<31 - 1, 1 << 63, 1<<63 - 1, ^uint64(0), 0xffffffffffffff80, 0xffffffff80000000}
+	var vals []Decimal
+	for _, a := range words {
+		for _, b := range words {
+			vals = append(vals, Decimal{w: [4]uint64{a, b, 0, 0}}, Decimal{w: [4]uint64{a, b, ^uint64(0), ^uint64(0)}},
+				Decimal{w: [4]uint64{a, ^uint64(0), b, ^uint64(0)}}, Decimal{w: [4]uint64{a, 0, 0, b}})
+		}
+	}
+	for _, d := range vals {
+		for _, width := range []int{1, 2, 4, 8, 16, 32} {
+			le := d.le()
+			sign := byte(0)
+			if d.negative() {
+				sign = 0xff
+			}
+			want := le[width-1]&0x80 == sign&0x80
+			for _, b := range le[width:] {
+				want = want && b == sign
+			}
+			if got := d.fits(width); got != want {
+				t.Fatalf("%x on %d bytes: fits %v, want %v", d.w, width, got, want)
+			}
+		}
+	}
+}
