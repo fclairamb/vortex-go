@@ -159,10 +159,10 @@ type loader struct {
 	sem      chan struct{} // a token per running read
 	progress chan struct{} // the consumer moved forward
 	stop     chan struct{} // closed when the scan ends
+	arrays   *array.Pool   // the buffers of the decoded arrays
 	units    []*unit       // in the order of the scan
 	retired  []*unit       // the units done with in the current batch
 	pool     bufPool
-	arrays   *array.Pool // the buffers of the decoded arrays
 	wg       sync.WaitGroup
 	front    atomic.Int64 // the units the consumer has reached
 	ahead    int          // the units read before the consumer reaches them

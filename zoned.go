@@ -158,22 +158,19 @@ func (f *File) newZoned(
 }
 
 // dict is vortex.dict: the values, then the codes. The values are read once, when the first
-// codes are, and kept. The rows are made a chunk of codes at a time, and handed out from it.
+// codes are, and kept. The rows are made a batch at a time, from the codes of the batch.
 type dict struct {
 	codes  reader
 	f      *File
 	values *layoutNode
 	vals   *array.Array
-	cur    *array.Array // the rows of the current chunk of codes
 	path   string
 	t      array.DType
 	opt    array.Options
-	arena  *array.Arena // the buffers of cur
+	arena  *array.Arena // the buffers of the rows of the last batch
 	varena *array.Arena // the buffers of vals
 	slot   array.Array  // the rows take returns
-	off    int          // the next row of cur
 	ptype  array.PType
-	batch  bool // the rows are made a batch at a time, not a chunk of codes at a time
 }
 
 func (f *File) newDict(l *layoutNode, t array.DType, opt array.Options, path string, lo, hi int) (reader, error) {
@@ -222,28 +219,11 @@ func parseDict(meta []byte, parentNullable bool) (array.PType, bool, error) {
 	return array.PType(ptype), nullable, nil
 }
 
-func (d *dict) avail() int {
-	if d.cur != nil {
-		return d.cur.Len - d.off
-	}
-	return d.codes.avail()
-}
+func (d *dict) avail() int { return d.codes.avail() }
 
 func (d *dict) skip(n int) {
-	if d.cur == nil {
-		d.codes.skip(n)
-		d.finish()
-		return
-	}
-	d.advance(n)
-}
-
-// advance moves past n rows of cur.
-func (d *dict) advance(n int) {
-	if d.off += n; d.off == d.cur.Len {
-		d.cur = nil
-		d.finish()
-	}
+	d.codes.skip(n)
+	d.finish()
 }
 
 // finish gives the memory of the reader back once its last row is taken or skipped: the batch
@@ -268,36 +248,19 @@ func (d *dict) take(n int) (*array.Array, error) {
 		if d.vals, err = readAll(r, d.t); err != nil {
 			return nil, err
 		}
-		d.batch = array.DictByBatch(d.vals)
 	}
-	if d.batch {
-		// The rows are made in the memory of the ones of the batch before, which stays in
-		// the cache of the processor.
-		codes, err := d.codes.take(n)
-		if err != nil {
-			return nil, err
-		}
-		d.arena.Release()
-		a, err := array.TakeDictInto(&d.slot, d.arena, d.vals, codes, d.ptype, d.t)
-		if err != nil {
-			return nil, fmt.Errorf("%w: layout: dict: %v", ErrCorrupt, err)
-		}
-		d.finish()
-		return a, nil
+	codes, err := d.codes.take(n)
+	if err != nil {
+		return nil, err
 	}
-	if d.cur == nil {
-		codes, err := d.codes.take(d.codes.avail())
-		if err != nil {
-			return nil, err
-		}
-		d.arena.Release() // the rows of the chunk before
-		if d.cur, err = array.TakeDict(d.arena, d.vals, codes, d.ptype, d.t); err != nil {
-			return nil, fmt.Errorf("%w: layout: dict: %v", ErrCorrupt, err)
-		}
-		d.off = 0
+	// The rows are made in the memory of the ones of the batch before, which stays in the
+	// cache of the processor.
+	d.arena.Release()
+	a, err := array.TakeDictInto(&d.slot, d.arena, d.vals, codes, d.ptype, d.t)
+	if err != nil {
+		return nil, fmt.Errorf("%w: layout: dict: %v", ErrCorrupt, err)
 	}
-	a := d.cur.SliceInto(&d.slot, d.off, n)
-	d.advance(n)
+	d.finish()
 	return a, nil
 }
 

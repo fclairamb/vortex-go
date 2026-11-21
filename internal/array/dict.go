@@ -52,18 +52,11 @@ func TakeDict(ar *Arena, values, codes *Array, p PType, t DType) (*Array, error)
 	return TakeDictInto(new(Array), ar, values, codes, p, t)
 }
 
-// DictByBatch reports whether TakeDictInto makes the rows of such values without allocating
-// more than their buffers: the rows of a batch are then made when the batch is, in memory that
-// the next one reuses.
-func DictByBatch(values *Array) bool {
-	return values.Skipped == nil && values.Len > 0 && gathers(values.Type.Kind)
-}
-
 // gathers reports whether takeFast reads values of that kind.
 func gathers(k Kind) bool { return k == Prim || k == Utf8 || k == Binary || k == List || k == Map }
 
-// TakeDictInto is TakeDict into out, which it overwrites and returns when the values are ones
-// that DictByBatch accepts.
+// TakeDictInto is TakeDict into out, which it overwrites and returns when the values are
+// numbers, bytes or lists: it then allocates nothing but the buffers of the rows.
 func TakeDictInto(out *Array, ar *Arena, values, codes *Array, p PType, t DType) (*Array, error) {
 	if values.Skipped != nil || codes.Skipped != nil {
 		err := values.Skipped

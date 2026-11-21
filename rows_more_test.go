@@ -652,7 +652,7 @@ func TestRowsFillAllocations(t *testing.T) {
 		t.Fatal(err)
 	}
 	var b *Batch
-	for b = range f.scan(context.Background(), scanOptions{batchRows: maxBatchRows, columns: p.columns}) {
+	for b = range f.scan(context.Background(), &scanOptions{batchRows: maxBatchRows, columns: p.columns}) {
 	}
 	rows := reflect.ValueOf(make([]allocRow, b.Len()))
 	for _, c := range p.cells {

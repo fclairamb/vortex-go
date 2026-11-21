@@ -20,15 +20,15 @@ type Options struct {
 	// encoding, whether to carry on: the field then is an Array with Skipped set. The path
 	// is the dotted names of the fields from the root. Tests use it, a scan never does.
 	Tolerate func(path string, err error) bool
-	// MaxRows, when not 0, is the most rows of any node: the rows of a child come from the
-	// file (the elements of a list, the codes of a dictionary), and a node that expands
-	// without a buffer to bound it (a constant, a sequence) allocates as many.
-	MaxRows int
 	// Pool, when not nil, is where a scan takes the buffers of its arrays from.
 	Pool *Pool
 	// Arena, when not nil, is where the buffers of the decoded array come from: the array
 	// must not be read once the arena is released.
 	Arena *Arena
+	// MaxRows, when not 0, is the most rows of any node: the rows of a child come from the
+	// file (the elements of a list, the codes of a dictionary), and a node that expands
+	// without a buffer to bound it (a constant, a sequence) allocates as many.
+	MaxRows int
 }
 
 type context struct {

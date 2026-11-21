@@ -47,7 +47,7 @@ type scanOptions struct {
 // An unknown column, an invalid range, or a filter that does not fit the schema is the error
 // of the first iteration, before any read.
 func (f *File) Scan(ctx context.Context, q Query, columns ...string) iter.Seq2[*Batch, error] {
-	return f.scan(ctx, scanOptions{batchRows: maxBatchRows, q: q, columns: columns})
+	return f.scan(ctx, &scanOptions{batchRows: maxBatchRows, q: q, columns: columns})
 }
 
 // source reads the top-level columns of the file, the ones that are wanted, in lockstep.
@@ -191,7 +191,7 @@ func clamp(r Range, rows int64) (lo, hi int64, err error) {
 }
 
 // plan checks the query against the schema and opens the readers it needs.
-func (f *File) plan(o scanOptions) (*scanPlan, error) {
+func (f *File) plan(o *scanOptions) (*scanPlan, error) {
 	var err error
 	p := &scanPlan{wantFilter: o.q.Filter.n != nil}
 	if p.out, err = f.projection(o.columns); err != nil {
@@ -217,10 +217,10 @@ func (f *File) plan(o scanOptions) (*scanPlan, error) {
 			p.late = append(p.late, i)
 		}
 	}
-	o.array.MaxRows = f.maxNodeRows()
 	p.pool = new(array.Pool)
-	o.array.Pool = p.pool
-	if err = f.openSource(p, o.array, need); err != nil {
+	opt := o.array
+	opt.MaxRows, opt.Pool = f.maxNodeRows(), p.pool
+	if err = f.openSource(p, opt, need); err != nil {
 		return nil, err
 	}
 	if p.wantFilter {
@@ -253,7 +253,7 @@ func (f *File) openSource(p *scanPlan, opt array.Options, need []bool) (err erro
 	return err
 }
 
-func (f *File) scan(ctx context.Context, o scanOptions) iter.Seq2[*Batch, error] {
+func (f *File) scan(ctx context.Context, o *scanOptions) iter.Seq2[*Batch, error] {
 	return func(yield func(*Batch, error) bool) {
 		p, err := f.plan(o)
 		if err != nil {

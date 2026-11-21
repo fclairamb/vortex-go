@@ -141,7 +141,7 @@ func specTabs(ids []string) []fbtest.Tab {
 
 func scanAll(t *testing.T, f *File, batchRows int) (batches []*Batch, err error) {
 	t.Helper()
-	for b, e := range f.scan(context.Background(), scanOptions{batchRows: batchRows}) {
+	for b, e := range f.scan(context.Background(), &scanOptions{batchRows: batchRows}) {
 		if e != nil {
 			return batches, e
 		}
@@ -379,7 +379,7 @@ func TestTolerateSkipsAField(t *testing.T) {
 		return true
 	}}}
 	n := 0
-	for b, e := range f.scan(context.Background(), opt) {
+	for b, e := range f.scan(context.Background(), &opt) {
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -393,7 +393,7 @@ func TestTolerateSkipsAField(t *testing.T) {
 	}
 	// A scan that refuses to tolerate it fails.
 	opt.array.Tolerate = func(string, error) bool { return false }
-	for _, e := range f.scan(context.Background(), opt) {
+	for _, e := range f.scan(context.Background(), &opt) {
 		if !errors.Is(e, errors.ErrUnsupported) {
 			t.Fatalf("err = %v", e)
 		}

@@ -90,3 +90,29 @@ measures the fixed cost of a scan as much as the decoder. Run `make bench` to se
 The spread on the hosted runner is not measured yet: it needs the workflow to have run 3 times
 on `main`. Until it is written here, read a difference under 10% as noise. Above 10% between
 two runs of the same commit, raise the run count (`BENCH_RUNS`) before anything else.
+
+## Finding where the time goes
+
+Two traps cost a morning on 2026-11-21, on a Mac:
+
+- **A CPU profile on macOS blames the system calls.** `go tool pprof` showed 40 to 70% of a
+  scan in `pread`, where a clock around the read gave 2%. Read the profile for the share of
+  one Go function against another, never for the share of the reads. For the split between
+  the reads and the decoding, put a clock around them, or read `getrusage` (user and system
+  time) around a scan.
+- **A loaded machine moves every number, Rust's too.** Take the best of several runs
+  (`-count 5`), run the two harnesses one after the other, and compare one column at a time: a
+  copy of `bench/cases.json` whose `project` is one column gives the time of that column in
+  both languages, which says which decoder to look at.
+
+What the reader does to stay close to the reference, so that a change does not undo it:
+
+- the buffers of the decoded arrays come from a pool of the scan (`internal/array/arena.go`)
+  and go back to it when the batch that reads them is done: a scan works in the same memory
+  from one batch to the next, and a batch is valid until the next one;
+- a segment is read to the same alignment it has in the file, and the decoders read and write
+  numbers where they are (`unsafex.Slice`), with no copy to a slice of bytes and back;
+- FoR, zigzag and ALP write over the integers their child just unpacked;
+- the rows of a dictionary layout are made a batch at a time, from the codes of the batch;
+- a comparison of an integer column with one literal is a test of range on the values of the
+  batch (`expr_fast.go`), not a walk of the filter per row.

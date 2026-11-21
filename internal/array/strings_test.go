@@ -165,6 +165,11 @@ func TestFSSTHostile(t *testing.T) {
 		{"row of fewer bytes", func() fsstIn { in := base(); in.ulen[0] = 4; return in }, "row 0 decodes to 3 bytes, declared 4"},
 		{"row of more bytes", func() fsstIn { in := base(); in.ulen[0] = 2; return in }, "more than its 2 bytes"},
 		{"symbol past the row", func() fsstIn { in := base(); in.codes[2] = 3; in.ulen[1] = 3; return in }, "more than its 3 bytes"},
+		{"row of more bytes, with room after it", func() fsstIn {
+			in := newFSSTIn(fsstSymbols, []string{"hhhhhhhh", "hhhhhhhhhhhhhhhh"})
+			in.ulen[0] = 7
+			return in
+		}, "row 0 decodes to more than its 7 bytes"},
 		{"escape past the row", func() fsstIn {
 			in := sym(base(), nil)
 			in.codes = []byte{fsstEscape, 'a', fsstEscape, 'b'}

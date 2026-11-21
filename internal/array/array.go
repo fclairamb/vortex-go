@@ -39,15 +39,15 @@ type Array struct {
 	Starts, Ends []int
 	Fields       []*Array
 	Bits         Bitmap // Bool: the values
-	// fresh is set by a decoder whose Data nothing else reads: the decoder of the parent may
-	// then write its own values over it.
-	fresh bool
 	vbits        Bitmap // the Validity of an array made by SliceInto
 	Type         DType
 	Width        int // Decimal: the bytes of a stored value
 	Len          int
 	// VOff is, for a Variant array, the row of Var that row 0 is.
 	VOff int
+	// fresh is set by a decoder whose Data nothing else reads: the decoder of the parent may
+	// then write its own values over it.
+	fresh bool
 }
 
 // Null reports whether row i is null.
