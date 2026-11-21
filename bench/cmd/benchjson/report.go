@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,14 +20,19 @@ type Result struct {
 }
 
 // Case is one case of bench/cases.json at one thread count, with the result of each harness.
-// Rust and ParquetGo are absent when that harness has no result for the case.
+// Rust is absent when that harness has no result for the case. GoRows and ParquetGo are the two
+// harnesses of bench/, which read the same rows into the same structs, one with each library:
+// they are absent for the cases bench/ does not run, and their ratio is ours over parquet-go's.
 type Case struct { //nolint:govet // the order of the fields is the order of bench.json
 	Name        string   `json:"name"`
 	Threads     int      `json:"threads"`
 	Go          Result   `json:"go"`
 	Rust        *Result  `json:"rust,omitempty"`
+	GoRows      *Result  `json:"go_rows,omitempty"`
 	ParquetGo   *Result  `json:"parquet_go,omitempty"`
 	RatioToRust *float64 `json:"ratio_to_rust,omitempty"`
+	// RatioToParquetGo is the time of GoRows over the time of ParquetGo.
+	RatioToParquetGo *float64 `json:"ratio_to_parquet_go,omitempty"`
 }
 
 // Machine is what the benchmarks ran on.
@@ -185,13 +191,41 @@ func median(runs []Result) Result {
 	}
 }
 
-// Inputs are the sources of a report. Rust and ParquetGo may be nil.
+// Inputs are the sources of a report. Rust and ParquetGo may be nil. ParquetGo is the output
+// of the benchmarks of bench/, with its two harnesses, vortex-go and parquet-go.
 type Inputs struct {
 	CaseNames []string
 	Go        io.Reader
 	ParquetGo io.Reader
 	Rust      io.Reader
 	Meta      Report // everything but the machine and the cases
+}
+
+// optMedian is the median of the runs of a harness, nil when it has none.
+func optMedian(runs []Result) *Result {
+	if len(runs) == 0 {
+		return nil
+	}
+	m := median(runs)
+	return &m
+}
+
+// parseBoth reads the output of the benchmarks of bench/: the samples of its parquet-go
+// harness and the ones of its vortex-go harness. An output with no parquet-go line is an
+// error: the benchmarks did not run, and a report without them would not say so.
+func parseBoth(r io.Reader) (pq, rows samples, err error) {
+	raw, err := io.ReadAll(r)
+	if err != nil {
+		return nil, nil, err
+	}
+	if pq, _, err = parseGo(bytes.NewReader(raw), "parquet-go"); err != nil {
+		return nil, nil, err
+	}
+	if len(pq) == 0 {
+		return nil, nil, errors.New("no parquet-go result")
+	}
+	rows, _, err = parseGo(bytes.NewReader(raw), "vortex-go")
+	return pq, rows, err
 }
 
 // Build merges the sources by case name and thread count. A case of the list with no Go
@@ -204,9 +238,9 @@ func Build(in *Inputs) (Report, error) {
 	if err != nil {
 		return Report{}, fmt.Errorf("go output: %w", err)
 	}
-	var pq, rs samples
+	var pq, rows, rs samples
 	if in.ParquetGo != nil {
-		if pq, _, err = parseGo(in.ParquetGo, "parquet-go"); err != nil {
+		if pq, rows, err = parseBoth(in.ParquetGo); err != nil {
 			return Report{}, fmt.Errorf("parquet-go output: %w", err)
 		}
 	}
@@ -230,15 +264,14 @@ func Build(in *Inputs) (Report, error) {
 		slices.Sort(threads)
 		for _, t := range threads {
 			c := Case{Name: name, Threads: t, Go: median(goRes[key{name, t}])}
-			if runs := rs[key{name, t}]; len(runs) > 0 {
-				m := median(runs)
-				c.Rust = &m
-				ratio := c.Go.NsPerOp / m.NsPerOp
+			k := key{name, t}
+			if c.Rust = optMedian(rs[k]); c.Rust != nil {
+				ratio := c.Go.NsPerOp / c.Rust.NsPerOp
 				c.RatioToRust = &ratio
 			}
-			if runs := pq[key{name, t}]; len(runs) > 0 {
-				m := median(runs)
-				c.ParquetGo = &m
+			if c.GoRows, c.ParquetGo = optMedian(rows[k]), optMedian(pq[k]); c.GoRows != nil && c.ParquetGo != nil {
+				ratio := c.GoRows.NsPerOp / c.ParquetGo.NsPerOp
+				c.RatioToParquetGo = &ratio
 			}
 			rep.Cases = append(rep.Cases, c)
 		}
