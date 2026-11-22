@@ -127,7 +127,7 @@ func (l lineSet) get(i int) []byte {
 
 func (e *Encoder) fsstState() *fsstState {
 	if e.fs == nil {
-		e.fs = &fsstState{c2: make([]int32, 512*512)}
+		e.fs = fsstStates.Get().(*fsstState)
 	}
 	return e.fs
 }
@@ -572,6 +572,7 @@ func FSSTStringsWith(e *Encoder, vals []string, nulls []bool, syms []uint64, len
 // is the one already loaded.
 func (e *Encoder) fsstColumn(ls lineSet, nulls []bool, rows int, train bool) *Node {
 	s := e.fsstState()
+	defer e.done()
 	if train {
 		s.trainOn(ls, nulls)
 	}
@@ -583,7 +584,7 @@ func (e *Encoder) fsstColumn(ls lineSet, nulls []bool, rows int, train bool) *No
 	}
 	ow, optype := fsstOffsetWidth(total)
 	ulen, offs := e.alloc(4*rows), e.alloc(ow*(rows+1))
-	codes := e.alloc(fsstMaxEscape * total)
+	codes := e.allocDirty(fsstMaxEscape * total) // only the bytes written are kept
 	o := 0
 	for i := range rows {
 		if !isNull(nulls, i) {
@@ -593,7 +594,7 @@ func (e *Encoder) fsstColumn(ls lineSet, nulls []bool, rows int, train bool) *No
 		}
 		putWidth(offs[ow*(i+1):], ow, uint64(o))
 	}
-	syms64, lens8 := e.alloc(8*s.n), e.alloc(s.n)
+	syms64, lens8 := e.allocDirty(8*s.n), e.allocDirty(s.n)
 	for i := range s.n {
 		putWidth(syms64[8*i:], 8, s.sym[i])
 		lens8[i] = s.length[i]
@@ -643,6 +644,7 @@ func EstimateFSSTStrings(e *Encoder, sample []string, nulls []bool, rows int) in
 // estimateFSST trains on the sample, compresses it and scales what comes out to the rows.
 func (e *Encoder) estimateFSST(ls lineSet, nulls []bool, rows int) int {
 	s := e.fsstState()
+	defer e.done()
 	s.trainOn(ls, nulls)
 	n := ls.n()
 	total, out := 0, 0

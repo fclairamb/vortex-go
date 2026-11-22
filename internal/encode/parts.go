@@ -28,12 +28,13 @@ func DecimalBytes(e *Encoder, raw []byte, width int, nulls []bool) (*Node, bool)
 		lo, hi = min(lo, v), max(hi, v)
 	}
 	ptype, w := narrowSigned(lo, hi)
-	out := e.alloc(rows * w)
+	out := e.allocDirty(rows * w)
 	for i := range rows {
+		v := int64(0)
 		if !isNull(nulls, i) {
-			v, _ := decimalInt64(raw[i*width:(i+1)*width], width)
-			putWidth(out[i*w:], w, uint64(v))
+			v, _ = decimalInt64(raw[i*width:(i+1)*width], width)
 		}
+		putWidth(out[i*w:], w, uint64(v))
 	}
 	n := e.node(IDDecimalBytes)
 	n.kid(e.leaf(out, w, nulls, rows))
@@ -90,7 +91,7 @@ func DateTimeParts(e *Encoder, v []int64, nulls []bool, ticks int64) (*Node, boo
 		}
 	}
 	ptype, dw := narrowSigned(lo, hi)
-	days, secs, subs := e.alloc(n*dw), e.alloc(4*n), e.alloc(4*n)
+	days, secs, subs := e.allocDirty(n*dw), e.allocDirty(4*n), e.allocDirty(4*n)
 	for i, ts := range v {
 		d := ts / (secondsPerDay * ticks)
 		total := ts / ticks

@@ -168,7 +168,7 @@ func BitPack[T Int](e *Encoder, v []T, nulls []bool, width int) (*Node, error) {
 	}
 	raw := unsafex.Bytes(v)
 	blocks := (len(v) + blockSize - 1) / blockSize
-	packed := e.alloc(blocks * 128 * width)
+	packed := e.allocDirty(blocks * 128 * width) // every block is written whole
 	if width > 0 {
 		pack(packed, raw, w, width)
 	}
@@ -205,7 +205,7 @@ func patches[T Int](e *Encoder, n *Node, v []T, nulls []bool, width, count int) 
 	_, iw := patchWidth(len(v))
 	w := unsafex.Size[T]()
 	blocks := (len(v) + blockSize - 1) / blockSize
-	idx, vals, offs := e.alloc(count*iw), e.alloc(count*w), e.alloc(blocks*8)
+	idx, vals, offs := e.allocDirty(count*iw), e.allocDirty(count*w), e.allocDirty(blocks*8)
 	k := 0
 	for i, x := range v {
 		if i%blockSize == 0 {

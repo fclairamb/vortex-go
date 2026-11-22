@@ -451,6 +451,9 @@ func TestNoAllocation(t *testing.T) {
 	}
 	run()
 	run()
+	if raceEnabled { // its sync.Pool drops what it is given at random, and the encoders use pools
+		return
+	}
 	if n := testing.AllocsPerRun(5, run); n != 0 {
 		t.Errorf("%v allocations", n)
 	}

@@ -152,8 +152,8 @@ const rdMiss = 0xffff
 
 func alpRDParts[F Float, U uint32 | uint64](e *Encoder, v []F, nulls []bool, d rdDict) *Node {
 	n, w := len(v), unsafex.Size[F]()
-	left := unsafex.Slice[uint16](e.alloc(2 * n))
-	right := unsafex.Slice[U](e.alloc(w * n))
+	left := unsafex.Slice[uint16](e.allocDirty(2 * n)) // every row is written
+	right := unsafex.Slice[U](e.allocDirty(w * n))
 	mask := uint64(1)<<d.rightBits - 1
 	misses := 0
 	for i, f := range v {
@@ -174,7 +174,7 @@ func alpRDParts[F Float, U uint32 | uint64](e *Encoder, v []F, nulls []bool, d r
 	var pos []uint64
 	var vals []uint16
 	if misses > 0 {
-		pos, vals = unsafex.Slice[uint64](e.alloc(8*misses)), unsafex.Slice[uint16](e.alloc(2*misses))
+		pos, vals = unsafex.Slice[uint64](e.allocDirty(8*misses)), unsafex.Slice[uint16](e.allocDirty(2*misses))
 		k := 0
 		for i, f := range v {
 			if left[i] == rdMiss {

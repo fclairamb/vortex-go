@@ -149,7 +149,7 @@ func BestExponents[F Float](e *Encoder, v []F) Exponents {
 
 func bestExponents[F Float, I alpInt](e *Encoder, v []F) Exponents {
 	p := newSamplePlan(len(v), alpSample, alpBlock)
-	sample := unsafex.Slice[F](e.alloc(p.count * unsafex.Size[F]()))
+	sample := unsafex.Slice[F](e.allocDirty(p.count * unsafex.Size[F]()))
 	for k := range sample {
 		sample[k] = v[p.at(k)]
 	}
@@ -237,7 +237,7 @@ func ALPWith[F Float](e *Encoder, v []F, nulls []bool, x Exponents) *Node {
 
 func alpNode[F Float, I alpInt](e *Encoder, v []F, nulls []bool, x Exponents) *Node {
 	n, w := len(v), unsafex.Size[F]()
-	raw := e.alloc(n * w)
+	raw := e.allocDirty(n * w) // every row is written
 	enc := unsafex.Slice[I](raw)
 	isPatch := e.flags(n)
 	fill, hasFill := I(0), false
@@ -273,7 +273,7 @@ func alpNode[F Float, I alpInt](e *Encoder, v []F, nulls []bool, x Exponents) *N
 // the metadata of the array so far.
 func alpPatches[F Float](e *Encoder, node *Node, v []F, nulls, isPatch []bool, count, chunks int) {
 	w := unsafex.Size[F]()
-	idx, vals, offs := e.alloc(8*count), e.alloc(w*count), e.alloc(8*chunks)
+	idx, vals, offs := e.allocDirty(8*count), e.allocDirty(w*count), e.allocDirty(8*chunks)
 	raw := unsafex.Bytes(v)
 	k := 0
 	for c := range chunks {

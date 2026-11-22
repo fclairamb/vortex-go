@@ -451,6 +451,9 @@ func nullFlat(w rwFlat) rwFlat {
 }
 
 func TestRowWriterAllocs(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the sync.Pool of the race detector drops what it is given at random, and the encoders use pools")
+	}
 	type row struct {
 		A int64
 		B float64
