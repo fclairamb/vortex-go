@@ -400,7 +400,7 @@ func (w *Writer) encodeUUID(d Data, n int) flatbuf.Off {
 		}
 	}
 	base := len(w.stack)
-	w.push(w.leaf("vortex.primitive", bytes, 1))
+	w.push(w.encodeOffsets(compress.U8, bytes)) // the bytes are numbers: runs and constants pay
 	w.validity(d, n)
 	return w.node(idFixedSizeList, nil, len(w.bufs), 0, base)
 }

@@ -140,3 +140,18 @@ to run; the ratios do not.
 - Whether the upstream Rust writer, at its most compact setting, has the same gap on this data
   (`~/code/other/vortex`): if it does, the fix may be outside what "the reference is the judge"
   allows for the scheme choice, and the spec's PR says so.
+
+## Resolved open questions
+
+- Zstd level (autopilot: recommended answer): both are klauspost `SpeedDefault`, the level
+  parquet-go's `zstd.Codec{}` uses, so the comparison is at the same level.
+- What `pick` judges on (autopilot: recommended answer): a sample of the chunk. It was not the
+  cause: `row_data` under `Compact` was already within 3% of plain zstd. The bytes went to the
+  uuid columns (`[16]byte`, written as plain `u8` with no compression, 1.6 MB each for 100k rows).
+- The Rust writer on this data (autopilot: recommended answer): the reference is not in this
+  checkout and no Python reader is installed, so it is not measured; the fix does not change a
+  scheme choice, it only lets the compressor see the bytes of a uuid as it sees any `u8` array.
+- Tiny files (autopilot: recommended answer): a zone table per column (about 600 bytes each) was
+  3 of the 8 KB of the 3-row file. Under `Compact` only, a column of one zone has none; `Default`
+  keeps the layouts of the reference. The file is 5 KB, not 2 KB: the rest is the dtype, the file
+  statistics and one segment per column.

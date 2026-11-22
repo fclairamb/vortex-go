@@ -29,6 +29,7 @@ type benchSpec struct {
 type benchData struct {
 	File      string   `json:"file"`
 	Generated bool     `json:"generated"`
+	Generator string   `json:"generator"`
 	Project   []string `json:"project"`
 	Filter    struct {
 		Column string `json:"column"`
@@ -121,6 +122,9 @@ func benchLiteral(tb testing.TB, kind string, v int64) any {
 // number of rows of the generated file.
 func benchDataPath(b *testing.B, d benchData) string {
 	b.Helper()
+	if d.Generated && d.Generator == "dbbat_wide" {
+		return dbbatBenchFile(b, d.File)
+	}
 	if d.Generated {
 		return benchFile(b)
 	}
@@ -236,6 +240,8 @@ func accOf(t vortex.Type) (colAcc, error) {
 		return numAcc[int64](t), nil
 	case vortex.Bool:
 		return gatherAcc(t, func(c *vortex.Column, i int) bool { return c.Bool(i) }, vortex.OfBools), nil
+	case vortex.UUID:
+		return gatherAcc(t, func(c *vortex.Column, i int) []byte { return bytes.Clone(c.Bytes(i)) }, vortex.OfBytes), nil
 	case vortex.Utf8:
 		return gatherAcc(t, func(c *vortex.Column, i int) string { return string(c.Bytes(i)) }, vortex.OfStrings), nil
 	case vortex.Binary:

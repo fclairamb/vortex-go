@@ -393,7 +393,9 @@ func (w *Writer) finish(c *column) {
 	} else if c.buf.n > 0 || len(c.pieces) == 0 && c.waiting == 0 {
 		w.flushPlain(c)
 	}
-	if c.zones != nil && c.rows > 0 && w.err == nil {
+	// Compact: a column of one zone has no table of zones, the statistics of the file say what
+	// it would; a small file favors the size of its structure over what a reader may skip
+	if c.zones != nil && c.rows > 0 && (c.zones.n > 1 || w.opt.Compression != Compact) && w.err == nil {
 		w.writeZones(c)
 	}
 }
