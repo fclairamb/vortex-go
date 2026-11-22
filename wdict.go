@@ -50,17 +50,25 @@ func (c *column) decide(w *Writer, lo, hi int) {
 		}
 		return
 	}
-	seen := map[string]struct{}{}
+	seen := newCodeTable(c.buf.kind != dPrim)
+	var vals [][]byte // the distinct strings, by code
 	nulls := false
 	for i := lo; i < hi; i++ {
-		if c.t.nullable && c.buf.nulls[i] {
+		switch key := dictKey(c, i); {
+		case c.t.nullable && c.buf.nulls[i]:
 			nulls = true
-		} else {
-			if key := dictKey(c, i); !has(seen, key) {
-				seen[string(key)] = struct{}{}
+		case c.buf.kind == dPrim:
+			id := numberBits(key)
+			if code, slot := seen.number(id); code < 0 {
+				seen.put(slot, id)
+			}
+		default:
+			if code, slot, id := seen.str(vals, key); code < 0 {
+				seen.put(slot, id)
+				vals = append(vals, key)
 			}
 		}
-		if 2*(len(seen)+boolInt(nulls)) >= hi-lo {
+		if 2*(len(seen.ids)+boolInt(nulls)) >= hi-lo {
 			return
 		}
 	}
@@ -70,12 +78,7 @@ func (c *column) decide(w *Writer, lo, hi int) {
 // startDict makes the column a dictionary.
 func (c *column) startDict() {
 	c.mode = modeDict
-	c.dict = &dictEnc{nullCode: -1, width: c.codeWidth()}
-	if c.buf.kind == dPrim {
-		c.dict.num = map[uint64]int{}
-	} else {
-		c.dict.idx = map[string]int{}
-	}
+	c.dict = &dictEnc{nullCode: -1, width: c.codeWidth(), tab: newCodeTable(c.buf.kind != dPrim)}
 }
 
 // dictKey is the bytes that make the value of row i.
@@ -96,19 +99,18 @@ func numberBits(key []byte) uint64 {
 
 // dictEnc is the run being built.
 type dictEnc struct {
-	idx      map[string]int // the code of a value of a column of strings
-	num      map[uint64]int // the code of a value of a column of numbers, by its bits
-	raw      []byte         // the values of a column of numbers
-	vals     [][]byte       // the values of a column of strings
+	raw      []byte   // the values of a column of numbers
+	vals     [][]byte // the values of a column of strings
 	arena    []byte
 	nulls    []bool // the null values, nil until there is one
 	codes    []byte
-	chunks   []chunk // the chunks of codes written
-	nullCode int     // the code of null, -1 when there is none
-	n        int     // the values
-	bytes    int     // the size of the values
-	rows     int     // the rows of the run
-	width    int     // the bytes of a code
+	chunks   []chunk   // the chunks of codes written
+	tab      codeTable // the code of a value
+	nullCode int       // the code of null, -1 when there is none
+	n        int       // the values
+	bytes    int       // the size of the values
+	rows     int       // the rows of the run
+	width    int       // the bytes of a code
 }
 
 // code returns the code of row i of the buffer, and false when the run is full: the value
@@ -118,21 +120,26 @@ func (d *dictEnc) code(c *column, i int) (int, bool) {
 		if d.nullCode >= 0 {
 			return d.nullCode, true
 		}
-		return d.add(c, nil, true)
+		return d.add(c, nil, true, 0, 0)
 	}
 	key := dictKey(c, i)
-	if d.num != nil {
-		if code, ok := d.num[numberBits(key)]; ok {
-			return code, true
-		}
-	} else if code, ok := d.idx[string(key)]; ok {
+	var code, slot int
+	var id uint64
+	if c.buf.kind == dPrim {
+		id = numberBits(key)
+		code, slot = d.tab.number(id)
+	} else {
+		code, slot, id = d.tab.str(d.vals, key)
+	}
+	if code >= 0 {
 		return code, true
 	}
-	return d.add(c, key, false)
+	return d.add(c, key, false, slot, id)
 }
 
-// add adds a value, when the run has room for it.
-func (d *dictEnc) add(c *column, key []byte, null bool) (int, bool) {
+// add adds a value, when the run has room for it: the slot and the id of the table that
+// the lookup of a value that is not null returned.
+func (d *dictEnc) add(c *column, key []byte, null bool, slot int, id uint64) (int, bool) {
 	cost := 16
 	if c.buf.kind == dPrim {
 		cost = numberWidth(c.buf.pk)
@@ -147,12 +154,9 @@ func (d *dictEnc) add(c *column, key []byte, null bool) (int, bool) {
 		d.nullCode = code
 		d.nulls = append(d.nulls, make([]bool, code-len(d.nulls))...)
 		d.nulls = append(d.nulls, true)
+		d.tab.skip()
 	} else {
-		if d.num != nil {
-			d.num[numberBits(key)] = code
-		} else {
-			d.idx[string(key)] = code
-		}
+		d.tab.put(slot, id)
 		if d.nulls != nil {
 			d.nulls = append(d.nulls, false)
 		}
@@ -263,15 +267,8 @@ func (w *Writer) endRun(c *column) {
 	if seg, ok := w.endFlat(root); ok {
 		c.pieces = append(c.pieces, piece{rows: uint64(d.rows), seg: seg, nvals: d.n, codes: d.chunks})
 	}
-	clear(d.idx)
-	clear(d.num)
+	d.tab.reset()
 	clear(d.vals)
 	d.raw, d.vals, d.arena, d.nulls, d.chunks = d.raw[:0], d.vals[:0], d.arena[:0], nil, nil
 	d.nullCode, d.n, d.bytes, d.rows = -1, 0, 0, 0
-}
-
-// has says whether the map has the key, without allocating a string for the lookup.
-func has(m map[string]struct{}, key []byte) bool {
-	_, ok := m[string(key)]
-	return ok
 }
