@@ -126,7 +126,7 @@ func dtypes(t flatbuf.Table, id int) (List[DType], error) {
 
 func names(t flatbuf.Table, id int) (List[string], error) {
 	v, err := t.Strings(id)
-	return List[string]{v.String, v.Len()}, err
+	return List[string]{str: func(v flatbuf.Vector, i int) (string, error) { return v.String(i) }, v: v}, err
 }
 
 // Struct returns the field names and types of a struct type.

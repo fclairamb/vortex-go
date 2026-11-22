@@ -13,6 +13,16 @@
 // the reference, a dictionary of strings is not tried when more than half of the valid rows
 // have distinct heads (the length and the first 4 bytes of a string), counted on all the rows.
 //
+// The candidates of a trial (the sample, and the children of its candidates) are the ones the
+// reference does not rule out from the statistics of its rows: integers are not tried as a
+// dictionary when more than half of their valid values are distinct, nor as a sparse array
+// when their most frequent value is under nine tenths of them (and they are not mostly null),
+// and floats are not tried as a dictionary when more than half are distinct. A scheme is never
+// twice in a chain of parents, and some leave out more under some of their children, as the
+// exclusion rules of the reference do (exclZigZag and the others). The values of a frame of
+// reference are bit-packed, as the reference does, with no other candidate. The probe of the
+// dictionary layout keeps the scheme it chose, for the chunk of the same rows that follows it.
+//
 // A Compressor is not safe for concurrent use: the writer has one per column. Once it has
 // seen chunks of the largest size, it allocates nothing.
 package compress
@@ -125,14 +135,15 @@ const (
 
 // Compressor holds the memory of the compression of the chunks of a column.
 type Compressor struct {
-	e     *encode.Encoder // the arrays that are kept
-	trial *encode.Encoder // the arrays of the candidates, dropped after each choice
-	heads headSet         // the heads of the strings of a chunk
-	raw   arena[byte]     // the samples of numbers
-	nulls arena[bool]     // the samples of nulls, and the nulls of children
-	bins  arena[[]byte]   // the samples of strings, and the values of dictionaries
-	mode  Mode
-	limit Limits
+	e      *encode.Encoder // the arrays that are kept
+	trial  *encode.Encoder // the arrays of the candidates, dropped after each choice
+	heads  headSet         // the heads of the strings of a chunk
+	raw    arena[byte]     // the samples of numbers
+	nulls  arena[bool]     // the samples of nulls, and the nulls of children
+	bins   arena[[]byte]   // the samples of strings, and the values of dictionaries
+	chosen choice          // the choice of the last probe
+	mode   Mode
+	limit  Limits
 }
 
 // New returns a Compressor.
@@ -140,14 +151,16 @@ func New(mode Mode) *Compressor { return NewLimited(mode, Limits{}) }
 
 // NewLimited returns a Compressor that does without the encodings of limit.
 func NewLimited(mode Mode, limit Limits) *Compressor {
-	return &Compressor{e: encode.New(), trial: encode.New(), mode: mode, limit: limit}
+	trial := encode.New()
+	trial.Measure()
+	return &Compressor{e: encode.New(), trial: trial, mode: mode, limit: limit}
 }
 
 // Configure makes c a Compressor of this mode and of these limits, with the memory it has: the
 // arrays of its earlier calls must not be used any more.
 func (c *Compressor) Configure(mode Mode, limit Limits) {
 	c.Reset()
-	c.mode, c.limit = mode, limit
+	c.mode, c.limit, c.chosen = mode, limit, choice{}
 }
 
 // zstd says whether zstd is a candidate.
@@ -300,10 +313,39 @@ type at struct {
 	trial  bool
 	probe  bool
 	parent scheme
+	excl   uint32 // the schemes the chain of the parents leaves out
 }
 
-// child is where a child of an array made by scheme s is compressed.
-func (x at) child(s scheme) at { return at{e: x.e, depth: x.depth + 1, trial: x.trial, parent: s} }
+// child is where a child of an array made by scheme s is compressed, with the schemes excl
+// left out too.
+func (x at) child(s scheme, excl uint32) at {
+	return at{e: x.e, depth: x.depth + 1, trial: x.trial, parent: s, excl: x.excl | excl}
+}
+
+// takes says whether scheme s is not left out by the chain of the parents.
+func (x at) takes(s scheme) bool { return x.excl&bit(s) == 0 }
+
+// sparse says whether the chain lets a sparse array be tried.
+func (x at) sparse() bool { return x.parent != sSparse && x.takes(sSparse) }
+
+// dict says whether the chain lets a dictionary be tried.
+func (x at) dict() bool { return x.cascades() && x.parent != sDict && x.takes(sDict) }
+
+func bit(s scheme) uint32 { return 1 << s }
+
+// The schemes left out under a child, as the exclusion rules of the reference do: a scheme
+// is never twice in a chain, and some leave out more under some of their children.
+const (
+	exclFoR     = 1 << sFoR
+	exclZigZag  = 1<<sZigZag | 1<<sDict | 1<<sRunEnd | 1<<sSparse
+	exclEnds    = 1<<sRunEnd | 1<<sDict | 1<<sRLE | 1<<sSparse // the ends of a run-end
+	exclRunEnd  = 1 << sRunEnd                                 // the values of a run-end
+	exclRLE     = 1 << sRLE                                    // the values of an RLE
+	exclRLEIdx  = 1<<sRLE | 1<<sDict | 1<<sSparse              // its indices and offsets
+	exclCodes   = 1<<sDict | 1<<sFoR | 1<<sZigZag | 1<<sSequence
+	exclValues  = 1<<sDict | 1<<sRunEnd | 1<<sRLE // the values of a dictionary of numbers
+	exclSValues = 1<<sRunEnd | 1<<sRLE            // the values of a dictionary of strings
+)
 
 // cascades says whether the children of the array are compressed.
 func (x at) cascades() bool { return x.depth < maxDepth }
@@ -326,28 +368,27 @@ func (c *Compressor) kids(x at, n *encode.Node, p PType, s scheme) {
 	if !x.cascades() {
 		return
 	}
-	k := x.child(s)
 	width := func(i int) int { return n.Kids[i].Bufs[0].Align }
 	switch n.ID {
 	case encode.IDFoR:
-		c.kid(k, n, 0, p)
+		c.packed(x.child(s, exclFoR), n, 0, p)
 	case encode.IDZigZag:
-		c.kid(k, n, 0, p.unsigned())
+		c.kid(x.child(s, exclZigZag), n, 0, p.unsigned())
 	case encode.IDRunEnd:
-		c.kid(k, n, 0, uintOf(width(0)))
-		c.kid(k, n, 1, p)
+		c.kid(x.child(s, exclEnds), n, 0, uintOf(width(0)))
+		c.kid(x.child(s, exclRunEnd), n, 1, p)
 	case encode.IDRLE:
-		c.kid(k, n, 0, p)
-		c.kid(k, n, 1, U16)
-		c.kid(k, n, 2, U64)
+		c.kid(x.child(s, exclRLE), n, 0, p)
+		c.kid(x.child(s, exclRLEIdx), n, 1, U16)
+		c.kid(x.child(s, exclRLEIdx), n, 2, U64)
 	case encode.IDDict:
-		c.kid(k, n, 0, uintOf(width(0)))
-		c.kid(k, n, 1, p)
+		c.kid(x.child(s, exclCodes), n, 0, uintOf(width(0)))
+		c.kid(x.child(s, exclValues), n, 1, p)
 	case encode.IDALP:
-		c.kid(k, n, 0, intOf(p.Width()))
+		c.kid(x.child(s, 0), n, 0, intOf(p.Width()))
 	case encode.IDALPRD:
-		c.kid(k, n, 0, U16)
-		c.kid(k, n, 1, uintOf(width(1)))
+		c.kid(x.child(s, 0), n, 0, U16)
+		c.kid(x.child(s, 0), n, 1, uintOf(width(1)))
 	}
 }
 
@@ -400,3 +441,33 @@ func (c *Compressor) PicksDict(p PType, raw []byte, nulls []bool) bool {
 // beatsBare says whether a dictionary made for a probe, n, its children not compressed yet, is
 // already smaller than the plain array: compressing them can only make it smaller.
 func beatsBare(x at, n *encode.Node, plain int) bool { return x.probe && cost(n) < plain }
+
+// packed bit-packs child i of n, integers of type p, in place, as the reference does with the
+// values of a frame of reference: when the values are not worth packing, they stay as they are.
+func (c *Compressor) packed(x at, n *encode.Node, i int, p PType) {
+	var out *encode.Node
+	k := n.Kids[i]
+	raw := k.Bufs[0].Data
+	nulls := c.kidNulls(k, len(raw)/p.Width())
+	switch p {
+	case U8:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[uint8](raw), nulls)
+	case U16:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[uint16](raw), nulls)
+	case U32:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[uint32](raw), nulls)
+	case U64:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[uint64](raw), nulls)
+	case I8:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[int8](raw), nulls)
+	case I16:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[int16](raw), nulls)
+	case I32:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[int32](raw), nulls)
+	default:
+		out, _ = encode.BitPackBest(x.e, unsafex.Slice[int64](raw), nulls)
+	}
+	if out != nil && cost(out) < cost(k) {
+		n.Kids[i] = out
+	}
+}

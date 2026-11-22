@@ -111,7 +111,7 @@ func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.
 	// the reference tries it for binary only, between the dictionary and zstd
 	l.add(sVarBin, !utf8)
 	l.add(sZstd, c.zstd())
-	return pick(c, x, v, nulls, &l, binsCost, sampleBins, func(x at, s scheme, v [][]byte, nulls []bool) *encode.Node {
+	return pick(c, x, v, nulls, &l, binsOf, func(x at, s scheme, v [][]byte, nulls []bool) *encode.Node {
 		return c.applyStrings(x, s, v, nulls, utf8)
 	})
 }
@@ -126,14 +126,14 @@ func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8
 			return n
 		}
 		if x.cascades() {
-			c.kid(x.child(s), n, 0, uintOf(n.Kids[0].Bufs[0].Align))
-			c.dictValues(x.child(s), n, utf8)
+			c.kid(x.child(s, exclCodes), n, 0, uintOf(n.Kids[0].Bufs[0].Align))
+			c.dictValues(x.child(s, exclSValues), n, utf8)
 		}
 	case sFSST:
 		n = encode.FSSTBytes(x.e, v, nulls)
 		if x.cascades() {
-			c.kid(x.child(s), n, 0, I32)
-			c.kid(x.child(s), n, 1, intOf(n.Kids[1].Bufs[0].Align))
+			c.kid(x.child(s, 0), n, 0, I32)
+			c.kid(x.child(s, 0), n, 1, intOf(n.Kids[1].Bufs[0].Align))
 		}
 	case sOnPair:
 		n = encode.OnPairBytes(x.e, v, nulls)
@@ -142,15 +142,15 @@ func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8
 			if x.trial {
 				kid = c.packedKid // a trial does not try every scheme on the four children
 			}
-			kid(x.child(s), n, 0, U32)
-			kid(x.child(s), n, 1, U16)
-			kid(x.child(s), n, 2, uintOf(n.Kids[2].Bufs[0].Align))
-			kid(x.child(s), n, 3, U32)
+			kid(x.child(s, 0), n, 0, U32)
+			kid(x.child(s, 0), n, 1, U16)
+			kid(x.child(s, 0), n, 2, uintOf(n.Kids[2].Bufs[0].Align))
+			kid(x.child(s, 0), n, 3, U32)
 		}
 	case sVarBin:
 		n = encode.VarBinBytes(x.e, v, nulls)
 		if x.cascades() {
-			c.kid(x.child(s), n, 0, uintOf(n.Kids[0].Bufs[0].Align))
+			c.kid(x.child(s, 0), n, 0, uintOf(n.Kids[0].Bufs[0].Align))
 		}
 	default:
 		n = encode.ZstdBytes(x.e, v, nulls)
@@ -204,7 +204,7 @@ func (c *Compressor) Decimals(raw []byte, width int, nulls []bool) *encode.Node 
 	if !ok {
 		return nil
 	}
-	c.kid(c.top().child(sDecimal), n, 0, intOf(n.Kids[0].Bufs[0].Align))
+	c.kid(c.top().child(sDecimal, 0), n, 0, intOf(n.Kids[0].Bufs[0].Align))
 	if cost(n) >= nodeOverhead+bufferOverhead+len(raw)+validityCost(nulls, len(raw)/width) {
 		return nil
 	}
@@ -216,7 +216,7 @@ func (c *Compressor) Decimals(raw []byte, width int, nulls []bool) *encode.Node 
 // compressed as integers, or the integers themselves when that is smaller.
 func (c *Compressor) Timestamps(v []int64, nulls []bool, ticks int64) *encode.Node {
 	parts, _ := encode.DateTimeParts(c.e, v, nulls, ticks)
-	k := c.top().child(sDateTime)
+	k := c.top().child(sDateTime, 0)
 	c.kid(k, parts, 0, intOf(parts.Kids[0].Bufs[0].Align))
 	c.kid(k, parts, 1, I32)
 	c.kid(k, parts, 2, I32)

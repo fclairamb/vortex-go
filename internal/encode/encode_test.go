@@ -219,6 +219,42 @@ func TestPatches(t *testing.T) {
 	checkDecode(t, n, array.U32, wordBytes(v), nil)
 }
 
+// shape is the sizes of the buffers and metadata of a tree, and its identifiers.
+func shape(n *Node) []int {
+	out := []int{len(n.ID), len(n.Meta), len(n.Bufs), len(n.Kids)}
+	for _, b := range n.Bufs {
+		out = append(out, len(b.Data), b.Align)
+	}
+	for _, k := range n.Kids {
+		out = append(out, shape(k)...)
+	}
+	return out
+}
+
+// TestMeasure: an encoder that only measures makes the bit-packing, its patches and its
+// validity in buffers of the sizes and metadata of the real one.
+func TestMeasure(t *testing.T) {
+	v := make([]uint32, 3000)
+	v[5], v[1030], v[2999] = 1<<20, 1<<21, 1<<22
+	nulls := make([]bool, len(v))
+	nulls[7] = true
+	m := New()
+	m.Measure()
+	for _, width := range []int{4, 23} {
+		real, err := BitPack(New(), v, nulls, width)
+		if err != nil {
+			t.Fatal(err)
+		}
+		measured, err := BitPack(m, v, nulls, width)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(shape(real), shape(measured)) || !bytes.Equal(real.Meta, measured.Meta) {
+			t.Errorf("width %d: the measured array is not the size of the real one", width)
+		}
+	}
+}
+
 func wordBytes(v []uint32) []byte {
 	var b []byte
 	for _, x := range v {
