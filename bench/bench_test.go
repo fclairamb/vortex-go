@@ -208,12 +208,17 @@ func readVortex[T any](b *testing.B, open vOpen, path string, q vortex.Query, ke
 		b.Fatal(err)
 	}
 	defer f.Close()
+	// keep gets the address of a slot reused for every row, as readParquet passes &buf[i]: the
+	// address of the loop variable would make it escape, one allocation per row that the
+	// harness, not vortex-go, would cost.
+	var slot T
 	var n int64
 	for r, err := range vortex.Rows[T](context.Background(), f, q) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		keep(&r)
+		slot = r
+		keep(&slot)
 		n++
 	}
 	return n
