@@ -160,7 +160,7 @@ func TestNoAllocationMasked(t *testing.T) {
 		"bools":   func() { e.Reset(); ConstantBoolsMasked(e, bools, nulls) },
 	} {
 		f()
-		if got := testing.AllocsPerRun(5, f); got != 0 {
+		if got := allocsPerRun(5, f); got != 0 {
 			t.Errorf("%s: %v allocations", name, got)
 		}
 	}

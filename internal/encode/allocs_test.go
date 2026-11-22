@@ -27,7 +27,7 @@ func TestNoAllocation(t *testing.T) {
 						run(e, raw, nulls, par)
 					}
 					call()
-					if got := testing.AllocsPerRun(5, call); got != 0 {
+					if got := allocsPerRun(5, call); got != 0 {
 						t.Fatalf("%v allocations", got)
 					}
 				})
@@ -51,7 +51,7 @@ func TestNoAllocationStrings(t *testing.T) {
 		"estimate": func() { e.Reset(); EstimateDictStrings(e, strs, nulls, len(strs)) },
 	} {
 		f()
-		if got := testing.AllocsPerRun(5, f); got != 0 {
+		if got := allocsPerRun(5, f); got != 0 {
 			t.Errorf("%s: %v allocations", name, got)
 		}
 	}
@@ -65,4 +65,14 @@ func TestNodesSurviveGrowth(t *testing.T) {
 	big := make([]int64, 100_000)
 	FoR(e, big, nil)
 	checkDecode(t, small, ptypes["i32"], []byte{5, 0, 0, 0, 6, 0, 0, 0, 7, 0, 0, 0}, nil)
+}
+
+// allocsPerRun is testing.AllocsPerRun, and 0 under the race detector: its sync.Pool drops
+// what it is given at random, and the memory of the trainings and of the tables of a
+// dictionary comes from pools.
+func allocsPerRun(runs int, f func()) float64 {
+	if raceEnabled {
+		return 0
+	}
+	return testing.AllocsPerRun(runs, f)
 }
