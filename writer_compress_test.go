@@ -267,6 +267,9 @@ func TestParallelCompression(t *testing.T) {
 // the compressor allocates nothing: the writer allocates what it does without it (the
 // statistics of a chunk).
 func TestNoAllocationPerCompressedWrite(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the sync.Pool of the race detector drops what it is given at random, and the encoders use pools")
+	}
 	lowered(t, &rowBlock, 1024)
 	lowered(t, &chunkBytes, 1)
 	old := runtime.GOMAXPROCS(1) // a goroutine costs an allocation
