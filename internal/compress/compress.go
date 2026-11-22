@@ -9,7 +9,9 @@
 // saves less than what it costs to describe is not taken. The plain array is always a
 // candidate, and the result is checked against it on the whole chunk: a chunk is never made
 // larger. The sample is runs of 64 consecutive rows, at least 16 of them and about 1% of the
-// chunk, at offsets drawn from a fixed seed: the same rows always give the same tree.
+// chunk, at offsets drawn from a fixed seed: the same rows always give the same tree. As in
+// the reference, a dictionary of strings is not tried when more than half of the valid rows
+// have distinct heads (the length and the first 4 bytes of a string), counted on all the rows.
 //
 // A Compressor is not safe for concurrent use: the writer has one per column. Once it has
 // seen chunks of the largest size, it allocates nothing.
@@ -125,6 +127,7 @@ const (
 type Compressor struct {
 	e     *encode.Encoder // the arrays that are kept
 	trial *encode.Encoder // the arrays of the candidates, dropped after each choice
+	heads headSet         // the heads of the strings of a chunk
 	raw   arena[byte]     // the samples of numbers
 	nulls arena[bool]     // the samples of nulls, and the nulls of children
 	bins  arena[[]byte]   // the samples of strings, and the values of dictionaries
@@ -287,11 +290,15 @@ func (c *Compressor) kidNulls(k *encode.Node, rows int) []bool {
 }
 
 // at is where an array is compressed: the encoder of its nodes, whether it is a trial (a
-// sample, or a child of one), its depth and the scheme of its parent.
+// sample, or a child of one), its depth and the scheme of its parent. A probe is the array of a
+// chunk for which the caller only asks whether it is a dictionary: the best scheme is applied
+// to it only when it is the dictionary, and then its children only when the cost of the
+// dictionary does not already beat the plain array without them.
 type at struct {
 	e      *encode.Encoder
 	depth  int
 	trial  bool
+	probe  bool
 	parent scheme
 }
 
@@ -380,9 +387,16 @@ func (c *Compressor) Numbers(p PType, raw []byte, nulls []bool) *encode.Node {
 	return c.numbers(c.top(), p, raw, nulls)
 }
 
+// probe is where the array of a chunk is compressed to know whether it is a dictionary.
+func (c *Compressor) probe() at { return at{e: c.e, probe: true} }
+
 // PicksDict says whether the compressor would write the numbers raw of type p as a
 // dictionary: the probe of the dictionary layout of the writer.
 func (c *Compressor) PicksDict(p PType, raw []byte, nulls []bool) bool {
-	n := c.numbers(c.top(), p, raw, nulls)
+	n := c.numbers(c.probe(), p, raw, nulls)
 	return n != nil && n.ID == encode.IDDict
 }
+
+// beatsBare says whether a dictionary made for a probe, n, its children not compressed yet, is
+// already smaller than the plain array: compressing them can only make it smaller.
+func beatsBare(x at, n *encode.Node, plain int) bool { return x.probe && cost(n) < plain }

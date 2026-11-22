@@ -2,6 +2,7 @@ package compress
 
 import (
 	"encoding/binary"
+	"math/bits"
 
 	"github.com/fclairamb/vortex-go/internal/encode"
 	"github.com/fclairamb/vortex-go/internal/unsafex"
@@ -18,8 +19,57 @@ func (c *Compressor) Strings(v [][]byte, nulls []bool, utf8 bool) *encode.Node {
 
 // PicksDictStrings is PicksDict for strings.
 func (c *Compressor) PicksDictStrings(v [][]byte, nulls []bool, utf8 bool) bool {
-	n := c.strings(c.top(), v, nulls, utf8)
+	n := c.strings(c.probe(), v, nulls, utf8)
 	return n != nil && n.ID == encode.IDDict
+}
+
+// headSet is a set of the heads of strings, in the memory of a Compressor.
+type headSet struct {
+	slots []uint64 // a head plus one, 0 for an empty slot
+}
+
+// head is what the reference counts as the distinct values of strings (StringStats): the
+// length and the first 4 bytes of a string, which equal strings share. A null row counts as
+// an empty string, as the zeroed view of a null does.
+func head(s []byte) uint64 {
+	var prefix uint32
+	for i, b := range s[:min(4, len(s))] {
+		prefix |= uint32(b) << (8 * i)
+	}
+	return uint64(uint32(len(s))) | uint64(prefix)<<32
+}
+
+// over says whether the strings v have more than limit distinct heads: the reference does not
+// try a dictionary on them. It stops at the first head over the limit.
+func (h *headSet) over(v [][]byte, nulls []bool, limit int) bool {
+	// the heads it holds at most, at a load of a half at most: there is always an empty slot
+	size := 1 << bits.Len(uint(2*min(len(v), limit+1)-1))
+	if len(h.slots) < size {
+		h.slots = make([]uint64, size)
+	}
+	slots := h.slots[:size]
+	clear(slots)
+	shift := 64 - bits.TrailingZeros(uint(size))
+	n := 0
+	for i, s := range v {
+		key := uint64(1)
+		if !isNull(nulls, i) {
+			key += head(s)
+		}
+		for at := key * 0x9e3779b97f4a7c15 >> shift; ; at = (at + 1) & uint64(size-1) {
+			if slots[at] == key {
+				break
+			}
+			if slots[at] == 0 {
+				slots[at] = key
+				if n++; n > limit {
+					return true
+				}
+				break
+			}
+		}
+	}
+	return false
 }
 
 // binsCost is the cost of a plain varbinview.
@@ -54,7 +104,7 @@ func (c *Compressor) strings(x at, v [][]byte, nulls []bool, utf8 bool) *encode.
 	}
 	// FSST is for strings: the reference has no scheme of it for binary
 	var l cands
-	l.add(sDict, x.cascades() && x.parent != sDict && valid > 0)
+	l.add(sDict, x.cascades() && x.parent != sDict && valid > 0 && !c.heads.over(v, nulls, valid/2))
 	l.add(sFSST, utf8 && valid > 0)
 	// the second scheme of fragments of strings, kept when the sample says it is smaller
 	l.add(sOnPair, utf8 && valid > 0 && !c.limit.NoOnPair)
@@ -72,6 +122,9 @@ func (c *Compressor) applyStrings(x at, s scheme, v [][]byte, nulls []bool, utf8
 	switch s {
 	case sDict:
 		n = encode.DictBytes(x.e, v, nulls)
+		if beatsBare(x, n, binsCost(v, nulls)) {
+			return n
+		}
 		if x.cascades() {
 			c.kid(x.child(s), n, 0, uintOf(n.Kids[0].Bufs[0].Align))
 			c.dictValues(x.child(s), n, utf8)
