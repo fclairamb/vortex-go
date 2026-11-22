@@ -2,6 +2,7 @@ package vortex
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -240,6 +241,55 @@ func TestCompressionIsDeterministic(t *testing.T) {
 	got, err := readBack(openBytes(t, files[0]), s.Fields()[0].Type)
 	if err != nil || len(got) != 20_000 {
 		t.Fatal(len(got), err)
+	}
+}
+
+// TestParallelFinish writes the end of the columns, which Close finishes on every core, with
+// one thread and with eight: the files are the same bytes. The cases are a file of less than a
+// block, a run of a dictionary that fills in the last rows, codes that fill a chunk at the last
+// block, a file too small to start the goroutines, and dictionaries that are not compressed.
+func TestParallelFinish(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(t *testing.T)
+		c     Compression
+		shape string
+		rows  int
+	}{
+		{"small", func(*testing.T) {}, Default, "", 5000},
+		{"compact", func(*testing.T) {}, Compact, "few", 5000},
+		{"run full", func(t *testing.T) { lowered(t, &maxDictLen, 3) }, Default, "few", 3000},
+		{"codes full", func(t *testing.T) {
+			lowered(t, &rowBlock, 1024)
+			lowered(t, &chunkBytes, 2048)
+		}, Default, "few", 2048},
+		{"few rows", func(*testing.T) {}, Default, "few", 100},
+		{"none", func(*testing.T) {}, None, "few", 5000},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.setup(t)
+			s, cols := wideColumns(tt.rows, tt.shape)
+			var files [][]byte
+			for _, procs := range []int{1, 8} {
+				old := runtime.GOMAXPROCS(procs)
+				files = append(files, writeWith(t, tt.c, s, cols, tt.rows))
+				runtime.GOMAXPROCS(old)
+			}
+			if !bytes.Equal(files[0], files[1]) {
+				t.Fatal("the file of eight threads differs from the one of one")
+			}
+			rows := 0
+			for b, err := range openBytes(t, files[1]).Scan(context.Background(), Query{}) {
+				if err != nil {
+					t.Fatal(err)
+				}
+				rows += b.Len()
+			}
+			if rows != tt.rows {
+				t.Fatalf("%d rows read", rows)
+			}
+		})
 	}
 }
 
