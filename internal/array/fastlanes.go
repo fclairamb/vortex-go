@@ -46,23 +46,29 @@ func unpackBlock(out, packed []byte, w, bits int, ref uint64) {
 		return
 	}
 	// With no reference, the loops have no add and no xor: a quarter faster.
+	// A row starts at bit shift of word word of its lane: both move by w bits a row, with no
+	// division.
+	size, word, shift := bits/8, 0, 0
 	for row := range bits {
-		word, shift := row*w/bits, row*w%bits
-		dst := out[(flOrder[row/8]*16+row%8*128)*bits/8:][:rowBytes]
+		dst := out[(flOrder[row>>3]*16+row&7*128)*size:][:rowBytes]
 		lo := packed[word*rowBytes:][:rowBytes]
-		if shift+w <= bits {
+		if end := shift + w; end <= bits {
 			mask := lanes * (1<<(w-1)<<1 - 1)
 			for j := 0; j < rowBytes; j += 8 {
 				binary.LittleEndian.PutUint64(dst[j:], binary.LittleEndian.Uint64(lo[j:])>>(shift&63)&mask)
 			}
-			continue
+		} else {
+			// The value starts in this word, bits-shift bits of it, and ends in the next one.
+			hi := packed[(word+1)*rowBytes:][:rowBytes]
+			low, loMask, hiMask := bits-shift, lanes*(1<<(bits-shift)-1), lanes*(1<<(end-bits)-1)
+			for j := 0; j < rowBytes; j += 8 {
+				l, h := binary.LittleEndian.Uint64(lo[j:]), binary.LittleEndian.Uint64(hi[j:])
+				binary.LittleEndian.PutUint64(dst[j:], l>>(shift&63)&loMask|h&hiMask<<(low&63))
+			}
 		}
-		// The value starts in this word, bits-shift bits of it, and ends in the next one.
-		hi := packed[(word+1)*rowBytes:][:rowBytes]
-		low, loMask, hiMask := bits-shift, lanes*(1<<(bits-shift)-1), lanes*(1<<(shift+w-bits)-1)
-		for j := 0; j < rowBytes; j += 8 {
-			l, h := binary.LittleEndian.Uint64(lo[j:]), binary.LittleEndian.Uint64(hi[j:])
-			binary.LittleEndian.PutUint64(dst[j:], l>>(shift&63)&loMask|h&hiMask<<(low&63))
+		if shift += w; shift >= bits {
+			shift -= bits
+			word++
 		}
 	}
 }
@@ -71,22 +77,26 @@ func unpackBlock(out, packed []byte, w, bits int, ref uint64) {
 func unpackPlus(out, packed []byte, w, bits int, lanes, r uint64) {
 	high := lanes << (bits - 1)
 	rl, rh := r&^high, r&high
+	size, word, shift := bits/8, 0, 0
 	for row := range bits {
-		word, shift := row*w/bits, row*w%bits
-		dst := out[(flOrder[row/8]*16+row%8*128)*bits/8:][:rowBytes]
+		dst := out[(flOrder[row>>3]*16+row&7*128)*size:][:rowBytes]
 		lo := packed[word*rowBytes:][:rowBytes]
-		if shift+w <= bits {
+		if end := shift + w; end <= bits {
 			mask := lanes * (1<<(w-1)<<1 - 1)
 			for j := 0; j < rowBytes; j += 8 {
 				binary.LittleEndian.PutUint64(dst[j:], (binary.LittleEndian.Uint64(lo[j:])>>(shift&63)&mask+rl)^rh)
 			}
-			continue
+		} else {
+			hi := packed[(word+1)*rowBytes:][:rowBytes]
+			low, loMask, hiMask := bits-shift, lanes*(1<<(bits-shift)-1), lanes*(1<<(end-bits)-1)
+			for j := 0; j < rowBytes; j += 8 {
+				l, h := binary.LittleEndian.Uint64(lo[j:]), binary.LittleEndian.Uint64(hi[j:])
+				binary.LittleEndian.PutUint64(dst[j:], (l>>(shift&63)&loMask|h&hiMask<<(low&63)+rl)^rh)
+			}
 		}
-		hi := packed[(word+1)*rowBytes:][:rowBytes]
-		low, loMask, hiMask := bits-shift, lanes*(1<<(bits-shift)-1), lanes*(1<<(shift+w-bits)-1)
-		for j := 0; j < rowBytes; j += 8 {
-			l, h := binary.LittleEndian.Uint64(lo[j:]), binary.LittleEndian.Uint64(hi[j:])
-			binary.LittleEndian.PutUint64(dst[j:], (l>>(shift&63)&loMask|h&hiMask<<(low&63)+rl)^rh)
+		if shift += w; shift >= bits {
+			shift -= bits
+			word++
 		}
 	}
 }

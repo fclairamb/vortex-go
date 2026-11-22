@@ -90,6 +90,7 @@ func (n *Node) target(a *Array) []byte {
 
 // addWords is src plus c, wrapping, into dst.
 func addWords[T word](dst, src []T, c T) {
+	dst = dst[:len(src)] // no bounds check per value
 	for i, v := range src {
 		dst[i] = v + c
 	}
@@ -113,6 +114,7 @@ func addConst(dst, src []byte, width int, c uint64) []byte {
 
 // unzigzagWords is src, zigzag-encoded, decoded into dst: (n >> 1) ^ -(n & 1).
 func unzigzagWords[T word](dst, src []T) {
+	dst = dst[:len(src)]
 	for i, n := range src {
 		dst[i] = n>>1 ^ -(n & 1)
 	}
