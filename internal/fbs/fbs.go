@@ -9,36 +9,44 @@ import (
 // shallow bounds the tables nested in the flat schemas (postscript, footer, statistics).
 const shallow = 4
 
-// List is a vector of tables or structs, decoded element by element.
+// List is a vector of tables, structs or strings, decoded element by element. It holds the
+// vector and a function with no state for its elements, so that it is a value: reading the
+// children of a node allocates nothing.
 type List[T any] struct {
-	at func(int) (T, error)
-	n  int
+	table func(flatbuf.Table) T // a vector of tables
+	strct func([]byte) T        // a vector of structs
+	str   func(flatbuf.Vector, int) (T, error)
+	v     flatbuf.Vector
 }
 
 // Len is the number of elements.
-func (l List[T]) Len() int { return l.n }
+func (l List[T]) Len() int { return l.v.Len() }
 
 // At returns the i-th element, or an error when i is out of range or the element is bad.
-func (l List[T]) At(i int) (T, error) { return l.at(i) }
-
-func tables[T any](t flatbuf.Table, id int, wrap func(flatbuf.Table) T) (List[T], error) {
-	v, err := t.Tables(id)
-	return List[T]{func(i int) (T, error) {
-		sub, err := v.Table(i)
-		return wrap(sub), err
-	}, v.Len()}, err
-}
-
-func structs[T any](t flatbuf.Table, id, size int, decode func([]byte) T) (List[T], error) {
-	v, err := t.Structs(id, size)
-	return List[T]{func(i int) (T, error) {
-		b, err := v.Struct(i)
+func (l List[T]) At(i int) (T, error) {
+	switch {
+	case l.table != nil:
+		sub, err := l.v.Table(i)
+		return l.table(sub), err
+	case l.strct != nil:
+		b, err := l.v.Struct(i)
 		if err != nil {
 			var zero T
 			return zero, err
 		}
-		return decode(b), nil
-	}, v.Len()}, err
+		return l.strct(b), nil
+	}
+	return l.str(l.v, i)
+}
+
+func tables[T any](t flatbuf.Table, id int, wrap func(flatbuf.Table) T) (List[T], error) {
+	v, err := t.Tables(id)
+	return List[T]{table: wrap, v: v}, err
+}
+
+func structs[T any](t flatbuf.Table, id, size int, decode func([]byte) T) (List[T], error) {
+	v, err := t.Structs(id, size)
+	return List[T]{strct: decode, v: v}, err
 }
 
 func optBool(t flatbuf.Table, id int) (bool, bool, error) {
@@ -304,6 +312,9 @@ func (n ArrayNode) Children() (List[ArrayNode], error) {
 
 // Buffers is field 3, indices into the array's Buffers.
 func (n ArrayNode) Buffers() ([]uint16, error) { return n.t.Uint16s(3) }
+
+// AppendBuffers appends field 3 to dst.
+func (n ArrayNode) AppendBuffers(dst []uint16) ([]uint16, error) { return n.t.AppendUint16s(dst, 3) }
 
 // Stats is field 4.
 func (n ArrayNode) Stats() (ArrayStats, bool, error) {

@@ -36,6 +36,7 @@ type context struct {
 	opt   Options
 	specs []string
 	bufs  [][]byte
+	slab  []Node // the nodes not given out yet
 }
 
 // Node is a node of the tree of a serialized array, as a decoder sees it.
@@ -43,8 +44,9 @@ type Node struct {
 	ctx      *context
 	path     string
 	metadata []byte
-	children fbs.List[fbs.ArrayNode]
 	buffers  []uint16
+	children fbs.List[fbs.ArrayNode]
+	inline   [4]uint16 // where buffers is, for a node of at most 4 buffers
 }
 
 // Decoder builds the array of the given type and number of rows from a node.
@@ -223,17 +225,32 @@ func (c *context) node(fb fbs.ArrayNode, path string, rows int) (string, *Node, 
 	if c.opt.MaxRows > 0 && rows > c.opt.MaxRows {
 		return "", nil, fmt.Errorf("%s: %d rows, more than the %d the file allows", id, rows, c.opt.MaxRows)
 	}
-	n := &Node{ctx: c, path: path}
+	n := c.newNode()
+	n.ctx, n.path = c, path
 	if n.metadata, err = fb.Metadata(); err != nil {
 		return "", nil, err
 	}
 	if n.children, err = fb.Children(); err != nil {
 		return "", nil, err
 	}
-	if n.buffers, err = fb.Buffers(); err != nil {
+	if n.buffers, err = fb.AppendBuffers(n.inline[:0]); err != nil {
 		return "", nil, err
 	}
 	return id, n, nil
+}
+
+// nodeSlab is the number of nodes a context allocates at once.
+const nodeSlab = 16
+
+// newNode returns a node of the slab of the context: a decode allocates its nodes 16 at a
+// time, not one by one.
+func (c *context) newNode() *Node {
+	if len(c.slab) == 0 {
+		c.slab = make([]Node, nodeSlab)
+	}
+	n := &c.slab[0]
+	c.slab = c.slab[1:]
+	return n
 }
 
 // Metadata is the protobuf of the encoding.
