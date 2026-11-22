@@ -165,3 +165,15 @@ What the writer does with its memory, for the same reason:
   only what an earlier use wrote: the rest of a block is still zero. In the tests of
   `internal/encode` a new block is full of a pattern, so that a byte read and never written
   makes other bytes than the reference.
+
+What the writer does to choose the encodings of strings with no more work than the reference:
+
+- a dictionary of strings is not tried when more than half of the valid rows have distinct
+  heads, the length and the first 4 bytes, as the reference's `StringDictScheme` does: a
+  column of free text is not made a dictionary on the sample, with its values compressed, only
+  to lose;
+- the probe of the dictionary layout stops as soon as it knows: it applies the best scheme of
+  the sample only when it is the dictionary, and compresses the values and the codes of that
+  dictionary only when the dictionary does not already beat the plain array without them;
+- the training of FSST takes the best candidates from a heap, as the crate does, not from a
+  sort of all of them: a round keeps 255 symbols out of thousands of candidates.
