@@ -157,6 +157,9 @@ What the reader does to stay close to the reference, so that a change does not u
   from one batch to the next, and a batch is valid until the next one;
 - a segment is read to the same alignment it has in the file, and the decoders read and write
   numbers where they are (`unsafex.Slice`), with no copy to a slice of bytes and back;
+- a FastLanes row finds its word and its shift by adding the width to those of the row before,
+  not by a division per row, and the loops over the values of FoR, zigzag, ALP and ALP-RD
+  slice their output to the length of their input first, so that no value is bounds-checked;
 - FoR, zigzag and ALP write over the integers their child just unpacked; a FoR over
   bit-packed integers adds its reference as each block is unpacked, as the reference reader
   does, 8 bytes at a time: a value is under the high bit of its lane, so the low bits of the
