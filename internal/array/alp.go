@@ -104,15 +104,17 @@ func (n *Node) alpParts(t DType) (m alp, err error) {
 func alpFloats(out, ints []byte, p PType, e, f uint64) []byte {
 	if p == F32 {
 		m, inv := f10f32[f], if10f32[e]
-		dst := unsafex.Slice[float32](out)
-		for i, v := range unsafex.Slice[int32](ints) {
+		src := unsafex.Slice[int32](ints)
+		dst := unsafex.Slice[float32](out)[:len(src)] // no bounds check per value
+		for i, v := range src {
 			dst[i] = float32(float32(v)*m) * inv
 		}
 		return out
 	}
 	m, inv := f10f64[f], if10f64[e]
-	dst := unsafex.Slice[float64](out)
-	for i, v := range unsafex.Slice[int64](ints) {
+	src := unsafex.Slice[int64](ints)
+	dst := unsafex.Slice[float64](out)[:len(src)]
+	for i, v := range src {
 		dst[i] = float64(float64(v)*m) * inv
 	}
 	return out
@@ -252,6 +254,7 @@ func joinRD[T uint32 | uint64](out []T, left *Array, right []T, m *alpRDMeta, pt
 		if err != nil {
 			return err
 		}
+		bits, right = bits[:len(out)], right[:len(out)]
 		for i := range out {
 			out[i] = T(bits[i])<<rb | right[i]
 		}
