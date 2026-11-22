@@ -149,7 +149,12 @@ What the reader does to stay close to the reference, so that a change does not u
   before the rows are made, and not at all when they come unpacked from fewer bits than the
   values need (`Array.bound`): the rows are then made with no clamp of the code;
 - the rows of a dictionary of strings of at most 256 values, no more than rows, read the start
-  and the end of their value in one lookup, from a table of pairs made for the batch.
+  and the end of their value in one lookup, from a table of pairs made for the batch;
+- the buffers of a pool are in classes a quarter of a power of two apart, not powers of two: a
+  scan of a file of few rows, whose last batch is never given back, allocates at most a
+  quarter more than it decodes, not up to twice;
+- runs of numbers fill their rows run by run (`fillRuns`), a take of numbers copies a word per
+  row, not a slice, and a constant number is a doubling copy: no copy call per row.
 
 What the writer does with its memory, for the same reason:
 

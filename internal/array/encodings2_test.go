@@ -144,6 +144,22 @@ func TestRunEnd(t *testing.T) {
 			}
 		}
 	}
+	// Values of every width fill their runs.
+	for _, vp := range []PType{U8, I16, U64} {
+		small := make([]uint64, len(vals))
+		want := make([]uint64, len(rows))
+		for i, v := range vals {
+			small[i] = v & maskOf(8*vp.Width())
+		}
+		for i, v := range rows {
+			want[i] = v & maskOf(8*vp.Width())
+		}
+		seg := segment(node(eRunEnd, pb(uint64(U32), uint64(len(ends)), 5), nil, pnode(0), pnode(1)),
+			buf{data: leInts(4, ends)}, buf{data: leInts(vp.Width(), small)})
+		if a := mustDecode(t, seg, primT(vp), len(rows)-5); !bytes.Equal(a.Data, leInts(vp.Width(), want[5:])) {
+			t.Fatalf("values %s: wrong values", vp)
+		}
+	}
 	// No row, with or without run.
 	mustDecode(t, runEndSegment(ends, vals, U32, 3), i32, 0)
 	mustDecode(t, runEndSegment(nil, nil, U32, 0), i32, 0)

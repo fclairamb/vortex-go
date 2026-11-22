@@ -71,12 +71,32 @@ func takeValidity(ar *Arena, a *Array, idx []int) *Bitmap {
 // takeFixed takes the values of w bytes at the rows idx of data.
 func takeFixed(ar *Arena, data []byte, w int, idx []int) []byte {
 	out := ar.Bytes(len(idx)*w, true)
-	for k, i := range idx {
-		if i >= 0 {
-			copy(out[k*w:], data[i*w:(i+1)*w])
+	switch w {
+	case 1:
+		takeWords(out, data, idx)
+	case 2:
+		takeWords(words[uint16](out), words[uint16](data), idx)
+	case 4:
+		takeWords(words[uint32](out), words[uint32](data), idx)
+	case 8:
+		takeWords(words[uint64](out), words[uint64](data), idx)
+	default:
+		for k, i := range idx {
+			if i >= 0 {
+				copy(out[k*w:], data[i*w:(i+1)*w])
+			}
 		}
 	}
 	return out
+}
+
+// takeWords sets out[k] to data[idx[k]], and leaves it for an index of -1.
+func takeWords[T word](out, data []T, idx []int) {
+	for k, i := range idx[:len(out)] {
+		if i >= 0 {
+			out[k] = data[i]
+		}
+	}
 }
 
 // takeRanges takes the ranges of the rows idx of a.
