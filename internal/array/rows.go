@@ -229,7 +229,7 @@ func (n *Node) bitPackedRows(t DType, rows int, idx []int) (*Array, error) {
 	if k := len(idx); k > 0 && idx[k-1]-idx[0] == k-1 {
 		// Rows that follow each other are unpacked a block at a time, from the block of the first.
 		at := idx[0] + m.off
-		unpackWidth(width, a.Data, m.packed[at/blockSize*128*m.w:], m.w, at%blockSize, k)
+		unpackWidth(width, a.Data, m.packed[at/blockSize*128*m.w:], m.w, at%blockSize, k, 0)
 	} else if m.w > 0 {
 		switch width {
 		case 1:

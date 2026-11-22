@@ -33,6 +33,11 @@ func decodeFoR(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
+	if n.ChildEncoding(0) == "fastlanes.bitpacked" { // child 0 is the one Child decodes
+		return n.ctx.decodeWith(n.childRef(0), n.path, t, rows, func(c *Node, t DType, rows int) (*Array, error) {
+			return c.bitPackedPlus(t, rows, ref, true)
+		})
+	}
 	enc, err := n.Child(0, t, rows)
 	if err != nil {
 		return nil, err

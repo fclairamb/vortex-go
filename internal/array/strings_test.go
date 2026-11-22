@@ -51,6 +51,13 @@ type fsstIn struct {
 	valid                 []byte
 	meta                  []byte
 	nullLens              bool // the lengths have a validity, which they must not
+	offW                  int  // the bytes of an offset, 4 when 0
+}
+
+// withOffsets is in with offsets of type p.
+func (in fsstIn) withOffsets(p PType) fsstIn {
+	in.meta, in.offW = pb(uint64(U32), uint64(p)), p.Width()
+	return in
 }
 
 func newFSSTIn(syms []string, strs []string) fsstIn {
@@ -65,7 +72,11 @@ func newFSSTIn(syms []string, strs []string) fsstIn {
 }
 
 func (in fsstIn) bufs() []buf {
-	return []buf{{data: in.symBuf}, {data: in.lenBuf}, {data: in.codes}, {data: ints(4, in.ulen...)}, {data: ints(4, in.offs...)}, {data: in.valid}}
+	w := in.offW
+	if w == 0 {
+		w = 4
+	}
+	return []buf{{data: in.symBuf}, {data: in.lenBuf}, {data: in.codes}, {data: ints(4, in.ulen...)}, {data: ints(w, in.offs...)}, {data: in.valid}}
 }
 
 func (in fsstIn) seg() []byte {
@@ -122,6 +133,10 @@ func TestFSST(t *testing.T) {
 	checkStrings(t, mustDecode(t, in.seg(), utf8t, len(strs)), strs)
 	checkStrings(t, mustDecode(t, in.legacySeg(), utf8t, len(strs)), strs)
 	checkStrings(t, mustDecode(t, in.seg(), bint, len(strs)), strs)
+	// Offsets of every integer type.
+	for _, p := range []PType{U8, I8, U16, I16, U32, I32, U64, I64} {
+		checkStrings(t, mustDecode(t, in.withOffsets(p).seg(), utf8t, len(strs)), strs)
+	}
 	// Only the last row is short of room: a lone escape at the end of the output.
 	last := newFSSTIn(fsstSymbols, []string{"abc", "\xfe"})
 	checkStrings(t, mustDecode(t, last.seg(), utf8t, 2), []string{"abc", "\xfe"})
@@ -191,6 +206,21 @@ func TestFSSTHostile(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { wantErr(t, c.in().seg(), utf8t, 2, c.want) })
+	}
+	t.Run("negative first offset", func(t *testing.T) {
+		in := base().withOffsets(I16)
+		in.offs[0] = -1
+		wantErr(t, in.seg(), utf8t, 2, "offset 0 is -1")
+	})
+	// The older form checks the lengths and the codes of its rows too.
+	for name, c := range map[string]struct {
+		in   func() fsstIn
+		want string
+	}{
+		"length no code can back": {func() fsstIn { in := base(); in.ulen[1] = 1 << 30; return in }, "its codes hold at most"},
+		"code past the table":     {func() fsstIn { in := base(); in.codes[0] = 40; return in }, "has code 40"},
+	} {
+		t.Run("legacy: "+name, func(t *testing.T) { wantErr(t, c.in().legacySeg(), utf8t, 2, c.want) })
 	}
 	t.Run("negative length", func(t *testing.T) {
 		in := base()
@@ -487,6 +517,37 @@ func TestFSSTBulkHostile(t *testing.T) {
 			c.edit(&in)
 			wantErr(t, in.seg(), utf8t, len(plain), c.want)
 		})
+	}
+}
+
+// TestFSSTBulkCodePast checks, for every number of symbols, that bulk refuses the words of 8
+// codes that have one with no symbol, whatever its place and its value, and decodes the others.
+func TestFSSTBulkCodePast(t *testing.T) {
+	rng := rand.New(rand.NewPCG(11, 4))
+	for n := 0; n < fsstEscape; n++ {
+		syms, lens := make([]byte, 8*n), bytes.Repeat([]byte{1}, n)
+		for i := range n {
+			syms[8*i] = byte(i)
+		}
+		tbl, err := newSymbolTable(syms, lens)
+		if err != nil {
+			t.Fatal(err)
+		}
+		codes := make([]byte, 16)
+		dst := make([]byte, 16+8*fsstMaxSymbol)
+		for range 20 {
+			for i := range codes {
+				codes[i] = byte(rng.IntN(max(n, 1)))
+			}
+			if got := tbl.bulk(dst, codes); (n > 0) != (got == len(codes)) || n > 0 && !bytes.Equal(dst[:16], codes) {
+				t.Fatalf("%d symbols, codes %v: %d bytes", n, codes, got)
+			}
+			k := rng.IntN(len(codes))
+			codes[k] = byte(n + rng.IntN(fsstEscape-n))
+			if got := tbl.bulk(dst, codes); got != -1 {
+				t.Fatalf("%d symbols, code %d at %d: %d bytes", n, codes[k], k, got)
+			}
+		}
 	}
 }
 

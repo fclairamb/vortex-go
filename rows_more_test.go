@@ -718,9 +718,12 @@ func TestRowsBreakStopsScan(t *testing.T) {
 			break
 		}
 	}
-	if n != 5 || runtime.NumGoroutine() > before {
-		t.Fatalf("%d rows, %d goroutines before and %d after", n, before, runtime.NumGoroutine())
+	if n != 5 {
+		t.Fatalf("%d rows", n)
 	}
+	// The workers of the scan end after the loop returns, not before: wait for them, as the
+	// tests of fault_test.go do, rather than count them at once.
+	waitGoroutines(t, before)
 }
 
 func TestRowsConcurrentLoops(t *testing.T) {

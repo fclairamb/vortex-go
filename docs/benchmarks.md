@@ -132,7 +132,10 @@ What the reader does to stay close to the reference, so that a change does not u
   from one batch to the next, and a batch is valid until the next one;
 - a segment is read to the same alignment it has in the file, and the decoders read and write
   numbers where they are (`unsafex.Slice`), with no copy to a slice of bytes and back;
-- FoR, zigzag and ALP write over the integers their child just unpacked;
+- FoR, zigzag and ALP write over the integers their child just unpacked; a FoR over
+  bit-packed integers adds its reference as each block is unpacked, as the reference reader
+  does, 8 bytes at a time: a value is under the high bit of its lane, so the low bits of the
+  reference add to all the lanes of the word with no carry between them;
 - the rows of a dictionary layout are made a batch at a time, from the codes of the batch;
 - a comparison of an integer column with one literal is a test of range on the values of the
   batch (`expr_fast.go`), not a walk of the filter per row: the value minus the low end of the
@@ -141,7 +144,10 @@ What the reader does to stay close to the reference, so that a change does not u
 - FSST decodes the codes of all the rows in one pass, 8 codes at a time, as the reference does:
   a word of 8 codes with no escape is 8 stores with no test in between (`unsafex.Store64`).
   The rows are the declared lengths, their sum is checked, and the rows are decoded one by
-  one only to say which one is wrong;
+  one only to say which one is wrong. A code with no symbol is found for the 8 codes of a word
+  at once, from the carry out of each byte of the word plus 256 minus the symbols. The ranges
+  of the rows are made in one pass over the lengths and the offsets of the codes, where their
+  children decoded them, which checks them too;
 - a FastLanes block is unpacked 8 bytes at a time, which is 8, 4 or 2 lanes for words of 8, 16
   or 32 bits: one shift and one mask for all of them (`unpackBlock`);
 - the validity of the rows of a dictionary is made a byte at a time, with no test per row;

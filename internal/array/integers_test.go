@@ -67,6 +67,8 @@ type bpCase struct {
 	chunkOffsets  bool
 	validity      []byte
 	vals          []uint64
+	// forRef, when not nil, is the reference of a fastlanes.for over the array.
+	forRef *uint64
 }
 
 // want is the values the array decodes to: the packed low bits, but the patches.
@@ -76,6 +78,9 @@ func (c bpCase) want() []byte {
 		out[i] = v & maskOf(c.w)
 		if c.patches && i%97 == 0 {
 			out[i] = v
+		}
+		if c.forRef != nil {
+			out[i] = (out[i] + *c.forRef) & maskOf(8*c.t.PType.Width())
 		}
 	}
 	return leInts(c.t.PType.Width(), out)
@@ -118,7 +123,11 @@ func (c bpCase) segment() []byte {
 		bufs = append(bufs, buf{data: c.validity})
 		kids = append(kids, bnode(uint16(len(bufs)-1)))
 	}
-	return segment(node(eBitPacked, meta, []uint16{0}, kids...), bufs...)
+	root := node(eBitPacked, meta, []uint16{0}, kids...)
+	if c.forRef != nil {
+		root = node(eFoR, scalarOf(c.t.PType, *c.forRef), nil, root)
+	}
+	return segment(root, bufs...)
 }
 
 func TestBitPackedEveryWidth(t *testing.T) {
@@ -139,6 +148,13 @@ func TestBitPackedEveryWidth(t *testing.T) {
 					}
 					if want := uint64(1) << w; (patches || w == 64) != (a.bound == 0) || (a.bound != 0 && a.bound != want) {
 						t.Fatalf("%s, %d bits, patches %v: bound %d", p, w, patches, a.bound)
+					}
+					// Under a fastlanes.for, the reference is added as the blocks are unpacked,
+					// or after them with patches or values of every bit.
+					ref := rng.Uint64() & maskOf(bits)
+					c.forRef = &ref
+					if a = mustDecode(t, c.segment(), c.t, len(vals)); !bytes.Equal(a.Data, c.want()) || a.bound != 0 {
+						t.Fatalf("%s, %d bits, offset %d, patches %v, reference %d: wrong values", p, w, off, patches, ref)
 					}
 				}
 			}
@@ -217,10 +233,10 @@ func TestBitPackedErrors(t *testing.T) {
 
 func TestUnpackBlockAllocs(t *testing.T) {
 	out, packed := make([]byte, blockSize*4), make([]byte, rowBytes*11)
-	if n := testing.AllocsPerRun(100, func() { unpackBlock(out, packed, 11, 32) }); n != 0 {
+	if n := testing.AllocsPerRun(100, func() { unpackBlock(out, packed, 11, 32, 0) }); n != 0 {
 		t.Fatalf("unpackBlock allocates %v times", n)
 	}
-	if n := testing.AllocsPerRun(100, func() { unpackBlock(out, packed, 0, 32) }); n != 0 {
+	if n := testing.AllocsPerRun(100, func() { unpackBlock(out, packed, 0, 32, 0) }); n != 0 {
 		t.Fatalf("unpackBlock of width 0 allocates %v times", n)
 	}
 }
@@ -273,9 +289,24 @@ func unpackEveryWidth[T word](t *testing.T) {
 		var want [blockSize]T
 		unpackNaive(&want, packed, w)
 		got := bytes.Repeat([]byte{0xFF}, blockSize*bits/8)
-		unpackBlock(got, unsafex.Bytes(packed), w, bits)
+		unpackBlock(got, unsafex.Bytes(packed), w, bits, 0)
 		if !bytes.Equal(got, unsafex.Bytes(want[:])) {
 			t.Fatalf("words of %d bits, width %d: the values differ", bits, w)
+		}
+		if w == bits {
+			continue
+		}
+		// With the reference of a fastlanes.for: every value plus it, wrapping. The high bit
+		// of the reference is set, and the bits past the word are ignored.
+		for _, ref := range []uint64{1, rng.Uint64(), ^uint64(0)} {
+			var plus [blockSize]T
+			for i, v := range want {
+				plus[i] = v + T(ref)
+			}
+			unpackBlock(got, unsafex.Bytes(packed), w, bits, ref)
+			if !bytes.Equal(got, unsafex.Bytes(plus[:])) {
+				t.Fatalf("words of %d bits, width %d, reference %#x: the values differ", bits, w, ref)
+			}
 		}
 	}
 }
