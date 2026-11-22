@@ -133,6 +133,7 @@ type Encoder struct {
 	off     int // the bytes of the block in use that are handed out
 	used    int
 	hist    [65]int
+	measure bool // the arrays are only measured, see Measure
 }
 
 // block is a buffer of the arena. Past dirty, its bytes are still the zeroes make gave them.
@@ -151,6 +152,11 @@ const minBlock = 16 << 10
 
 // New returns an Encoder.
 func New() *Encoder { return &Encoder{seed: maphash.MakeSeed()} }
+
+// Measure makes the arrays of e ones that are only measured, never read: bit-packing leaves
+// the bytes of its values and of its patches unwritten, in buffers of the right sizes. The
+// compressor measures its candidates on a sample that way.
+func (e *Encoder) Measure() { e.measure = true }
 
 // Reset frees the nodes and buffers of the earlier calls, which must not be used any more.
 // The blocks of the arena are kept: the same calls fit them next time, with no new memory.
