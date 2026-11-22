@@ -207,7 +207,11 @@ What the writer does with its memory, for the same reason:
 - `allocDirty` gives a buffer the encoder writes whole, with no clearing first. `alloc` clears
   only what an earlier use wrote: the rest of a block is still zero. In the tests of
   `internal/encode` a new block is full of a pattern, so that a byte read and never written
-  makes other bytes than the reference.
+  makes other bytes than the reference;
+- the buffer of a column keeps the bytes of the strings of `OfStrings` where they are (a Go
+  string never changes) and copies only the ones of `OfBytes`;
+- the buffer holds a decimal at the width of its precision, 1 to 32 bytes, not as a 32-byte
+  `Decimal`: the encoders and the statistics read it there, as the integers of its width.
 
 What the writer does to choose the encodings of strings with no more work than the reference:
 

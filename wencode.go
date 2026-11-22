@@ -252,21 +252,16 @@ func writeViews(w *Writer, vals [][]byte, nulls []bool) {
 }
 
 func (w *Writer) encodeDecimals(t Type, d Data, n int) flatbuf.Off {
-	if off, ok := w.encodeForcedDecimals(t, d, n); ok {
+	if off, ok := w.encodeForcedDecimals(t, d); ok {
 		return off
 	}
 	width := decimalWidth(t.precision)
-	buf := w.alloc(n * width)
-	for i, v := range d.decs {
-		le := v.le()
-		copy(buf[i*width:], le[:width])
-	}
 	var meta []byte
 	if kind := uint64(widthIndex(width)); kind != 0 {
 		meta = protowire.AppendUint(w.meta[:0], 1, kind)
 	}
 	first := len(w.bufs)
-	w.addBuf(buf, min(width, 16))
+	w.addBuf(d.raw, min(width, 16))
 	base := len(w.stack)
 	w.validity(d, n)
 	node := w.node("vortex.decimal", meta, first, 1, base)
