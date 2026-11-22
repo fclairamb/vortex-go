@@ -21,7 +21,10 @@ The data, a case is `<data>/<operation>`:
 - `gen16`: 16 columns, 10 million rows, generated from a seed (`bench_test.go`), written once
   into `.cache/bench/`;
 - `tpch_lineitem`: the TPC-H `lineitem` file of the pinned release (60,175 rows);
-- `clickbench_hits`: the ClickBench `hits` file of the pinned release (5,000 rows).
+- `clickbench_hits`: the ClickBench `hits` file of the pinned release (5,000 rows);
+- `dbbat_wide`: 100,000 rows of an archive of captured result rows (three uuids, two integers
+  and a JSON text of about 165 bytes, `dbbat_test.go`), written once into `.cache/bench/`; only
+  its `write_default` and `write_compact` cases are listed, for the `file-bytes` they report.
 
 The operations: `open`, `scan_full`, `scan_3col` (3 columns of the table), `scan_filter` (a
 filter that keeps about 1% of the rows, on the 3 columns), `scan_range` (10% of the rows, from
@@ -38,6 +41,28 @@ page cache (one warm-up run for Rust, the file written by the first benchmark fo
 scans decode every chunk to canonical arrays, like the Go scans decode every batch: a scan that
 only builds the compressed arrays would not be the same work. `mb_per_s` is the decoded size
 of the values, counted by each harness its own way: compare times, not MB/s, across languages.
+
+## Size of an archive of captured rows
+
+The schema of `dbbat_test.go` (one row per captured result row: a constant uuid, a uuid that
+runs for a query, a random uuid, two integers and the row as JSON text) against parquet-go 0.32.1
+with zstd (row groups of 50,000 rows), file sizes in KB:
+
+| Capture | parquet-go, zstd | `Default` before | `Compact` before | `Default` now | `Compact` now |
+|---|---|---|---|---|---|
+| 3 rows | 2 | 8 | 8 | 8 | 5 |
+| 100k rows, narrow JSON | 2,240 | 5,643 | 4,981 | 4,373 | 1,877 |
+| 100k rows, wide JSON | 5,455 | 9,055 | 8,264 | 7,774 | 5,159 |
+| 1M rows, wide JSON | 54,572 | 90,582 | 82,635 | 76,830 | 51,590 |
+
+The text was not the gap: under `Compact` the `row_data` column alone is within 3% of
+`zstd.EncodeAll` (same level, same chunks) on the wide case, and `TestDBBatSize` holds it under
+10%. The gap was the uuids: a uuid column was written as 16 plain bytes a row, so the constant
+and the runs of a file cost as much as the random uuid. The bytes now go through the compressor
+like any `u8` array (`Compact` makes them a few KB with zstd), and a column of a single zone of
+a `Compact` file has no zone table, since the statistics of the file hold the same two values.
+The parquet numbers are the ones measured on 2026-11-22; ours come from
+`dbbatRows` (seeded: the uuids differ from dbbat's `uuid.New`, the sizes do not).
 
 ## Where the numbers are
 

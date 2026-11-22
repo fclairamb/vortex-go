@@ -90,7 +90,7 @@ INTEROP = .cache/interop
 interop:
 	rm -rf $(INTEROP)
 	mkdir -p $(INTEROP)
-	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropEditions|TestInteropRows|TestInteropVariants|TestSizeRatios)$$' -count=1 .
+	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropEditions|TestInteropRows|TestInteropVariants|TestInteropDBBat|TestSizeRatios)$$' -count=1 .
 	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)
 	for m in default compact none; do \
 		(cd tools/variantjson && cargo run --release -q -- ../../$(INTEROP)/variants_$$m.vortex) | diff - $(INTEROP)/variants_$$m.jsonl || exit 1; \
