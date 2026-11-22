@@ -70,6 +70,9 @@ func fastLeaf(row, gt reflect.Type, vt Type, off uintptr) fastFn {
 // the bytes of the rows (rows end to end, a dictionary, a constant), and the bytes of each row
 // end to end otherwise: never more than the strings of the rows put together. The ranges of
 // the null rows are not read.
+//
+// The strings that get returns stay valid after the batch. get itself reads the column: it is
+// only called during the batch.
 func batchStrings(c *Column) func(int) string {
 	n, data, valid := c.arr.Len, c.arr.Data, c.arr.Validity
 	starts, ends := c.arr.Starts[:n], c.arr.Ends[:n]
@@ -88,15 +91,15 @@ func batchStrings(c *Column) func(int) string {
 		copy(block, data[lo:hi])
 		return func(i int) string { return unsafex.String(block[starts[i]-lo : ends[i]-lo]) }
 	}
-	block, strs := make([]byte, 0, total), make([]string, n)
-	for i, s := range starts {
-		if valid == nil || valid.Get(i) {
-			at := len(block)
-			block = append(block, data[s:ends[i]]...)
-			strs[i] = unsafex.String(block[at:])
-		}
+	// A row is copied when it is read: the fill reads each row that is not null once, so the
+	// block is never reallocated. A row read twice would only grow it: the strings already
+	// made keep the block they point into.
+	block := make([]byte, 0, total)
+	return func(i int) string {
+		at := len(block)
+		block = append(block, data[starts[i]:ends[i]]...)
+		return unsafex.String(block[at:])
 	}
-	return func(i int) string { return strs[i] }
 }
 
 // slot is the place of a field to fill, and what it is.

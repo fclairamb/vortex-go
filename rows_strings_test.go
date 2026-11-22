@@ -53,17 +53,21 @@ func TestBatchStrings(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			data := []byte(c.data)
 			get := batchStrings(strColumn(data, c.starts, c.ends, c.valid))
-			got := make([]string, len(c.want))
-			for i := range got {
-				if c.valid == nil || c.valid[i] {
-					got[i] = get(i)
+			// Twice: a row read again must not change the strings already made.
+			var got, again []string
+			for range 2 {
+				got, again = again, make([]string, len(c.want))
+				for i := range again {
+					if c.valid == nil || c.valid[i] {
+						again[i] = get(i)
+					}
 				}
 			}
 			for i := range data {
 				data[i] = 'X' // the scan reuses its memory: the strings must not see it
 			}
-			if !slices.Equal(got, c.want) {
-				t.Fatalf("got %q, want %q", got, c.want)
+			if !slices.Equal(got, c.want) || !slices.Equal(again, c.want) {
+				t.Fatalf("got %q then %q, want %q", got, again, c.want)
 			}
 		})
 	}
