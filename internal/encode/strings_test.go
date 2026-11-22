@@ -362,7 +362,7 @@ func TestNoAllocationFSSTZstd(t *testing.T) {
 		for range 3 { // the arena of the Encoder grows until it holds a whole call
 			f()
 		}
-		if got := testing.AllocsPerRun(5, f); got != 0 {
+		if got := allocsPerRun(5, f); got != 0 {
 			t.Errorf("%s: %v allocations", name, got)
 		}
 	}

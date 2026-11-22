@@ -17,7 +17,7 @@ func RunEnd[T Number](e *Encoder, v []T, nulls []bool) *Node {
 		}
 	}
 	ptype, ew := narrow(uint64(len(v)))
-	ends, vals, runNulls := e.alloc(runs*ew), e.alloc(runs*w), e.flags(runs)
+	ends, vals, runNulls := e.allocDirty(runs*ew), e.allocDirty(runs*w), e.flags(runs)
 	k := 0
 	raw := unsafex.Bytes(v)
 	for i := range v {
@@ -27,6 +27,7 @@ func RunEnd[T Number](e *Encoder, v []T, nulls []bool) *Node {
 		putWidth(ends[k*ew:], ew, uint64(i+1))
 		if isNull(nulls, i) {
 			runNulls[k] = true
+			clear(vals[k*w : (k+1)*w])
 		} else {
 			copy(vals[k*w:], raw[i*w:(i+1)*w])
 		}

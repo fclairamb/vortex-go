@@ -19,11 +19,13 @@ func FoR[T Int](e *Encoder, v []T, nulls []bool) *Node {
 			ref, found = x, true
 		}
 	}
-	out := e.alloc(len(v) * w)
+	out := e.allocDirty(len(v) * w)
 	for i, x := range v {
-		if !isNull(nulls, i) {
-			putWidth(out[i*w:], w, ubits(x-ref))
+		d := ubits(x - ref)
+		if isNull(nulls, i) {
+			d = 0
 		}
+		putWidth(out[i*w:], w, d)
 	}
 	n := e.node(IDFoR)
 	e.tmp = appendScalar(e.tmp[:0], ref)
@@ -36,7 +38,7 @@ func FoR[T Int](e *Encoder, v []T, nulls []bool) *Node {
 // close to zero: 0, -1, 1, -2 become 0, 1, 2, 3. The slot of a null row is mapped too.
 func ZigZag[T Signed](e *Encoder, v []T, nulls []bool) *Node {
 	w := unsafex.Size[T]()
-	out := e.alloc(len(v) * w)
+	out := e.allocDirty(len(v) * w)
 	for i, x := range v {
 		y := int64(x)
 		putWidth(out[i*w:], w, uint64(y<<1)^uint64(y>>63))

@@ -320,6 +320,9 @@ func TestEmptySchemaAndNoWrite(t *testing.T) {
 }
 
 func TestNoAllocationPerWrite(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the sync.Pool of the race detector drops what it is given at random, and the encoders use pools")
+	}
 	w := NewWriter(io.Discard, NewSchema(Field{"a", Int64Type()}, Field{"b", Float64Type().AsNullable()},
 		Field{"c", Int8Type()}), WriteOptions{})
 	a, b, c := make([]int64, 1000), make([]float64, 1000), make([]int8, 1000)

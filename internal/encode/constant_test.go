@@ -74,22 +74,42 @@ func TestZstdSmallFrames(t *testing.T) {
 	}
 }
 
-// TestArenaFitsTheLastRound: after a Reset, the arena holds in one block all that the calls
-// before it asked for.
-func TestArenaFitsTheLastRound(t *testing.T) {
+// TestArenaKeepsItsBlocks: after a Reset, the same calls fit the blocks of the arena, with no
+// new memory.
+func TestArenaKeepsItsBlocks(t *testing.T) {
 	e := New()
-	for range 3 {
-		e.alloc(100 << 10)
-		e.alloc(200 << 10)
+	round := func() {
+		e.Reset()
+		for range 3 {
+			e.alloc(100 << 10)
+			e.alloc(200 << 10)
+		}
+	}
+	round()
+	blocks := len(e.blocks)
+	if got := testing.AllocsPerRun(3, round); got != 0 {
+		t.Fatalf("%v allocations", got)
+	}
+	if len(e.blocks) != blocks {
+		t.Fatalf("%d blocks, then %d", blocks, len(e.blocks))
+	}
+}
+
+// TestAllocIsZero: alloc clears what an earlier use wrote, and only that, allocDirty does not.
+func TestAllocIsZero(t *testing.T) {
+	e := New()
+	for i := range e.allocDirty(100) {
+		e.blocks[0].buf[i] = 0xff
 	}
 	e.Reset()
-	if len(e.arena) < 900<<10 {
-		t.Fatalf("an arena of %d bytes", len(e.arena))
+	if b := e.allocDirty(10); b[0] != 0xff {
+		t.Fatalf("allocDirty cleared: %x", b)
 	}
-	before := len(e.arena)
-	e.alloc(300 << 10)
-	e.Reset()
-	if len(e.arena) != before {
-		t.Fatalf("the arena changed: %d, %d", before, len(e.arena))
+	for _, n := range []int{50, 200} { // within what was written, then across its end
+		for i, x := range e.alloc(n) {
+			if x != 0 {
+				t.Fatalf("byte %d of %d is %x", i, n, x)
+			}
+		}
 	}
 }

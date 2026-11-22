@@ -59,7 +59,7 @@ type onPairState struct {
 
 func (e *Encoder) onPairState() *onPairState {
 	if e.op == nil {
-		e.op = &onPairState{}
+		e.op = onPairStates.Get().(*onPairState)
 	}
 	return e.op
 }
@@ -456,6 +456,7 @@ func OnPairBytesWith(e *Encoder, vals [][]byte, nulls []bool, dict []byte, offs 
 // onPairColumn parses the strings with the dictionary of the state and makes the node.
 func (e *Encoder) onPairColumn(vals [][]byte, nulls []bool) *Node {
 	s := e.op
+	defer e.done()
 	rows := len(vals)
 	s.parse(vals, nulls)
 	ptype, ow := narrow(uint64(len(s.codes)))
@@ -468,7 +469,7 @@ func (e *Encoder) onPairColumn(vals [][]byte, nulls []bool) *Node {
 		at += copy(dictBytes[at:], s.token(int(id)))
 		putWidth(dictOffs[4*(r+1):], 4, uint64(at))
 	}
-	codes := e.alloc(2 * len(s.codes))
+	codes := e.allocDirty(2 * len(s.codes))
 	for i, c := range s.codes {
 		putWidth(codes[2*i:], 2, uint64(c))
 	}
@@ -503,6 +504,7 @@ func EstimateOnPairBytes(e *Encoder, sample [][]byte, nulls []bool, rows int) in
 		return 2 // a null constant
 	}
 	s := e.onPairState()
+	defer e.done()
 	n := len(sample)
 	total := validBytesOf(sample, nulls)
 	s.train(sample, nulls, total)
