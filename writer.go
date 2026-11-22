@@ -453,6 +453,7 @@ func (w *Writer) Close() error {
 		return w.err
 	}
 	w.start()
+	w.finishColumns()
 	w.finishNode(w.root)
 	w.drain()
 	w.footer()

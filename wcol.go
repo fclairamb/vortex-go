@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"github.com/fclairamb/vortex-go/internal/compress"
+	"github.com/fclairamb/vortex-go/internal/encode"
 	"github.com/fclairamb/vortex-go/internal/flatbuf"
 	"github.com/fclairamb/vortex-go/internal/protowire"
 )
@@ -47,6 +48,7 @@ type chunk struct {
 type column struct {
 	zones    *zoneAcc
 	dict     *dictEnc
+	last     lastRun // what finishColumns made of the end of the column
 	buf      *body
 	comp     *compress.Compressor // of the dictionaries, made on the first use
 	free     []*waiting           // the chunks written, whose buffers the next ones take
@@ -210,15 +212,11 @@ func (c *column) reserve(ahead int) {
 	}
 }
 
-// consume takes the rows of the buffer from the last block to hi: a whole block, or the
-// last rows of the column. Their statistics are recorded, then they go to a dictionary, or
-// they wait for the chunk to be full.
-func (w *Writer) consume(c *column, hi int) {
-	c.prepare(w, hi)
-	w.commit(c, hi)
-}
+// The rows of the buffer from the last block to hi, a whole block or the last rows of the
+// column, are taken in two steps: prepare records their statistics and codes them in the
+// dictionary, commit writes what goes to the file, or lets them wait for the chunk to be full.
 
-// prepare is the part of consume that only touches the column: the statistics of the rows,
+// prepare is the part of taking rows that only touches the column: the statistics of the rows,
 // the choice of a dictionary, and their codes up to the first one that needs a write.
 func (c *column) prepare(w *Writer, hi int) {
 	lo := c.block
@@ -239,7 +237,7 @@ func (c *column) prepare(w *Writer, hi int) {
 	c.size += sizeOf(c.buf, c.t, lo, hi)
 }
 
-// commit is the part of consume that writes: the end of the codes of a dictionary, with its
+// commit is the part of taking rows that writes: the end of the codes of a dictionary, with its
 // runs and its chunks of codes, or the chunk that is full.
 func (w *Writer) commit(c *column, hi int) {
 	if c.mode == modeDict {
@@ -296,11 +294,99 @@ func (w *Writer) writeChunkWith(c *column, b *body, s *astat) {
 	}
 }
 
+// lastRun is what finishColumns made of the end of a column, on every core, for finish to
+// write.
+type lastRun struct {
+	codes    *encode.Node         // the compressed codes of the run, nil for the plain ones
+	vals     *encode.Node         // the compressed values of the run, nil for the plain ones
+	comp     *compress.Compressor // the compressor of vals: the one of the column made codes
+	scratch  []byte
+	cost     int  // about what finishAlone costs, see tailCost
+	prepared bool // prepare took the last rows
+	run      bool // codes and vals are the arrays of the run of the dictionary
+}
+
+// finishColumns does, on every core, the part of finish that only touches a column: the
+// statistics, the choice and the codes of its last rows, and the compressed arrays of the run
+// of its dictionary. finish then writes them, a column after the other, in order: the file
+// is the same whatever the cores. A file of few rows does it all in finish.
+func (w *Writer) finishColumns() {
+	workers := min(w.leaves, runtime.GOMAXPROCS(0))
+	if workers < 2 {
+		return
+	}
+	work, rows := w.work[:0], 0
+	work = appendLeaves(work, w.root)
+	for _, k := range work {
+		c := k.c
+		if rows += c.buf.n - c.block; c.mode == modeDict {
+			rows += c.dict.rows
+		}
+		c.last.cost = c.tailCost()
+	}
+	w.work = work
+	if rows >= parallelRows {
+		// The costliest columns start first, so that one of them does not run alone at the end.
+		slices.SortStableFunc(work, func(a, b colWork) int { return b.c.last.cost - a.c.last.cost })
+		each(workers, len(work), func(i int) { work[i].c.finishAlone(w) })
+	}
+	clear(work)
+}
+
+// tailCost is about what finishAlone costs: the bytes it chooses for, codes, or compresses.
+// The last rows of a column of plain chunks only have their statistics found.
+func (c *column) tailCost() int {
+	switch c.mode {
+	case modePlain:
+		return 0
+	case modeDict:
+		return sizeOf(c.buf, c.t, c.block, c.buf.n) + c.dict.bytes + len(c.dict.codes)
+	}
+	return sizeOf(c.buf, c.t, c.block, c.buf.n)
+}
+
+// appendLeaves appends the columns under l that have no children, in order.
+func appendLeaves(work []colWork, l *layoutBuild) []colWork {
+	if !l.isStruct {
+		return append(work, colWork{c: l.col})
+	}
+	for _, k := range l.kids {
+		work = appendLeaves(work, k)
+	}
+	return work
+}
+
+// finishAlone is the part of finish that only touches the column: it prepares the last rows
+// and, when all that is left of a dictionary is its run, compresses its codes and its values.
+func (c *column) finishAlone(w *Writer) {
+	if c.buf.n > c.block {
+		c.prepare(w, c.buf.n)
+		c.last.prepared = true
+	}
+	coded := c.buf.n == c.block || c.coded == c.buf.n && !c.codesFull
+	if c.mode != modeDict || !w.compressing() || !coded {
+		return
+	}
+	d := c.dict
+	if n := len(d.codes) / d.width; n > 0 {
+		cp := w.compressor(c)
+		cp.Reset()
+		t, codes := d.codesArray(n)
+		c.last.codes = compressData(cp, t, codes, &c.last.scratch)
+	}
+	c.last.comp = w.newCompressor(c.buf.kind)
+	c.last.vals = compressData(c.last.comp, c.t, c.valuesArray(), &c.last.scratch)
+	c.last.run = true
+}
+
 // finish writes what is left of the column: the last rows, the dictionary being built, and
 // the zones table.
 func (w *Writer) finish(c *column) {
 	if c.buf.n > c.block {
-		w.consume(c, c.buf.n)
+		if !c.last.prepared {
+			c.prepare(w, c.buf.n)
+		}
+		w.commit(c, c.buf.n)
 	}
 	if c.mode == modeDict {
 		w.endRun(c)
