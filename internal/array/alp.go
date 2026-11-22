@@ -207,8 +207,8 @@ func decodeALPRD(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	ar := n.ctx.opt.Arena
-	out := &Array{Type: t, Len: rows, Validity: left.Validity, Data: ar.Bytes(rows*w, false)}
+	// The floats are written over the right parts when nothing else reads them.
+	out := &Array{Type: t, Len: rows, Validity: left.Validity, Data: n.target(right)}
 	var pt *patches
 	if m.hasPatches {
 		pt, err = n.leftPatches(&m, rows)
@@ -229,18 +229,33 @@ func decodeALPRD(n *Node, t DType, rows int) (*Array, error) {
 
 // joinRD sets out[i] to the left bits of row i above its right bits. The left bits are the
 // entry of the dictionary at the code of the row, 0 for a null row, and the value of the
-// patch for a patched row.
+// patch for a patched row. out may be right: a row reads its right bits before it is written.
 func joinRD[T uint32 | uint64](out []T, left *Array, right []T, m *alpRDMeta, pt *patches) error {
 	rb := m.rightBits
 	right = right[:len(out)]
+	// The patched rows are made first, from right parts that out has not overwritten yet.
+	var patched []T
+	if pt != nil {
+		vals, err := toInts(nil, pt.values, "left patch values", m.left, nil)
+		if err != nil {
+			return err
+		}
+		patched = make([]T, len(vals))
+		for k, v := range vals {
+			patched[k] = T(v)<<rb | right[pt.row(k)]
+		}
+	}
 	if m.left == U16 && left.Validity == nil && len(m.dict) <= 256 {
 		codes := unsafex.Slice[uint16](left.Data)
-		// Without a null, a code is read where it is: the largest one tells whether all are known.
-		var dict [256]uint16
-		copy(dict[:], m.dict)
+		// Without a null, a code is read where it is: the largest one tells whether all are
+		// known. The entries of the dictionary are shifted once, not once per row.
+		var dict [256]T
+		for k, d := range m.dict {
+			dict[k] = T(d) << rb
+		}
 		most := uint16(0)
 		for i, c := range codes[:len(out)] {
-			out[i] = T(dict[uint8(c)])<<rb | right[i]
+			out[i] = dict[uint8(c)] | right[i]
 			most = max(most, c)
 		}
 		if int(most) >= len(m.dict) {
@@ -256,15 +271,8 @@ func joinRD[T uint32 | uint64](out []T, left *Array, right []T, m *alpRDMeta, pt
 			out[i] = T(bits[i])<<rb | right[i]
 		}
 	}
-	if pt == nil {
-		return nil
-	}
-	vals, err := toInts(nil, pt.values, "left patch values", m.left, nil)
-	if err != nil {
-		return err
-	}
-	for k, v := range vals {
-		out[pt.row(k)] = T(v)<<rb | right[pt.row(k)]
+	for k, v := range patched {
+		out[pt.row(k)] = v
 	}
 	return nil
 }
