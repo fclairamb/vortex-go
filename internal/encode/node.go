@@ -3,6 +3,7 @@ package encode
 import (
 	"hash/maphash"
 	"math"
+	"sync"
 
 	"github.com/klauspost/compress/zstd"
 
@@ -118,59 +119,109 @@ func (n *Node) Size() int {
 type Encoder struct {
 	fs      *fsstState
 	op      *onPairState
-	pc      *pcoState
 	zenc    *zstd.Encoder
-	arena   []byte
+	blocks  []block // the arena: the buffers of the nodes, kept from one Reset to the next
 	pool    []*Node
 	tmp     []byte
 	tmp2    []byte
-	codes   []uint32
-	first   []int32
-	count   []int32
-	tab     []int32
+	dt      *dictTables
 	flagBuf []bool
 	u16s    []uint16
 	groups  []rdGroup
 	seed    maphash.Seed
-	off     int
+	cur     int // the block in use
+	off     int // the bytes of the block in use that are handed out
 	used    int
-	need    int // the bytes asked of the arena since the last Reset
 	hist    [65]int
 }
+
+// block is a buffer of the arena. Past dirty, its bytes are still the zeroes make gave them.
+type block struct {
+	buf   []byte
+	dirty int
+}
+
+// newBlock returns a block of n zeroes. The tests of the package fill it instead, so that a
+// caller of allocDirty that reads a byte it did not write makes other bytes than the reference.
+var newBlock = func(n int) block { return block{buf: make([]byte, n)} }
+
+// minBlock is the size of the first block of an Encoder. Most encoders of a writer hold a
+// few tens of kilobytes.
+const minBlock = 16 << 10
 
 // New returns an Encoder.
 func New() *Encoder { return &Encoder{seed: maphash.MakeSeed()} }
 
 // Reset frees the nodes and buffers of the earlier calls, which must not be used any more.
-// When they did not fit the arena, it is replaced by one that holds them all, so that the
-// same calls fit it next time, in one block.
+// The blocks of the arena are kept: the same calls fit them next time, with no new memory.
 func (e *Encoder) Reset() {
-	if e.need > len(e.arena) {
-		e.arena = make([]byte, e.need)
-	}
-	e.off, e.used, e.need = 0, 0, 0
+	e.cur, e.off, e.used = 0, 0, 0
+	e.done()
 }
 
-// alloc returns n zeroed bytes, aligned on 8 bytes, that live until the next Reset. A buffer
-// that is too small is replaced by a larger one: the slices already given out stay valid.
+// The memory of a training of FSST or of OnPair, of a Pco coder and of the tables of a
+// dictionary is large and only used during one call: it is taken from a pool for the call and
+// given back at its end, so that the encoders of all the columns of a writer share as many as
+// there are calls at once.
+var (
+	dictStates   = sync.Pool{New: func() any { return new(dictTables) }}
+	fsstStates   = sync.Pool{New: func() any { return &fsstState{c2: make([]int32, 512*512)} }}
+	onPairStates = sync.Pool{New: func() any { return new(onPairState) }}
+	pcoStates    = sync.Pool{New: func() any { return new(pcoState) }}
+)
+
+// done gives back the memory of the tables and of the training of the call that ends.
+func (e *Encoder) done() {
+	if e.dt != nil {
+		dictStates.Put(e.dt)
+		e.dt = nil
+	}
+	if e.fs != nil {
+		fsstStates.Put(e.fs)
+		e.fs = nil
+	}
+	if e.op != nil {
+		onPairStates.Put(e.op)
+		e.op = nil
+	}
+}
+
+// alloc returns n zeroed bytes, aligned on 8 bytes, that live until the next Reset.
 func (e *Encoder) alloc(n int) []byte {
-	b := e.allocDirty(n)
-	clear(b)
+	b, dirty := e.take(n)
+	clear(b[:dirty])
 	return b
 }
 
 // allocDirty is alloc without the zeroes: the bytes are what an earlier use left. It is for
 // the caller that writes every byte it reads, which saves a pass over a large buffer.
 func (e *Encoder) allocDirty(n int) []byte {
-	e.off = (e.off + 7) &^ 7
-	e.need += (n + 7) &^ 7
-	if e.off+n > len(e.arena) {
-		e.arena = make([]byte, max(n, 64<<10))
-		e.off = 0
-	}
-	b := e.arena[e.off : e.off+n : e.off+n]
-	e.off += n
+	b, _ := e.take(n)
 	return b
+}
+
+// take returns n bytes of the arena, aligned on 8 bytes, and how many of the first ones an
+// earlier use wrote: the others are zero. A request that does not fit the rest of the block
+// in use goes to the next block that holds it, a new one when none does, twice as large as
+// the last: the slices already given out stay valid.
+func (e *Encoder) take(n int) ([]byte, int) {
+	e.off = (e.off + 7) &^ 7
+	for e.cur < len(e.blocks) && e.off+n > len(e.blocks[e.cur].buf) {
+		e.cur, e.off = e.cur+1, 0
+	}
+	if e.cur == len(e.blocks) {
+		size := minBlock
+		if len(e.blocks) > 0 {
+			size = 2 * len(e.blocks[len(e.blocks)-1].buf)
+		}
+		e.blocks = append(e.blocks, newBlock(max(n, size)))
+	}
+	b := &e.blocks[e.cur]
+	s := b.buf[e.off : e.off+n : e.off+n]
+	dirty := min(max(b.dirty-e.off, 0), n)
+	e.off += n
+	b.dirty = max(b.dirty, e.off)
+	return s, dirty
 }
 
 // node returns an empty node.

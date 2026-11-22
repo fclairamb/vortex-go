@@ -18,7 +18,7 @@ func RLE[T Number](e *Encoder, v []T, nulls []bool) *Node {
 	blocks := (rows + blockSize - 1) / blockSize
 	padded := blocks * blockSize
 	filled := e.fill(unsafex.Bytes(v), w, nulls, padded)
-	vals, idx, offs := e.alloc(padded*w), e.alloc(padded*2), e.alloc(blocks*8)
+	vals, idx, offs := e.allocDirty(padded*w), e.allocDirty(padded*2), e.allocDirty(blocks*8)
 	count := 0
 	for b := range blocks {
 		binary.LittleEndian.PutUint64(offs[8*b:], uint64(count))
@@ -26,6 +26,7 @@ func RLE[T Number](e *Encoder, v []T, nulls []bool) *Node {
 		copy(vals[count*w:], filled[b*blockSize*w:][:w])
 		count++
 		pos := uint16(0)
+		binary.LittleEndian.PutUint16(idx[2*b*blockSize:], pos)
 		for i := 1; i < blockSize; i++ {
 			at := b*blockSize + i
 			if cur := getWidth(filled[at*w:], w); cur != prev {
@@ -53,7 +54,7 @@ func RLE[T Number](e *Encoder, v []T, nulls []bool) *Node {
 // fill is the raw values padded to padded rows, a null row filled forward within its block,
 // and the padding repeating the last row.
 func (e *Encoder) fill(raw []byte, w int, nulls []bool, padded int) []byte {
-	out := e.alloc(padded * w)
+	out := e.allocDirty(padded * w) // every row is written
 	copy(out, raw)
 	if hasNull(nulls) {
 		last := uint64(0)

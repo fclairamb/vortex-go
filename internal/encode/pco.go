@@ -10,18 +10,11 @@ import (
 // Pco::from_primitive with 8192, and its pages of a chunk are all about that size.
 const pcoValuesPerPage = 8192
 
-// pcoState is the memory of the Pco encoder of an Encoder.
+// pcoState is the memory of a Pco encoding.
 type pcoState struct {
 	vals  []uint64
 	chunk []byte
 	coder pco.Coder
-}
-
-func (e *Encoder) pcoState() *pcoState {
-	if e.pc == nil {
-		e.pc = new(pcoState)
-	}
-	return e.pc
 }
 
 // pcoType is the number type of Pco that T is stored as. 8-bit numbers have none: the crate
@@ -56,7 +49,8 @@ func Pco[T Number](e *Encoder, v []T, nulls []bool) *Node {
 
 // pcoNode returns the node, and the bytes of its chunk metadata buffers.
 func pcoNode[T Number](e *Encoder, v []T, nulls []bool) (*Node, int) {
-	st := e.pcoState()
+	st := pcoStates.Get().(*pcoState)
+	defer pcoStates.Put(st)
 	w := unsafex.Size[T]()
 	src := unsafex.Bytes(v)
 	st.vals = st.vals[:0]

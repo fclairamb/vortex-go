@@ -16,9 +16,10 @@ func validBytesOf(v [][]byte, nulls []bool) int {
 // validity. A null row has no byte.
 func VarBinBytes(e *Encoder, v [][]byte, nulls []bool) *Node {
 	total := validBytesOf(v, nulls)
-	data := e.alloc(total)
+	data := e.allocDirty(total) // the valid values, end to end
 	ptype, w := narrow(uint64(total))
-	offs := e.alloc((len(v) + 1) * w)
+	offs := e.allocDirty((len(v) + 1) * w)
+	putWidth(offs, w, 0)
 	at := 0
 	for i, x := range v {
 		if !isNull(nulls, i) {

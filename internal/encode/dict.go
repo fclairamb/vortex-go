@@ -69,17 +69,28 @@ func (k *keys) copyTo(dst []byte, i int) {
 	}
 }
 
+// dictTables is the memory of classify.
+type dictTables struct {
+	codes []uint32
+	first []int32
+	count []int32
+	tab   []int32
+}
+
 // classify gives each row the code of its value, in the order of their first appearance, a
-// null being a value of its own. The codes are in e.codes, the row of the first appearance of
-// each code in e.first, and how many rows use each in e.count. It returns the number of codes
-// and the code of null, -1 when no row is null.
+// null being a value of its own. The codes are in e.dt.codes, the row of the first appearance
+// of each code in e.dt.first, and how many rows use each in e.dt.count, until e.done. It
+// returns the number of codes and the code of null, -1 when no row is null.
 func (e *Encoder) classify(k *keys, rows int, nulls []bool) (distinct, nullCode int) {
-	e.codes = grow(e.codes, rows)
-	e.first = grow(e.first, rows+1)
-	e.count = grow(e.count, rows+1)
+	if e.dt == nil {
+		e.dt = dictStates.Get().(*dictTables)
+	}
+	e.dt.codes = grow(e.dt.codes, rows)
+	e.dt.first = grow(e.dt.first, rows+1)
+	e.dt.count = grow(e.dt.count, rows+1)
 	tabSize := 1 << bits.Len(uint(2*rows+1))
-	e.tab = grow(e.tab, tabSize)
-	clear(e.tab)
+	e.dt.tab = grow(e.dt.tab, tabSize)
+	clear(e.dt.tab)
 	mask := uint64(tabSize - 1)
 	nullCode = -1
 	for i := range rows {
@@ -87,24 +98,24 @@ func (e *Encoder) classify(k *keys, rows int, nulls []bool) (distinct, nullCode 
 		if isNull(nulls, i) {
 			if nullCode < 0 {
 				nullCode = distinct
-				e.first[distinct], e.count[distinct] = int32(i), 0
+				e.dt.first[distinct], e.dt.count[distinct] = int32(i), 0
 				distinct++
 			}
 			code = nullCode
 		} else {
 			s := k.hash(e.seed, i) & mask
-			for e.tab[s] != 0 && !k.eq(i, int(e.first[e.tab[s]-1])) {
+			for e.dt.tab[s] != 0 && !k.eq(i, int(e.dt.first[e.dt.tab[s]-1])) {
 				s = (s + 1) & mask
 			}
-			if e.tab[s] == 0 {
-				e.first[distinct], e.count[distinct] = int32(i), 0
+			if e.dt.tab[s] == 0 {
+				e.dt.first[distinct], e.dt.count[distinct] = int32(i), 0
 				distinct++
-				e.tab[s] = int32(distinct)
+				e.dt.tab[s] = int32(distinct)
 			}
-			code = int(e.tab[s]) - 1
+			code = int(e.dt.tab[s]) - 1
 		}
-		e.codes[i] = uint32(code)
-		e.count[code]++
+		e.dt.codes[i] = uint32(code)
+		e.dt.count[code]++
 	}
 	return distinct, nullCode
 }
@@ -124,10 +135,11 @@ func grow[T any](s []T, n int) []T {
 func Dict[T Number](e *Encoder, v []T, nulls []bool) *Node {
 	k := keys{raw: unsafex.Bytes(v), w: unsafex.Size[T](), kind: keyNumbers}
 	distinct, nullCode := e.classify(&k, len(v), nulls)
+	defer e.done()
 	vals := e.alloc(distinct * k.w)
 	for c := range distinct {
 		if c != nullCode {
-			k.copyTo(vals[c*k.w:], int(e.first[c]))
+			k.copyTo(vals[c*k.w:], int(e.dt.first[c]))
 		}
 	}
 	return e.dictNode(len(v), distinct, e.leaf(vals, k.w, e.nullAt(distinct, nullCode), distinct))
@@ -155,19 +167,20 @@ func (e *Encoder) nullAt(distinct, nullCode int) []bool {
 
 func (e *Encoder) dictVarBin(k *keys, rows int, nulls []bool) *Node {
 	distinct, nullCode := e.classify(k, rows, nulls)
+	defer e.done()
 	long := 0
 	for c := range distinct {
-		if c != nullCode && k.size(int(e.first[c])) > maxInline {
-			long += k.size(int(e.first[c]))
+		if c != nullCode && k.size(int(e.dt.first[c])) > maxInline {
+			long += k.size(int(e.dt.first[c]))
 		}
 	}
-	data, views := e.alloc(long), e.alloc(16*distinct)
+	data, views := e.allocDirty(long), e.alloc(16*distinct) // a short string leaves zeroes in its view
 	at := 0
 	for c := range distinct {
 		if c == nullCode {
 			continue
 		}
-		i := int(e.first[c])
+		i := int(e.dt.first[c])
 		view, size := views[16*c:16*c+16], k.size(i)
 		binary.LittleEndian.PutUint32(view, uint32(size))
 		if size <= maxInline {
@@ -186,12 +199,12 @@ func (e *Encoder) dictVarBin(k *keys, rows int, nulls []bool) *Node {
 	return e.dictNode(rows, distinct, vals)
 }
 
-// dictNode is the node of the dictionary of the codes in e.codes and the values node.
+// dictNode is the node of the dictionary of the codes in e.dt.codes and the values node.
 func (e *Encoder) dictNode(rows, distinct int, vals *Node) *Node {
 	ptype, w := narrow(uint64(max(distinct-1, 0)))
-	codes := e.alloc(rows * w)
+	codes := e.allocDirty(rows * w)
 	for i := range rows {
-		putWidth(codes[i*w:], w, uint64(e.codes[i]))
+		putWidth(codes[i*w:], w, uint64(e.dt.codes[i]))
 	}
 	n := e.node(IDDict)
 	e.tmp = putUint(e.tmp[:0], 1, uint64(distinct))

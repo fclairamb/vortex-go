@@ -45,7 +45,7 @@ func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 	}
 	w := unsafex.Size[T]()
 	raw := unsafex.Bytes(v)
-	idx, vals, patchNulls := e.alloc(count*iw), e.alloc(count*w), e.flags(count)
+	idx, vals, patchNulls := e.allocDirty(count*iw), e.allocDirty(count*w), e.flags(count)
 	k := 0
 	for i := range v {
 		if !isPatch(v, nulls, i, fill, fillNull) {
@@ -56,6 +56,8 @@ func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 		patchNulls[k] = isNull(nulls, i)
 		if validPatches > 0 || !patchNulls[k] {
 			copy(vals[k*w:], raw[i*w:(i+1)*w])
+		} else {
+			clear(vals[k*w : (k+1)*w])
 		}
 		k++
 	}
@@ -90,11 +92,12 @@ func fillValue[T Number](e *Encoder, v []T, nulls []bool, fillNull bool) T {
 	}
 	k := keys{raw: unsafex.Bytes(v), w: unsafex.Size[T](), kind: keyNumbers}
 	distinct, nullCode := e.classify(&k, len(v), nulls)
+	defer e.done()
 	best := -1
 	for c := range distinct {
-		if c != nullCode && (best < 0 || e.count[c] > e.count[best]) {
+		if c != nullCode && (best < 0 || e.dt.count[c] > e.dt.count[best]) {
 			best = c
 		}
 	}
-	return v[e.first[best]]
+	return v[e.dt.first[best]]
 }
