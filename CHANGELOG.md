@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.1](https://github.com/fclairamb/vortex-go/compare/v0.1.0...v0.1.1) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/fclairamb/vortex-go to v0.1.0 ([#55](https://github.com/fclairamb/vortex-go/issues/55)) ([aefa112](https://github.com/fclairamb/vortex-go/commit/aefa112b486dd2567734af011edfaf491669132e))
+
+
+### Performance Improvements
+
+* **scan:** a FoR over bit-packed integers adds its reference as the blocks are unpacked ([#50](https://github.com/fclairamb/vortex-go/issues/50)) ([bc6720a](https://github.com/fclairamb/vortex-go/commit/bc6720aa8c491de4f8e74f4e4dbfb088873d22d3))
+* **scan:** a node of an array allocates nothing for its children, and nodes come 16 at a time ([#52](https://github.com/fclairamb/vortex-go/issues/52)) ([b7add87](https://github.com/fclairamb/vortex-go/commit/b7add877047299a1f2b8182b3a00773029b264dd))
+* **scan:** FSST checks the offsets and the lengths of its rows with no branch per row ([#56](https://github.com/fclairamb/vortex-go/issues/56)) ([bc792df](https://github.com/fclairamb/vortex-go/commit/bc792dff3014786c6aeb1063928e36ec6987a8af))
+* **scan:** FSST makes the ranges of its rows in one pass, and checks 8 codes at once ([#47](https://github.com/fclairamb/vortex-go/issues/47)) ([f3b3534](https://github.com/fclairamb/vortex-go/commit/f3b3534d3816d710ec0c010a351fbfb0f2542b77))
+* **writer:** integers are not tried as what the reference rules out, and the trials only measure ([#54](https://github.com/fclairamb/vortex-go/issues/54)) ([554318c](https://github.com/fclairamb/vortex-go/commit/554318c928be18b929a7b4eac023cd2cd1a950d9))
+
 ## 0.1.0 (2026-11-22)
 
 First release: a pure-Go reader and writer for the Vortex columnar format, benchmarked against the Rust reference.
