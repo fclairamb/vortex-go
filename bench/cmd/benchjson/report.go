@@ -20,19 +20,26 @@ type Result struct {
 }
 
 // Case is one case of bench/cases.json at one thread count, with the result of each harness.
-// Rust is absent when that harness has no result for the case. GoRows and ParquetGo are the two
-// harnesses of bench/, which read the same rows into the same structs, one with each library:
-// they are absent for the cases bench/ does not run, and their ratio is ours over parquet-go's.
+//
+// Go and Rust read the same Vortex file, in batches. GoMapped is Go again on the file mapped in
+// memory (OpenMapped): it is absent for a case that writes. GoRows, GoRowsMapped and ParquetGo
+// are the harnesses of bench/, which read the same rows into the same structs, vortex-go from
+// a Vortex file, read and mapped, and parquet-go from a Parquet file: they are absent for the
+// cases bench/ does not run. A ratio is our time over the time of the other one, and it is
+// absent when one of the two is.
 type Case struct { //nolint:govet // the order of the fields is the order of bench.json
-	Name        string   `json:"name"`
-	Threads     int      `json:"threads"`
-	Go          Result   `json:"go"`
-	Rust        *Result  `json:"rust,omitempty"`
-	GoRows      *Result  `json:"go_rows,omitempty"`
-	ParquetGo   *Result  `json:"parquet_go,omitempty"`
-	RatioToRust *float64 `json:"ratio_to_rust,omitempty"`
-	// RatioToParquetGo is the time of GoRows over the time of ParquetGo.
-	RatioToParquetGo *float64 `json:"ratio_to_parquet_go,omitempty"`
+	Name                   string   `json:"name"`
+	Threads                int      `json:"threads"`
+	Go                     Result   `json:"go"`
+	GoMapped               *Result  `json:"go_mapped,omitempty"`
+	Rust                   *Result  `json:"rust,omitempty"`
+	GoRows                 *Result  `json:"go_rows,omitempty"`
+	GoRowsMapped           *Result  `json:"go_rows_mapped,omitempty"`
+	ParquetGo              *Result  `json:"parquet_go,omitempty"`
+	RatioToRust            *float64 `json:"ratio_to_rust,omitempty"`
+	RatioToRustMapped      *float64 `json:"ratio_to_rust_mapped,omitempty"`
+	RatioToParquetGo       *float64 `json:"ratio_to_parquet_go,omitempty"`
+	RatioToParquetGoMapped *float64 `json:"ratio_to_parquet_go_mapped,omitempty"`
 }
 
 // Machine is what the benchmarks ran on.
@@ -192,7 +199,7 @@ func median(runs []Result) Result {
 }
 
 // Inputs are the sources of a report. Rust and ParquetGo may be nil. ParquetGo is the output
-// of the benchmarks of bench/, with its two harnesses, vortex-go and parquet-go.
+// of the benchmarks of bench/, with its harnesses: vortex-go, vortex-go-mapped and parquet-go.
 type Inputs struct {
 	CaseNames []string
 	Go        io.Reader
@@ -210,22 +217,47 @@ func optMedian(runs []Result) *Result {
 	return &m
 }
 
-// parseBoth reads the output of the benchmarks of bench/: the samples of its parquet-go
-// harness and the ones of its vortex-go harness. An output with no parquet-go line is an
-// error: the benchmarks did not run, and a report without them would not say so.
-func parseBoth(r io.Reader) (pq, rows samples, err error) {
+// ratio is the time of a over the time of b, nil when one of them is absent.
+func ratio(a, b *Result) *float64 {
+	if a == nil || b == nil {
+		return nil
+	}
+	r := a.NsPerOp / b.NsPerOp
+	return &r
+}
+
+// parseAll reads the output of one run of go test -bench once for each of its harnesses,
+// the sub-benchmarks of that name of a case ("" is the case itself).
+func parseAll(r io.Reader, harnesses ...string) ([]samples, map[string]string, error) {
 	raw, err := io.ReadAll(r)
 	if err != nil {
 		return nil, nil, err
 	}
-	if pq, _, err = parseGo(bytes.NewReader(raw), "parquet-go"); err != nil {
-		return nil, nil, err
+	out := make([]samples, len(harnesses))
+	var header map[string]string
+	for i, h := range harnesses {
+		if out[i], header, err = parseGo(bytes.NewReader(raw), h); err != nil {
+			return nil, nil, err
+		}
 	}
-	if len(pq) == 0 {
-		return nil, nil, errors.New("no parquet-go result")
+	return out, header, nil
+}
+
+// benchOutput is the samples of the harnesses of bench/: parquet-go, and vortex-go on a file
+// it reads and on a file mapped in memory.
+type benchOutput struct{ pq, rows, rowsMapped samples }
+
+// parseBench reads the output of the benchmarks of bench/. An output with no parquet-go line
+// is an error: the benchmarks did not run, and a report without them would not say so.
+func parseBench(r io.Reader) (benchOutput, error) {
+	s, _, err := parseAll(r, "parquet-go", "vortex-go", "vortex-go-mapped")
+	if err != nil {
+		return benchOutput{}, err
 	}
-	rows, _, err = parseGo(bytes.NewReader(raw), "vortex-go")
-	return pq, rows, err
+	if len(s[0]) == 0 {
+		return benchOutput{}, errors.New("no parquet-go result")
+	}
+	return benchOutput{pq: s[0], rows: s[1], rowsMapped: s[2]}, nil
 }
 
 // Build merges the sources by case name and thread count. A case of the list with no Go
@@ -234,13 +266,15 @@ func Build(in *Inputs) (Report, error) {
 	if in.Go == nil {
 		return Report{}, errors.New("no Go benchmark output")
 	}
-	goRes, header, err := parseGo(in.Go, "")
+	goOut, header, err := parseAll(in.Go, "", "mapped")
 	if err != nil {
 		return Report{}, fmt.Errorf("go output: %w", err)
 	}
-	var pq, rows, rs samples
+	goRes, goMapped := goOut[0], goOut[1]
+	var bo benchOutput
+	var rs samples
 	if in.ParquetGo != nil {
-		if pq, rows, err = parseBoth(in.ParquetGo); err != nil {
+		if bo, err = parseBench(in.ParquetGo); err != nil {
 			return Report{}, fmt.Errorf("parquet-go output: %w", err)
 		}
 	}
@@ -263,16 +297,15 @@ func Build(in *Inputs) (Report, error) {
 		}
 		slices.Sort(threads)
 		for _, t := range threads {
-			c := Case{Name: name, Threads: t, Go: median(goRes[key{name, t}])}
 			k := key{name, t}
-			if c.Rust = optMedian(rs[k]); c.Rust != nil {
-				ratio := c.Go.NsPerOp / c.Rust.NsPerOp
-				c.RatioToRust = &ratio
+			c := Case{
+				Name: name, Threads: t, Go: median(goRes[k]), GoMapped: optMedian(goMapped[k]),
+				Rust: optMedian(rs[k]), ParquetGo: optMedian(bo.pq[k]),
+				GoRows: optMedian(bo.rows[k]), GoRowsMapped: optMedian(bo.rowsMapped[k]),
 			}
-			if c.GoRows, c.ParquetGo = optMedian(rows[k]), optMedian(pq[k]); c.GoRows != nil && c.ParquetGo != nil {
-				ratio := c.GoRows.NsPerOp / c.ParquetGo.NsPerOp
-				c.RatioToParquetGo = &ratio
-			}
+			c.RatioToRust, c.RatioToRustMapped = ratio(&c.Go, c.Rust), ratio(c.GoMapped, c.Rust)
+			c.RatioToParquetGo = ratio(c.GoRows, c.ParquetGo)
+			c.RatioToParquetGoMapped = ratio(c.GoRowsMapped, c.ParquetGo)
 			rep.Cases = append(rep.Cases, c)
 		}
 	}

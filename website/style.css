@@ -8,6 +8,7 @@
   --good: #1a7f37;
   --bad: #b42318;
   --bar-go: #0b5cad;
+  --bar-mapped: #0e8f8f;
   --bar-rust: #b45309;
 }
 
@@ -22,6 +23,7 @@
     --good: #4ac26b;
     --bad: #ff8a80;
     --bar-go: #6cb2ff;
+    --bar-mapped: #5fd0c8;
     --bar-rust: #f0a050;
   }
 }
@@ -63,6 +65,7 @@ pre code { background: none; padding: 0; }
 table { border-collapse: collapse; width: 100%; font-size: 0.9rem; }
 th, td { border-bottom: 1px solid var(--line); padding: 0.3rem 0.6rem; text-align: left; vertical-align: top; }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+th[colspan] { text-align: center; }
 .slower { color: var(--bad); font-weight: 600; }
 .faster { color: var(--good); font-weight: 600; }
 
@@ -71,6 +74,7 @@ svg text { fill: var(--fg); font: 12px system-ui, sans-serif; }
 svg .muted { fill: var(--muted); }
 svg .axis { stroke: var(--line); stroke-width: 1; }
 svg .bar-go { fill: var(--bar-go); }
+svg .bar-mapped { fill: var(--bar-mapped); }
 svg .bar-rust { fill: var(--bar-rust); }
 svg .line-1 { stroke: var(--bar-go); fill: none; stroke-width: 2; }
 svg .line-n { stroke: var(--bar-rust); fill: none; stroke-width: 2; }
@@ -81,6 +85,7 @@ svg .guide { stroke: var(--muted); stroke-dasharray: 4 3; stroke-width: 1; }
 .legend { display: flex; flex-wrap: wrap; gap: 1rem; font-size: 0.9rem; }
 .legend i { display: inline-block; width: 0.8rem; height: 0.8rem; margin-right: 0.3rem; border-radius: 2px; }
 .legend .go { background: var(--bar-go); }
+.legend .mapped { background: var(--bar-mapped); }
 .legend .rust { background: var(--bar-rust); }
 
 footer { border-top: 1px solid var(--line); margin-top: 3rem; padding-top: 1rem; padding-bottom: 2rem; color: var(--muted); font-size: 0.9rem; }

@@ -12,8 +12,8 @@ same files:
 
 | Harness | Where | Runs |
 |---|---|---|
-| vortex-go | `bench_cases_test.go` (root module), `BenchmarkCases/<case>` | `go test -bench` |
-| bench/ | `bench/bench_test.go` (module `bench/`), `BenchmarkCases/<case>/vortex-go` and `/parquet-go` | the cases parquet-go has (full scan, 3 columns, filter): the same rows, in a Vortex file and in a Parquet file, read into the same structs with each library |
+| vortex-go | `bench_cases_test.go` (root module), `BenchmarkCases/<case>`, and `BenchmarkCases/<case>/mapped` for a case that reads | `go test -bench` |
+| bench/ | `bench/bench_test.go` (module `bench/`), `BenchmarkCases/<case>/vortex-go`, `/vortex-go-mapped` and `/parquet-go` | the cases parquet-go has (full scan, 3 columns, filter): the same rows, in a Vortex file and in a Parquet file, read into the same structs with each library |
 | Rust | `tools/bench-rust/`, a Cargo project, the `vortex` crate pinned to `.vortex-version` | release build, native |
 
 The data, a case is `<data>/<operation>`:
@@ -51,8 +51,9 @@ A line is:
 ```json
 {"commit", "date", "vortex_version", "go_version", "rust_version",
  "machine": {"os", "cpu", "cores"},
- "cases": [{"name", "threads", "go", "rust", "go_rows", "parquet_go", "ratio_to_rust",
-            "ratio_to_parquet_go"}]}
+ "cases": [{"name", "threads", "go", "go_mapped", "rust", "go_rows", "go_rows_mapped", "parquet_go",
+            "ratio_to_rust", "ratio_to_rust_mapped", "ratio_to_parquet_go",
+            "ratio_to_parquet_go_mapped"}]}
 ```
 
 `go`, `rust`, `go_rows` and `parquet_go` hold `ns_per_op`, `rows_per_s` and `mb_per_s`, the
@@ -64,6 +65,15 @@ is slower.
 and parquet-go reading the same rows into the same structs. `go` is not the number to put next
 to `parquet_go`: it is a scan of batches, with no struct. `ratio_to_parquet_go` is `go_rows`
 over `parquet_go`. `make bench-json` fails when `bench/` gives no parquet-go result.
+
+Every case that reads is measured twice by vortex-go: on a file `OpenFile` opened, and on a
+file `OpenMapped` mapped in memory. `go_mapped` and `go_rows_mapped` are the second, with
+their ratios `ratio_to_rust_mapped` and `ratio_to_parquet_go_mapped`. A case that writes has
+none. The Rust harness (`open_path`) and parquet-go read the file: they have one time, which
+both of ours are compared with. The history of the ratio to Rust is the one of `OpenFile`.
+
+The website has a page for each comparison, `rust.html` and `parquet.html`, filled by
+`bench/cmd/benchsite` from the same `bench.json`.
 
 `benchstat` on a pull request (`make bench-compare`) compares one commit with `main`. The
 history is for what it cannot see: ten small slow-downs that each pass.

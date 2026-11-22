@@ -1,0 +1,28 @@
+<p class="note" data-testid="{{.Prefix}}-machine">Measured on {{.Machine}}, at commit <code>{{.Commit}}</code>, on {{.Date}}. {{.Versions}}.</p>
+<div class="table-wrap">
+<table data-testid="{{.Prefix}}-table">
+<thead><tr><th rowspan="2">Case</th><th rowspan="2" class="num">Threads</th><th rowspan="2" class="num">{{.Other}}</th>
+<th colspan="2" class="num">vortex-go, <code>OpenFile</code></th><th colspan="2" class="num">vortex-go, <code>OpenMapped</code></th></tr>
+<tr><th class="num">time</th><th class="num">vs {{.Other}}</th><th class="num">time</th><th class="num">vs {{.Other}}</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr data-testid="{{$.Prefix}}-row-{{.Index}}"><td>{{.Name}}</td>
+{{- /* line break */ -}}
+<td class="num">{{.Threads}}</td><td class="num">{{.Other}}</td>
+{{- /* line break */ -}}
+<td class="num">{{.Go}}</td><td class="num {{.Class}}">{{.Ratio}}</td>
+{{- /* line break */ -}}
+<td class="num">{{.Mapped}}</td><td class="num {{.MappedClass}}">{{.MappedRatio}}</td></tr>
+{{end}}</tbody>
+</table>
+</div>
+<h3>As bars</h3>
+<p class="note">Within a case, the longest bar is the slowest. Shorter is better.</p>
+<div class="legend"><span><i class="go"></i>vortex-go</span><span><i class="mapped"></i>vortex-go, mapped</span><span><i class="rust"></i>{{.Other}}</span></div>
+<svg data-testid="{{.Prefix}}-chart" role="img" aria-label="Time per case for vortex-go, read and mapped, and {{.Other}}" viewBox="0 0 640 {{.Height}}" width="640" height="{{.Height}}">
+{{range .Groups}}<g data-testid="{{$.Prefix}}-bars-{{.Index}}" transform="translate(0 {{.Y}})">
+<text x="0" y="{{.Height}}" class="muted">{{.Label}}</text>
+{{range .Bars}}<rect class="{{.Class}}" x="210" y="{{.Y}}" width="{{.W}}" height="8">
+<title>{{.Label}}: {{.Value}}</title></rect>
+<text x="{{.W}}" y="{{.Y}}" dx="216" dy="8" class="muted">{{.Value}}</text>
+{{end}}</g>
+{{end}}</svg>

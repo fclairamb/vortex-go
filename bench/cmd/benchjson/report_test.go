@@ -65,7 +65,27 @@ func TestBuildMergesTheThreeSources(t *testing.T) {
 	if one.GoRows == nil || one.GoRows.NsPerOp != 300 || one.RatioToParquetGo == nil || *one.RatioToParquetGo != 0.1 {
 		t.Errorf("rows: %+v ratio %v", one.GoRows, one.RatioToParquetGo)
 	}
+	// The same case on the mapped file, in the two modules: against Rust, 900 over 300, and
+	// against parquet-go, 150 over 3000.
+	if one.GoMapped == nil || one.GoMapped.NsPerOp != 900 || one.RatioToRustMapped == nil || *one.RatioToRustMapped != 3 {
+		t.Errorf("mapped: %+v ratio %v", one.GoMapped, one.RatioToRustMapped)
+	}
+	if one.GoRowsMapped == nil || one.GoRowsMapped.NsPerOp != 150 || *one.RatioToParquetGoMapped != 0.05 {
+		t.Errorf("mapped rows: %+v ratio %v", one.GoRowsMapped, one.RatioToParquetGoMapped)
+	}
+	// A case that writes has no mapped run, and the mapped run of a case is not a case.
+	if w := caseOf(t, rep, "gen16/write_none", 1); w.GoMapped != nil || w.RatioToRustMapped != nil {
+		t.Errorf("write: %+v", w)
+	}
+	for _, c := range rep.Cases {
+		if strings.Contains(c.Name, "mapped") {
+			t.Errorf("%s is in the report", c.Name)
+		}
+	}
 	four := caseOf(t, rep, "gen16/scan_full", 4)
+	if four.GoMapped == nil || four.GoMapped.NsPerOp != 2400 || *four.RatioToRustMapped != 2 {
+		t.Errorf("mapped, 4 threads: %+v ratio %v", four.GoMapped, four.RatioToRustMapped)
+	}
 	if four.Go.NsPerOp != 12000 || four.Rust.NsPerOp != 1200 {
 		t.Errorf("4 threads: %+v", four)
 	}

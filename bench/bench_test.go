@@ -201,9 +201,9 @@ func readParquet[T any](b *testing.B, path string, keep func(*T)) int64 {
 	}
 }
 
-func readVortex[T any](b *testing.B, path string, q vortex.Query, keep func(*T)) int64 {
+func readVortex[T any](b *testing.B, open vOpen, path string, q vortex.Query, keep func(*T)) int64 {
 	b.Helper()
-	f, err := vortex.OpenFile(path)
+	f, err := open(path)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -219,17 +219,29 @@ func readVortex[T any](b *testing.B, path string, q vortex.Query, keep func(*T))
 	return n
 }
 
+// vOpen opens a Vortex file: OpenFile, or OpenMapped for the mapped harness.
+type vOpen func(path string) (*vortex.File, error)
+
+// vortexHarnesses are the two ways vortex-go reads the file of a case: with reads, and mapped
+// in memory. parquet-go has one, it reads.
+var vortexHarnesses = []struct {
+	open vOpen
+	name string
+}{{vortex.OpenFile, "vortex-go"}, {vortex.OpenMapped, "vortex-go-mapped"}}
+
 func benchFullScan(b *testing.B) {
 	vpath, ppath := data(b)
 	sink := 0
-	b.Run("vortex-go", func(b *testing.B) {
-		b.ReportAllocs()
-		var n int64
-		for b.Loop() {
-			n = readVortex(b, vpath, vortex.Query{}, func(r *vRow) { sink += int(r.ID) })
-		}
-		report(b, n)
-	})
+	for _, h := range vortexHarnesses {
+		b.Run(h.name, func(b *testing.B) {
+			b.ReportAllocs()
+			var n int64
+			for b.Loop() {
+				n = readVortex(b, h.open, vpath, vortex.Query{}, func(r *vRow) { sink += int(r.ID) })
+			}
+			report(b, n)
+		})
+	}
 	b.Run("parquet-go", func(b *testing.B) {
 		b.ReportAllocs()
 		var n int64
@@ -244,14 +256,16 @@ func benchFullScan(b *testing.B) {
 func bench3of16(b *testing.B) {
 	vpath, ppath := data(b)
 	sink := 0
-	b.Run("vortex-go", func(b *testing.B) {
-		b.ReportAllocs()
-		var n int64
-		for b.Loop() {
-			n = readVortex(b, vpath, vortex.Query{}, func(r *v3) { sink += int(r.ID) })
-		}
-		report(b, n)
-	})
+	for _, h := range vortexHarnesses {
+		b.Run(h.name, func(b *testing.B) {
+			b.ReportAllocs()
+			var n int64
+			for b.Loop() {
+				n = readVortex(b, h.open, vpath, vortex.Query{}, func(r *v3) { sink += int(r.ID) })
+			}
+			report(b, n)
+		})
+	}
 	b.Run("parquet-go", func(b *testing.B) {
 		b.ReportAllocs()
 		var n int64
@@ -268,15 +282,17 @@ func bench3of16(b *testing.B) {
 func benchFilter(b *testing.B) {
 	vpath, ppath := data(b)
 	sink := 0
-	b.Run("vortex-go", func(b *testing.B) {
-		b.ReportAllocs()
-		q := vortex.Query{Filter: vortex.Col("user").Lt(1000)}
-		var n int64
-		for b.Loop() {
-			n = readVortex(b, vpath, q, func(r *vFilter) { sink += int(r.ID) })
-		}
-		report(b, n)
-	})
+	for _, h := range vortexHarnesses {
+		b.Run(h.name, func(b *testing.B) {
+			b.ReportAllocs()
+			q := vortex.Query{Filter: vortex.Col("user").Lt(1000)}
+			var n int64
+			for b.Loop() {
+				n = readVortex(b, h.open, vpath, q, func(r *vFilter) { sink += int(r.ID) })
+			}
+			report(b, n)
+		})
+	}
 	b.Run("parquet-go", func(b *testing.B) {
 		b.ReportAllocs()
 		var n int64
@@ -293,7 +309,7 @@ func benchFilter(b *testing.B) {
 }
 
 // BenchmarkCases runs the cases of bench/cases.json that parquet-go has too, under the names of
-// that list: BenchmarkCases/<case>/vortex-go and BenchmarkCases/<case>/parquet-go. The
+// that list: BenchmarkCases/<case>/vortex-go, /vortex-go-mapped and /parquet-go. The
 // benchjson tool merges them with the results of the root module and of the Rust harness.
 func BenchmarkCases(b *testing.B) {
 	b.Run("gen16/scan_full", benchFullScan)

@@ -164,6 +164,7 @@ site:
 	mkdir -p .cache/bench-data
 	git show origin/bench-data:bench.json > .cache/bench-data/bench.json 2> /dev/null || rm -f .cache/bench-data/bench.json
 	git show origin/bench-data:history.jsonl > .cache/bench-data/history.jsonl 2> /dev/null || rm -f .cache/bench-data/history.jsonl
-	go -C bench run ./cmd/benchsite -page ../_site/rust.html -bench ../.cache/bench-data/bench.json \
-		-history ../.cache/bench-data/history.jsonl -sizes ../testdata/size-ratios.json
+	go -C bench run ./cmd/benchsite -page ../_site/rust.html -parquet-page ../_site/parquet.html \
+		-bench ../.cache/bench-data/bench.json -history ../.cache/bench-data/history.jsonl \
+		-sizes ../testdata/size-ratios.json
 	@echo "site: _site/index.html"
