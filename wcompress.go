@@ -112,22 +112,14 @@ func ticksOf(u Unit) int64 {
 }
 
 // compressData is the compressed array of the rows of d, of type t, or nil for the plain one.
-// scratch holds the bytes of decimals.
-func compressData(cp *compress.Compressor, t Type, d Data, scratch *[]byte) *encode.Node {
+func compressData(cp *compress.Compressor, t Type, d Data) *encode.Node {
 	switch t.kind {
 	case Bool:
 		return cp.Bools(d.bools, d.nulls)
 	case Utf8, Binary:
 		return cp.Strings(d.bins, d.nulls, t.kind == Utf8)
 	case KindDecimal:
-		width := decimalWidth(t.precision)
-		raw := (*scratch)[:0]
-		for _, v := range d.decs {
-			le := v.le()
-			raw = append(raw, le[:width]...)
-		}
-		*scratch = raw
-		return cp.Decimals(raw, width, d.nulls)
+		return cp.Decimals(d.raw, decimalWidth(t.precision), d.nulls)
 	case Timestamp:
 		return cp.Timestamps(unsafex.Slice[int64](d.raw), d.nulls, ticksOf(t.unit))
 	}
@@ -146,7 +138,7 @@ func (w *Writer) encodeCompressed(t Type, d Data) (flatbuf.Off, bool) {
 	}
 	node := w.pre
 	if !w.hasPre {
-		node = compressData(w.comp, t, d, &w.decRaw)
+		node = compressData(w.comp, t, d)
 	}
 	w.pre, w.hasPre = nil, false
 	if node == nil {
@@ -190,13 +182,12 @@ func (w *Writer) compressNumbers(p compress.PType, raw []byte) *encode.Node {
 
 // waiting is a full chunk of a column that waits to be compressed, then written.
 type waiting struct {
-	c      *column
-	buf    *body
-	comp   *compress.Compressor
-	node   *encode.Node // the compressed array, nil for the plain one
-	arena  []byte
-	decRaw []byte
-	stats  astat // the statistics of the rows, found with the compressed array
+	c     *column
+	buf   *body
+	comp  *compress.Compressor
+	node  *encode.Node // the compressed array, nil for the plain one
+	arena []byte
+	stats astat // the statistics of the rows, found with the compressed array
 }
 
 // queueLen is the chunks that wait at most, when WriteOptions.Buffer sets no size: enough for
@@ -281,7 +272,7 @@ func (w *Writer) drain() {
 // compressWaiting compresses a chunk that waits. It only touches the chunk.
 func compressWaiting(q *waiting) {
 	q.comp.Reset()
-	q.node = compressData(q.comp, q.c.t, Data{q.buf}, &q.decRaw)
+	q.node = compressData(q.comp, q.c.t, Data{q.buf})
 	q.stats = q.c.arrayStats(q.buf)
 }
 

@@ -73,7 +73,7 @@ func TestScanFast(t *testing.T) {
 			t.Errorf("%s: one row is not sorted", c.t)
 		}
 	}
-	// Decimals of at most 8 bytes are compared as their low word.
+	// Decimals of at most 8 bytes are compared as signed integers of their width.
 	decs := []Decimal{DecimalFromInt64(4), DecimalFromInt64(-7), DecimalFromInt64(9), DecimalFromInt64(-7), DecimalFromInt64(9)}
 	for _, n := range [][]bool{nil, {false, true, false, false, true}} {
 		wantMin, wantMax := 1, 2
@@ -81,15 +81,13 @@ func TestScanFast(t *testing.T) {
 			wantMin = 3
 		}
 		r := newRanger(DecimalOf(12, 2))
-		if imin, imax, nans := r.scan(&body{kind: dDec, decs: decs, nulls: n, n: 5}, 0, 5); imin != wantMin || imax != wantMax || nans != 0 {
+		raw := appendDecimals(nil, decs, r.width)
+		if imin, imax, nans := r.scan(&body{kind: dDec, raw: raw, nulls: n, n: 5}, 0, 5); imin != wantMin || imax != wantMax || nans != 0 {
 			t.Errorf("decimals, nulls %v: min %d, max %d, %d NaNs", n != nil, imin, imax, nans)
 		}
 	}
-	if imin, imax, _ := scanSmallDecimals(decs, nil, 2, 2); imin != -1 || imax != -1 {
-		t.Errorf("no decimal: min %d, max %d", imin, imax)
-	}
 	// A column that is not one of numbers read where they are has no fast path.
-	for _, ty := range []Type{Float16Type(), Utf8Type(), BoolType(), DecimalOf(5, 1)} {
+	for _, ty := range []Type{Float16Type(), Utf8Type(), BoolType(), DecimalOf(20, 1)} {
 		r := newRanger(ty)
 		if _, ok := r.scanFast(newBody(ty), 0, 0); ok {
 			t.Errorf("%s has a fast path", ty)

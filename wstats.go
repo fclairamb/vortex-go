@@ -138,8 +138,9 @@ func (r *ranger) scan(b *body, lo, hi int) (imin, imax, nans int) {
 	if f, ok := r.scanFast(b, lo, hi); ok {
 		return f.imin, f.imax, f.nans
 	}
-	if r.class == scDec && r.width <= 8 {
-		return scanSmallDecimals(b.decs, b.nulls, lo, hi)
+	if r.class == scBytes || r.class == scUUID {
+		imin, imax = scanBytes(b.bins, b.nulls, lo, hi)
+		return imin, imax, 0
 	}
 	imin, imax = -1, -1
 	for i := lo; i < hi; i++ {
@@ -177,7 +178,7 @@ func (r *ranger) order(b *body, i, j int) int {
 	case scBool:
 		return cmp.Compare(boolInt(b.bools[i]), boolInt(b.bools[j]))
 	case scDec:
-		return b.decs[i].Cmp(b.decs[j])
+		return decimalFromLE(b.raw[i*w : (i+1)*w]).Cmp(decimalFromLE(b.raw[j*w : (j+1)*w]))
 	}
 	return bytes.Compare(b.bins[i], b.bins[j])
 }
@@ -257,9 +258,6 @@ func (r *ranger) putFixed(dst []byte, b *body, i int) []byte {
 		return append(dst, zeros[:w]...)
 	case r.class == scBool:
 		return append(dst, byte(boolInt(b.bools[i])))
-	case r.class == scDec:
-		le := b.decs[i].le()
-		return append(dst, le[:w]...)
 	}
 	return append(dst, b.raw[i*w:(i+1)*w]...)
 }
@@ -472,7 +470,6 @@ func (z *zoneAcc) missing() []bool {
 
 // fixed is the Data of the fixed-width values raw, one per zone.
 func (z *zoneAcc) fixed(raw []byte) Data {
-	w := z.width
 	switch z.class {
 	case scBool:
 		v := make([]bool, z.n)
@@ -481,11 +478,7 @@ func (z *zoneAcc) fixed(raw []byte) Data {
 		}
 		return OfBools(v)
 	case scDec:
-		v := make([]Decimal, z.n)
-		for i := range v {
-			v[i] = decimalFromLE(raw[i*w : (i+1)*w])
-		}
-		return OfDecimals(v)
+		return Data{&body{kind: dDec, n: z.n, raw: raw}}
 	}
 	return Data{&body{kind: dPrim, pk: storageKind(z.t), n: z.n, raw: raw}}
 }

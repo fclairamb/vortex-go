@@ -112,20 +112,14 @@ func (w *Writer) encodeForcedBools(d Data) (flatbuf.Off, bool) {
 
 // encodeForcedDecimals is the array of the decimals of d as decimal byte parts, when that is
 // the encoding forced and the values fit: else false, with the error of the write.
-func (w *Writer) encodeForcedDecimals(t Type, d Data, n int) (flatbuf.Off, bool) {
+func (w *Writer) encodeForcedDecimals(t Type, d Data) (flatbuf.Off, bool) {
 	if w.force != "decimal_byte_parts" || w.depth != 1 {
 		return 0, false
 	}
 	if w.enc == nil {
 		w.enc = encode.New()
 	}
-	width := decimalWidth(t.precision)
-	raw := w.alloc(n * width)
-	for i, v := range d.decs {
-		le := v.le()
-		copy(raw[i*width:], le[:width])
-	}
-	node, ok := encode.DecimalBytes(w.enc, raw, width, d.nulls)
+	node, ok := encode.DecimalBytes(w.enc, d.raw, decimalWidth(t.precision), d.nulls)
 	if !ok {
 		w.setErr(fmt.Errorf("vortex: Write: the %s encoding cannot take %s", w.force, d.describe()))
 		return 0, false

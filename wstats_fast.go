@@ -1,6 +1,10 @@
 package vortex
 
-import "github.com/fclairamb/vortex-go/internal/unsafex"
+import (
+	"bytes"
+
+	"github.com/fclairamb/vortex-go/internal/unsafex"
+)
 
 // The statistics of a column of numbers are found on the numbers where they are, a type at a
 // time: the general path reads a value through its width for every comparison.
@@ -28,24 +32,35 @@ func scanNumbers[T unsafex.Number](v []T, nulls []bool, lo, hi int) (imin, imax,
 	return imin, imax, nans
 }
 
-// scanSmallDecimals is ranger.scan for decimals of at most 8 bytes: checkDecimals made sure
-// that each one is its low word, a signed integer.
-func scanSmallDecimals(v []Decimal, nulls []bool, lo, hi int) (imin, imax, nans int) {
+// scanBytes is ranger.scan for strings, binary and uuids: the rows of the first smallest and
+// of the first largest value of the valid rows lo to hi (-1 when there is none). A value under
+// the smallest is not over the largest, so most rows take one comparison.
+func scanBytes(v [][]byte, nulls []bool, lo, hi int) (imin, imax int) {
 	imin, imax = -1, -1
-	var least, most int64
+	var least, most []byte
 	for i := lo; i < hi; i++ {
-		x := int64(v[i].w[0])
+		x := v[i]
 		switch {
 		case nulls != nil && nulls[i]:
 		case imin < 0:
 			imin, imax, least, most = i, i, x, x
-		case x < least:
+		case bytes.Compare(x, least) < 0:
 			imin, least = i, x
-		case x > most:
+		case bytes.Compare(x, most) > 0:
 			imax, most = i, x
 		}
 	}
-	return imin, imax, 0
+	return imin, imax
+}
+
+// sortedBytes reports whether no value of v is under the one before.
+func sortedBytes(v [][]byte) bool {
+	for i := 1; i < len(v); i++ {
+		if bytes.Compare(v[i-1], v[i]) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // sortedNumbers reports whether no value of v is under the one before. v has no NaN.
@@ -68,7 +83,11 @@ func typedNumbers[R any](r *ranger, b *body,
 	u8 func([]uint8) R, u16 func([]uint16) R, u32 func([]uint32) R, u64 func([]uint64) R,
 	g32 func([]float32) R, g64 func([]float64) R,
 ) (out R, ok bool) {
-	switch numberKey(r.class, r.width) {
+	class := r.class
+	if class == scDec {
+		class = scInt // a decimal of the buffer is its two's complement, of its width
+	}
+	switch numberKey(class, r.width) {
 	case numberKey(scInt, 1):
 		return f8(unsafex.Slice[int8](b.raw)), true
 	case numberKey(scInt, 2):
@@ -113,8 +132,12 @@ func (r *ranger) scanFast(b *body, lo, hi int) (extremes, bool) {
 }
 
 // sortedFast reports whether the n rows of a column of numbers without a null or a NaN are
-// sorted. It is not ok for a column that is not one of numbers read where they are.
+// sorted. It is not ok for a column that is not one of numbers read where they are, or of
+// bytes.
 func (r *ranger) sortedFast(b *body) (sorted, ok bool) {
+	if r.class == scBytes || r.class == scUUID {
+		return sortedBytes(b.bins[:b.n]), true
+	}
 	return typedNumbers(r, b,
 		sortedNumbers[int8], sortedNumbers[int16], sortedNumbers[int32], sortedNumbers[int64],
 		sortedNumbers[uint8], sortedNumbers[uint16], sortedNumbers[uint32], sortedNumbers[uint64],
