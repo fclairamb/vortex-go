@@ -145,7 +145,12 @@ What the reader does to stay close to the reference, so that a change does not u
   children decoded them, which checks them too;
 - a FastLanes block is unpacked 8 bytes at a time, which is 8, 4 or 2 lanes for words of 8, 16
   or 32 bits: one shift and one mask for all of them (`unpackBlock`);
-- the validity of the rows of a dictionary is made a byte at a time, with no test per row.
+- the validity of the rows of a dictionary is made a byte at a time, with no test per row;
+- the buffers of a pool are in classes a quarter of a power of two apart, not powers of two: a
+  scan of a file of few rows, whose last batch is never given back, allocates at most a
+  quarter more than it decodes, not up to twice;
+- runs of numbers fill their rows run by run (`fillRuns`), a take of numbers copies a word per
+  row, not a slice, and a constant number is a doubling copy: no copy call per row.
 
 What the writer does with its memory, for the same reason:
 
