@@ -139,3 +139,15 @@ What the reader does to stay close to the reference, so that a change does not u
 - a FastLanes block is unpacked 8 bytes at a time, which is 8, 4 or 2 lanes for words of 8, 16
   or 32 bits: one shift and one mask for all of them (`unpackBlock`);
 - the validity of the rows of a dictionary is made a byte at a time, with no test per row.
+
+What the writer does to choose the encodings of strings with no more work than the reference:
+
+- a dictionary of strings is not tried when more than half of the valid rows have distinct
+  heads, the length and the first 4 bytes, as the reference's `StringDictScheme` does: a
+  column of free text is not made a dictionary on the sample, with its values compressed, only
+  to lose;
+- the probe of the dictionary layout stops as soon as it knows: it applies the best scheme of
+  the sample only when it is the dictionary, and compresses the values and the codes of that
+  dictionary only when the dictionary does not already beat the plain array without them;
+- the training of FSST takes the best candidates from a heap, as the crate does, not from a
+  sort of all of them: a round keeps 255 symbols out of thousands of candidates.

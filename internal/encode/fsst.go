@@ -1,11 +1,9 @@
 package encode
 
 import (
-	"cmp"
 	"encoding/binary"
 	"math"
 	"math/bits"
-	"slices"
 
 	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
@@ -322,20 +320,20 @@ func (s *fsstState) optimize(share int, prune bool) {
 			s.addCandidate(merged, int(s.c2[int(code1)<<9+int(code2)])*symLen(merged))
 		})
 	})
-	// Best gain first, then the longest symbol, then the largest: the first test settles nearly
-	// every pair, so the two others are only made when it does not.
-	slices.SortFunc(s.cands, func(a, b fsstCand) int {
-		if a.gain != b.gain {
-			return cmp.Compare(b.gain, a.gain)
-		}
-		return cmp.Or(cmp.Compare(symLen(b.sym), symLen(a.sym)), cmp.Compare(b.sym, a.sym))
-	})
+	// The candidates are taken best first, from a heap as the crate does: the table is made of
+	// the first few hundred of thousands of them, which a sort would order in full.
+	h := s.cands
+	for i := len(h)/2 - 1; i >= 0; i-- {
+		siftDown(h, i)
+	}
 	s.clearBuilt()
 	inserted := 0
-	for _, c := range s.cands {
-		if inserted >= fsstMaxSymbols {
-			break
-		}
+	for len(h) > 0 && inserted < fsstMaxSymbols {
+		c := h[0]
+		last := len(h) - 1
+		h[0] = h[last]
+		h = h[:last]
+		siftDown(h, 0)
 		n := symLen(c.sym)
 		if prune {
 			saves := c.gain
@@ -349,6 +347,37 @@ func (s *fsstState) optimize(share int, prune bool) {
 		if s.insert(c.sym, n) {
 			inserted++
 		}
+	}
+}
+
+// better says whether candidate a comes before b: the best gain first, then the longest
+// symbol, then the largest. No two candidates have the same symbol.
+func better(a, b fsstCand) bool {
+	if a.gain != b.gain {
+		return a.gain > b.gain
+	}
+	if la, lb := symLen(a.sym), symLen(b.sym); la != lb {
+		return la > lb
+	}
+	return a.sym > b.sym
+}
+
+// siftDown moves the candidate at i of the heap h down to its place: each one comes before
+// its children.
+func siftDown(h []fsstCand, i int) {
+	for {
+		best := i
+		if l := 2*i + 1; l < len(h) && better(h[l], h[best]) {
+			best = l
+		}
+		if r := 2*i + 2; r < len(h) && better(h[r], h[best]) {
+			best = r
+		}
+		if best == i {
+			return
+		}
+		h[i], h[best] = h[best], h[i]
+		i = best
 	}
 }
 
