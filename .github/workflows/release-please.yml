@@ -15,6 +15,10 @@ jobs:
   release-please:
     runs-on: ubuntu-26.04
     steps:
+      # CI_PAT is a token of the owner, limited to this repository (contents and pull requests,
+      # read and write; gopass github/vortex-go/ci-pat). A pull request opened with GITHUB_TOKEN
+      # starts no workflow, so Build would not run on the release pull request. Without the
+      # secret, GITHUB_TOKEN still opens it.
       - uses: googleapis/release-please-action@v5.0.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.CI_PAT || secrets.GITHUB_TOKEN }}
