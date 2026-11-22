@@ -29,8 +29,10 @@ the middle), and `write_default`, `write_none`, `write_compact`, which write the
 rows of the file again, decoded once outside the timed loop, with each compression mode. For
 Rust, `none` is a compressor with no scheme and `compact` is the compact preset of BtrBlocks.
 
-Every case is run with 1 thread and with all cores: `-cpu 1,<cores>` for Go, a Tokio runtime
-with that many workers and a scan concurrency of that many for Rust. One thread shows the
+Every case is run with 1 thread and with all cores: one `go test -cpu 1`, then one
+`go test -cpu <cores>`, for Go, a Tokio runtime with that many workers and a scan concurrency
+of that many for Rust. Not one `-cpu 1,<cores>`: the sub-benchmarks of `BenchmarkCases` then
+run once before `-cpu` is applied, on every core, and that run counted as a run at 1 thread. One thread shows the
 decoders, all cores show the scan pipeline. Each harness reads the file from disk with a warm
 page cache (one warm-up run for Rust, the file written by the first benchmark for Go). The Rust
 scans decode every chunk to canonical arrays, like the Go scans decode every batch: a scan that
@@ -76,7 +78,9 @@ The website has a page for each comparison, `rust.html` and `parquet.html`, fill
 `bench/cmd/benchsite` from the same `bench.json`.
 
 `benchstat` on a pull request (`make bench-compare`) compares one commit with `main`. The
-history is for what it cannot see: ten small slow-downs that each pass.
+history is for what it cannot see: ten small slow-downs that each pass. On a pull request,
+CI runs every benchmark on all the cores of the runner, with the TPC-H and ClickBench files
+of the pinned release (`make fixtures`), so the cases of the small files are compared too.
 
 ## Run it locally
 

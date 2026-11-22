@@ -106,12 +106,26 @@ jobs:
         with:
           go-version: '1.27'
 
+      # The TPC-H and ClickBench files of the pinned release, for their BenchmarkCases: without
+      # them only gen16 runs, and a change of the writer on small files shows nothing. Both
+      # checkouts read them from .cache/fixtures.
+      - name: Cache fixtures
+        uses: actions/cache@v6
+        with:
+          path: .cache/fixtures
+          key: bench-fixtures-${{ hashFiles('.vortex-version', 'scripts/fixtures.sh') }}
+
+      - name: Fetch the fixtures
+        run: make fixtures
+
       - name: Benchmark main and the PR
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           git worktree add --detach "$RUNNER_TEMP/main" "origin/$BASE_REF"
+          mkdir -p "$RUNNER_TEMP/main/.cache"
+          ln -s "$PWD/.cache/fixtures" "$RUNNER_TEMP/main/.cache/fixtures"
           # Interleaved, so that the drift of the runner hits both sides alike.
           scripts/bench-pr.sh "$RUNNER_TEMP/main" . "$RUNNER_TEMP"
           # go run pkg@version does not touch go.mod: benchstat is not a dependency. The text
