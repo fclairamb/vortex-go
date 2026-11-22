@@ -641,10 +641,13 @@ type allocRow struct {
 	Y  []byte           `vortex:"binary_r"`
 	N  sql.Null[int64]  `vortex:"i64_n"`
 	NS sql.Null[[]byte] `vortex:"binary_n"`
+	T  string           `vortex:"utf8_r"`
+	TN sql.Null[string] `vortex:"utf8_n"`
 }
 
-// TestRowsFillAllocations checks that the fill of fixed-width fields, bytes and nullable
-// ones, allocates nothing for a batch of rows, so nothing for a row.
+// TestRowsFillAllocations checks that the fill of fixed-width fields, bytes, strings and
+// nullable ones allocates for a batch of rows, the same for 1 row and for all, so nothing for
+// a row.
 func TestRowsFillAllocations(t *testing.T) {
 	f := openFixture(t, matrixPath)
 	p, err := newRowPlan(f, reflect.TypeFor[allocRow]())
@@ -660,11 +663,12 @@ func TestRowsFillAllocations(t *testing.T) {
 			t.Fatalf("a field of %v is not filled by the fast path", c.path)
 		}
 	}
-	// The fill allocates for the batch (the closures that read it), never for a row.
+	// The fill allocates for the batch (the closures that read it, the block of the strings),
+	// never for a row.
 	first := rows.Slice(0, 1)
 	one := testing.AllocsPerRun(50, func() { _ = p.fill(b, first) })
 	all := testing.AllocsPerRun(50, func() { _ = p.fill(b, rows) })
-	if one != all || all > 5 {
+	if one != all || all > 9 {
 		t.Fatalf("a fill of 1 row allocates %v times, of %d rows %v", one, b.Len(), all)
 	}
 }

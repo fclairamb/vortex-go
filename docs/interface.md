@@ -199,7 +199,11 @@ it is out of scope.
   to keep values. A view never points into the file, so a stale view gives wrong data,
   never a crash.
 - **Row structs.**
-  - `string` copies and is always safe.
+  - `string` copies and is always safe. The strings of a field share one block per batch
+    (one allocation, not one per row), a copy owned by the garbage collector, never the
+    scan's memory or a mapped file. The block is at most the bytes of that field's strings in
+    the batch (8192 rows at most); a string kept keeps its block alive, so `strings.Clone`
+    the few strings kept from many batches.
   - `[]byte` is a view, valid in the loop body.
   - `sql.Null[T]` or a pointer for nullable columns. The pointer allocates.
   - Nested structs, slices and maps are supported. Slices and maps allocate per row.

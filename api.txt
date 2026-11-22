@@ -49,8 +49,8 @@ func Rows[T any](ctx context.Context, f *File, q Query) iter.Seq2[T, error]
       - bool, the numbers (int and uint are 64 bits), and float32 for a f16
         column;
       - vortex.Decimal for a decimal, or int64 when its precision is 18 or less;
-      - string (a copy) or []byte (a view, valid in the loop body) for utf8,
-        []byte for binary;
+      - string (a copy, see below) or []byte (a view, valid in the loop body)
+        for utf8, []byte for binary;
       - time.Time for a date and a timestamp (UTC unless the type has a zone),
         time.Duration since midnight for a time, or their storage integer;
       - [16]byte for a uuid;
@@ -62,9 +62,15 @@ func Rows[T any](ctx context.Context, f *File, q Query) iter.Seq2[T, error]
     leave its field out.
 
     A field whose type is a number, a bool, a decimal, a time, a uuid, a string
-    or a []byte, plain or in sql.Null, is filled without allocating for the row
-    (a string allocates its copy). Pointers, slices, maps and variants allocate
-    for each row.
+    or a []byte, plain or in sql.Null, is filled without allocating for the row.
+    Pointers, slices, maps and variants allocate for each row.
+
+    The strings of such a field share one block per batch, a copy of their bytes
+    that the garbage collector owns, never the memory of the scan or of a mapped
+    file: they stay valid after the loop. The block is at most the bytes of the
+    strings of that field in the batch (8192 rows at most), and one string kept
+    keeps its whole block alive: use strings.Clone to keep a few strings of many
+    batches.
 
     A field that does not fit its column, a missing column, a T that is not a
     struct, and every error of Scan, come back as the error of the iteration,

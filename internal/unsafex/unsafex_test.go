@@ -178,6 +178,16 @@ func TestStringBytes(t *testing.T) {
 	}
 }
 
+func TestString(t *testing.T) {
+	b := []byte("abcdef")
+	if got := String(b[1:4]); got != "bcd" {
+		t.Fatalf("got %q", got)
+	}
+	if got := String(nil); got != "" {
+		t.Fatalf("got %q", got)
+	}
+}
+
 // TestGather reads the fields back, strings and slices included, over a collection, and a
 // null row gets the zero value.
 func TestGather(t *testing.T) {
