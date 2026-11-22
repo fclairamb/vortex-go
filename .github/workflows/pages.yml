@@ -60,8 +60,9 @@ jobs:
       - name: Build the site
         run: |
           rm -rf _site && mkdir -p _site && cp website/* _site/
-          go -C bench run ./cmd/benchsite -page ../_site/rust.html -bench ../.cache/bench-data/bench.json \
-            -history ../.cache/bench-data/history.jsonl -sizes ../testdata/size-ratios.json
+          go -C bench run ./cmd/benchsite -page ../_site/rust.html -parquet-page ../_site/parquet.html \
+            -bench ../.cache/bench-data/bench.json -history ../.cache/bench-data/history.jsonl \
+            -sizes ../testdata/size-ratios.json
 
       - name: Upload the site
         if: github.event_name == 'pull_request'

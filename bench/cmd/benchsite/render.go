@@ -12,8 +12,8 @@ import (
 )
 
 var (
-	//go:embed templates/speed.tmpl
-	speedTemplate string
+	//go:embed templates/compare.tmpl
+	compareTemplate string
 	//go:embed templates/history.tmpl
 	historyTemplate string
 	//go:embed templates/size.tmpl
@@ -44,7 +44,7 @@ func optNs(r *result) string {
 	return fmtNs(r.NsPerOp)
 }
 
-// ratioCell is a ratio to Rust or to parquet-go, marked when we are slower.
+// ratioCell is our time over the time of another implementation, marked when we are slower.
 func ratioCell(r *float64) (text, class string) {
 	switch {
 	case r == nil:
@@ -77,39 +77,61 @@ type group struct {
 	Height int
 }
 
-// row is a line of the table of the ratios to Rust, and of the one of the ratios to
-// parquet-go: Rust is empty in the second, Parquet in the first.
+// row is a line of a comparison: the time of the other implementation, ours on a file we
+// read and on a file mapped in memory, and each of ours over the other.
 type row struct {
-	Name, Threads, Go, Rust, Parquet string
-	Ratio, Class                     string
-	Index                            int
+	Name, Threads, Other string
+	Go, Ratio, Class     string
+	Mapped, MappedRatio  string
+	MappedClass          string
+	Index                int
 }
 
-type speedView struct {
+// compareView is a comparison with another implementation: the table and the bars.
+type compareView struct {
+	Prefix                          string // of the data-testid attributes
+	Other                           string // the name of the other implementation
 	Machine, Commit, Date, Versions string
 	Rows                            []row
-	Parquet                         []row
 	Groups                          []group
 	Height                          int
 }
 
-// parquetRows is the cases that both libraries read, in the order of the report.
-func parquetRows(cases []benchCase) []row {
-	var rows []row
-	for i := range cases {
-		c := &cases[i]
-		if c.GoRows == nil || c.ParquetGo == nil {
-			continue
-		}
-		ratio, class := ratioCell(c.RatioToParquetGo)
-		rows = append(rows, row{
-			Index: len(rows), Name: c.Name, Threads: strconv.Itoa(c.Threads),
-			Go: fmtNs(c.GoRows.NsPerOp), Parquet: fmtNs(c.ParquetGo.NsPerOp),
-			Ratio: ratio, Class: class,
-		})
-	}
-	return rows
+// versus is one case next to another implementation: its time, ours read and mapped, and
+// our times over its. ours is nil for a case that is not in the comparison.
+type versus struct {
+	c                   *benchCase
+	other, ours, mapped *result
+	ratio, ratioMapped  *float64
 }
+
+// comparison is what the two pages have of their own: who we are compared with, and which
+// results of a case are the ones to compare.
+type comparison struct {
+	pick   func(c *benchCase) versus
+	prefix string
+	other  string
+}
+
+var (
+	// vsRust is the scans and the writes of the same Vortex file, in batches.
+	vsRust = comparison{prefix: "speed", other: "Rust", pick: func(c *benchCase) versus {
+		return versus{
+			c: c, other: c.Rust, ours: &c.Go, mapped: c.GoMapped,
+			ratio: c.RatioToRust, ratioMapped: c.RatioToRustMapped,
+		}
+	}}
+	// vsParquet is the same rows read into the same structs, from a file of each format.
+	vsParquet = comparison{prefix: "parquet", other: "parquet-go", pick: func(c *benchCase) versus {
+		if c.ParquetGo == nil {
+			return versus{}
+		}
+		return versus{
+			c: c, other: c.ParquetGo, ours: c.GoRows, mapped: c.GoRowsMapped,
+			ratio: c.RatioToParquetGo, ratioMapped: c.RatioToParquetGoMapped,
+		}
+	}}
+)
 
 const (
 	labelW  = 200
@@ -119,12 +141,17 @@ const (
 	rowGap  = 14
 )
 
-// sorted returns the cases with the ones where we lose first: the highest ratio to Rust, then
-// the cases that have no ratio.
-func sorted(cases []benchCase) []benchCase {
-	out := append([]benchCase(nil), cases...)
+// pickSorted is the cases of a comparison, the ones where we lose first: the highest ratio,
+// then the cases that have no ratio.
+func pickSorted(cases []benchCase, cmp comparison) []versus {
+	var out []versus
+	for i := range cases {
+		if v := cmp.pick(&cases[i]); v.ours != nil {
+			out = append(out, v)
+		}
+	}
 	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i].RatioToRust, out[j].RatioToRust
+		a, b := out[i].ratio, out[j].ratio
 		switch {
 		case a == nil || b == nil:
 			return a != nil && b == nil
@@ -136,67 +163,78 @@ func sorted(cases []benchCase) []benchCase {
 	return out
 }
 
-func newSpeedView(r *report) speedView {
-	v := speedView{
+// bars is the bars of a case: one per result that was measured, the longest for the slowest.
+func bars(v versus, other string) ([]bar, int) {
+	series := []struct {
+		r            *result
+		class, label string
+	}{{v.ours, "bar-go", "vortex-go"}, {v.mapped, "bar-mapped", "vortex-go, mapped"}, {v.other, "bar-rust", other}}
+	longest := 0.0
+	for _, s := range series {
+		if s.r != nil {
+			longest = math.Max(longest, s.r.NsPerOp)
+		}
+	}
+	var out []bar
+	y := 0
+	for _, s := range series {
+		if s.r == nil {
+			continue
+		}
+		w := 1
+		if longest > 0 {
+			w = max(1, int(math.Round(s.r.NsPerOp/longest*barMaxW)))
+		}
+		out = append(out, bar{Class: s.class, Label: s.label, Value: fmtNs(s.r.NsPerOp), Y: y, W: w})
+		y += barH + barGap
+	}
+	return out, y
+}
+
+func newCompareView(r *report, cmp comparison) compareView {
+	v := compareView{
+		Prefix:   cmp.prefix,
+		Other:    cmp.other,
 		Machine:  fmt.Sprintf("%s, %s, %d cores", r.Machine.CPU, r.Machine.OS, r.Machine.Cores),
 		Commit:   short(r.Commit),
 		Date:     r.Date,
 		Versions: fmt.Sprintf("Vortex %s, %s, %s", r.VortexVersion, r.GoVersion, r.RustVersion),
-		Parquet:  parquetRows(r.Cases),
 	}
 	y := 0
-	cases := sorted(r.Cases)
-	for i := range cases {
-		c := &cases[i]
-		ratio, class := ratioCell(c.RatioToRust)
-		v.Rows = append(v.Rows, row{
-			Index: i, Name: c.Name, Threads: strconv.Itoa(c.Threads),
-			Go: fmtNs(c.Go.NsPerOp), Rust: optNs(c.Rust),
-			Ratio: ratio, Class: class,
-		})
-		g := group{Index: i, Label: fmt.Sprintf("%s, %d thread", c.Name, c.Threads), Y: y}
-		if c.Threads != 1 {
+	for i, c := range pickSorted(r.Cases, cmp) {
+		line := row{
+			Index: i, Name: c.c.Name, Threads: strconv.Itoa(c.c.Threads),
+			Other: optNs(c.other), Go: fmtNs(c.ours.NsPerOp), Mapped: optNs(c.mapped),
+		}
+		line.Ratio, line.Class = ratioCell(c.ratio)
+		line.MappedRatio, line.MappedClass = ratioCell(c.ratioMapped)
+		v.Rows = append(v.Rows, line)
+		g := group{Index: i, Label: fmt.Sprintf("%s, %d thread", c.c.Name, c.c.Threads), Y: y}
+		if c.c.Threads != 1 {
 			g.Label += "s"
 		}
-		series := []struct {
-			r            *result
-			class, label string
-		}{{&c.Go, "bar-go", "Go"}, {c.Rust, "bar-rust", "Rust"}}
-		longest := 0.0
-		for _, s := range series {
-			if s.r != nil {
-				longest = math.Max(longest, s.r.NsPerOp)
-			}
-		}
-		by := 0
-		for _, s := range series {
-			if s.r == nil {
-				continue
-			}
-			w := 1
-			if longest > 0 {
-				w = max(1, int(math.Round(s.r.NsPerOp/longest*barMaxW)))
-			}
-			g.Bars = append(g.Bars, bar{Class: s.class, Label: s.label, Value: fmtNs(s.r.NsPerOp), Y: by, W: w})
-			by += barH + barGap
-		}
-		g.Height = by
-		y += by + rowGap
+		g.Bars, g.Height = bars(c, cmp.other)
+		y += g.Height + rowGap
 		v.Groups = append(v.Groups, g)
 	}
 	v.Height = y
 	return v
 }
 
-var speedTmpl = template.Must(template.New("speed").Parse(speedTemplate))
+var compareTmpl = template.Must(template.New("compare").Parse(compareTemplate))
 
-// renderSpeed is the speed table and the bars of a report. No report is no measurement yet.
-func renderSpeed(r *report) (string, error) {
-	if r == nil || len(r.Cases) == 0 {
-		return fmt.Sprintf(emptyHTML, "speed"), nil
+// renderCompare is the table and the bars of a comparison. No report, or a report with no
+// case of that comparison, is no measurement yet.
+func renderCompare(r *report, cmp comparison) (string, error) {
+	if r == nil {
+		return fmt.Sprintf(emptyHTML, cmp.prefix), nil
+	}
+	v := newCompareView(r, cmp)
+	if len(v.Rows) == 0 {
+		return fmt.Sprintf(emptyHTML, cmp.prefix), nil
 	}
 	var b bytes.Buffer
-	if err := speedTmpl.Execute(&b, newSpeedView(r)); err != nil {
+	if err := compareTmpl.Execute(&b, v); err != nil {
 		return "", err
 	}
 	return b.String(), nil

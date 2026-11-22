@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Versus parquet-go - vortex-go</title>
+<meta name="description" content="vortex-go: a pure Go reader and writer for the Vortex columnar file format.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+<a class="brand" href="index.html" data-testid="brand-link">vortex-go</a>
+<nav data-testid="nav">
+<a href="index.html" data-testid="nav-home">Home</a>
+<a href="usage.html" data-testid="nav-usage">Usage</a>
+<a href="rust.html" data-testid="nav-rust">Versus Rust</a>
+<a href="parquet.html" aria-current="page" data-testid="nav-parquet">Versus parquet-go</a>
+</nav>
+</header>
+<main>
+<h1>Versus parquet-go</h1>
+<p class="lead">Parquet is the columnar format most Go programs read and write today, and <a href="https://github.com/parquet-go/parquet-go" data-testid="parquet-link">parquet-go</a> is the Go library for it. This page says how fast vortex-go reads the same rows, from a Vortex file, as parquet-go does from a Parquet file.</p>
+
+<h2 id="what">What is compared</h2>
+<ul data-testid="parquet-what">
+<li>The same 10 million rows of 16 columns, generated from a seed, written once to a Vortex file by vortex-go and to a Parquet file by parquet-go, each with its default settings.</li>
+<li>Both fill the same Go structs with the rows: <code>vortex.Rows</code> on one side, a <code>GenericReader</code> on the other.</li>
+<li>Three cases: every column, 3 columns of the 16, and a filter that keeps 1% of the rows. vortex-go filters in the reader, where it skips the parts of the file that have no such row. parquet-go reads the 3 columns of every row and the filter is a test in Go.</li>
+<li>Each case runs with one thread and with every core, on the same machine, with the two files in the cache of the system.</li>
+</ul>
+<p>It is two formats and two libraries at once: a difference says which pair reads these rows faster, not which format is better. The scans of batches, with no struct, and the writes are compared with the Rust implementation, on <a href="rust.html#speed" data-testid="link-rust">its page</a>.</p>
+
+<h2 id="speed">Speed</h2>
+<p>Lower is better. A ratio is our time over the parquet-go time: above 1, we are slower. The numbers are measured on every merge to <code>main</code> and filled in when this site is built.</p>
+<h3 id="mmap">With and without a mapped file</h3>
+<p><code>OpenFile</code> reads each part of the file it needs into memory. <code>OpenMapped</code> maps the file in memory and decodes it where it is, with no copy. Every case that reads is measured both ways. parquet-go has no such mode, it reads the file: its time is the same next to both.</p>
+<p>A mapped file is the fastest way to read a local file that the system already has in its cache, which is the case of these measurements. It has limits, which is why it is a function of its own and not the default:</p>
+<ul data-testid="mmap-limits">
+<li>It is for a local file: not a network file system, not an object store, not a reader of your own.</li>
+<li>Nothing may truncate or replace the file while it is read. The system reports a mapped byte it cannot read, a truncated file or a failing disk, by stopping the process, where <code>OpenFile</code> returns an error.</li>
+<li>The columns of a batch are views of the file: they are not read after <code>Close</code>.</li>
+<li>On a file that is not in the cache, a mapped read waits for the disk one page at a time, where <code>OpenFile</code> asks for a whole part at once: on slow storage the gain can be a loss.</li>
+<li>Where the platform cannot map a file, <code>OpenMapped</code> is <code>OpenFile</code>.</li>
+</ul>
+<!-- parquet:begin -->
+<p data-testid="parquet-empty">no measurement yet</p>
+<!-- parquet:end -->
+</main>
+<footer>
+<p>vortex-go is MIT licensed. <a href="https://github.com/fclairamb/vortex-go" data-testid="footer-repo">Source</a> &middot; <a href="https://pkg.go.dev/github.com/fclairamb/vortex-go" data-testid="footer-pkgsite">pkg.go.dev</a></p>
+</footer>
+</body>
+</html>
