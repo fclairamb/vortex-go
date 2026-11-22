@@ -191,11 +191,20 @@ func (c *context) spec(fb fbs.ArrayNode) (string, error) {
 }
 
 func (c *context) decode(fb fbs.ArrayNode, path string, t DType, rows int) (*Array, error) {
+	return c.decodeWith(fb, path, t, rows, nil)
+}
+
+// decodeWith is decode with f, when it is not nil, in place of the decoder of the encoding of
+// fb: a parent that knows the encoding of its child decodes it its own way.
+func (c *context) decodeWith(fb fbs.ArrayNode, path string, t DType, rows int, f Decoder) (*Array, error) {
 	id, n, err := c.node(fb, path, rows)
 	if err != nil {
 		return nil, err
 	}
-	a, err := c.table[id](n, t, rows)
+	if f == nil {
+		f = c.table[id]
+	}
+	a, err := f(n, t, rows)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", id, err)
 	}
@@ -270,8 +279,8 @@ func (n *Node) Child(i int, t DType, rows int) (*Array, error) {
 	return n.child(i, n.path, t, rows)
 }
 
-// ChildEncoding is the identifier of the encoding of child i. Call it after the child has been
-// decoded: it returns "" for a child that cannot be read.
+// ChildEncoding is the identifier of the encoding that Child decodes child i with, "" when the
+// footer has none for it.
 func (n *Node) ChildEncoding(i int) string {
 	fb, _ := n.children.At(i)
 	id, _ := n.ctx.spec(fb)
