@@ -13,6 +13,16 @@ type Number interface {
 	~int8 | ~int16 | ~int32 | ~int64 | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~float32 | ~float64
 }
 
+// Integer is the set of the integer types of a file.
+type Integer interface {
+	~int8 | ~int16 | ~int32 | ~int64 | ~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
+// Unsigned is the set of the unsigned integer types of a file.
+type Unsigned interface {
+	~uint8 | ~uint16 | ~uint32 | ~uint64
+}
+
 // Slice returns the n values of type T that the bytes of b hold, n being len(b) divided by
 // the size of T. The values are in the byte order of the machine: callers only use it for
 // little-endian data. It shares the memory of b when b is aligned for T, and copies it
