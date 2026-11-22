@@ -183,3 +183,27 @@ What the writer does to choose the encodings of strings with no more work than t
   dictionary only when the dictionary does not already beat the plain array without them;
 - the training of FSST takes the best candidates from a heap, as the crate does, not from a
   sort of all of them: a round keeps 255 symbols out of thousands of candidates.
+
+What the writer does to choose the encodings of numbers with no more work than the reference:
+
+- in a trial (the sample, and the children of its candidates), integers are not tried as a
+  dictionary when more than half of their valid values are distinct, nor as a sparse array
+  when their most frequent value is under nine tenths of them, and floats are not tried as a
+  dictionary when more than half are distinct, as the estimates of the reference rule them
+  out (`IntDictScheme`, `SparseScheme`, `FloatDictScheme`). The count stops as soon as it
+  knows, and its table is taken from a pool and grows with the values: a column of unique
+  values costs half of its rows, not a table of all of them in each compressor;
+- a scheme is never twice in a chain of parents, and the exclusion rules of the reference
+  leave out more under some children (no dictionary, run-end nor sparse under a zigzag, no
+  dictionary, run-end, RLE nor sparse on the ends of a run-end, no dictionary, frame of
+  reference, zigzag nor sequence on the codes of a dictionary, and so on: `excl*` in
+  `internal/compress`). The trees of the trials were most of the work of the writer on
+  ClickBench;
+- the values of a frame of reference are bit-packed, with no other candidate, as the reference
+  does (`FoRScheme`): a frame of reference and a dictionary of its values was a dictionary
+  with its values framed, tried a second time;
+- the encoder of the trials only measures: bit-packing gives buffers of the right sizes and
+  does not write them (`Encoder.Measure`). A trial only reads the sizes of its arrays;
+- the probe of the dictionary layout keeps the scheme its sample chose, with the number and a
+  hash of its rows: when the first chunk is the rows of the probe, it is not sampled again.
+  The hash holds no reference to the rows, so the probe does not keep a buffer alive.
