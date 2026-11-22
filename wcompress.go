@@ -20,7 +20,8 @@ import (
 // schema, or on WriteOptions.Buffer, which trades the memory of the chunks that wait for the
 // cores that work at once. Several chunks of one column can wait: a column of long strings fills its chunks
 // faster than the others, and costs more to compress. The chunks of the dictionary layout (its
-// codes and its values) are compressed as they are written.
+// codes and its values) are compressed as they are written, but for the last run of a column,
+// which Close compresses on every core with the other columns (finishColumns).
 
 // compressing says whether the chunks are compressed.
 func (w *Writer) compressing() bool { return w.opt.Compression != None && w.force == "" }
@@ -74,7 +75,11 @@ func releaseCompressors(l *layoutBuild) {
 			pool.Put(q.comp)
 		}
 	}
-	c.comp, c.free = nil, nil
+	if c.last.comp != nil {
+		c.last.comp.Reset()
+		pool.Put(c.last.comp)
+	}
+	c.comp, c.free, c.last.comp = nil, nil, nil
 }
 
 // ptypeOf is the type of the compressor of the numbers of a column of kind k. A Float16 is not
@@ -289,6 +294,17 @@ func (w *Writer) withCompressor(c *column, f func()) {
 	}
 	f()
 	w.comp = nil
+}
+
+// withNode runs f with node, the array that cp compressed before (nil for the plain one), as the
+// array written at the top of the segment: what withCompressor would have made with cp.
+func (w *Writer) withNode(node *encode.Node, cp *compress.Compressor, f func()) {
+	w.pre, w.hasPre = node, true
+	if node == nil { // the children of the plain array are compressed as they are written
+		w.comp = cp
+	}
+	f()
+	w.pre, w.hasPre, w.comp = nil, false, nil
 }
 
 // probeDict says whether the compressor would write the rows lo to hi of the buffer, the

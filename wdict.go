@@ -213,31 +213,53 @@ func (w *Writer) flushCodes(c *column) {
 	if n == 0 {
 		return
 	}
-	t, k := Uint16Type(), Uint16
-	if d.width == 1 {
-		t, k = Uint8Type(), Uint8
-	}
+	t, codes := d.codesArray(n)
 	w.start()
 	w.beginFlat()
 	var root flatbuf.Off
-	w.withCompressor(c, func() { root = w.encode(t, Data{&body{kind: dPrim, pk: k, n: n, raw: d.codes}}, n) })
+	encode := func() { root = w.encode(t, codes, n) }
+	if c.last.run {
+		w.withNode(c.last.codes, c.comp, encode)
+	} else {
+		w.withCompressor(c, encode)
+	}
 	if seg, ok := w.endFlat(root); ok {
 		d.chunks = append(d.chunks, chunk{rows: uint64(n), seg: seg})
 	}
 	d.codes = d.codes[:0]
 }
 
+// codesArray is the array of the first n codes of the run, and its type.
+func (d *dictEnc) codesArray(n int) (Type, Data) {
+	if d.width == 1 {
+		return Uint8Type(), Data{&body{kind: dPrim, pk: Uint8, n: n, raw: d.codes}}
+	}
+	return Uint16Type(), Data{&body{kind: dPrim, pk: Uint16, n: n, raw: d.codes}}
+}
+
+// valuesArray is the array of the values of the run.
+func (c *column) valuesArray() Data {
+	d := c.dict
+	if c.buf.kind == dBytes {
+		return Data{&body{kind: dBytes, n: d.n, bins: d.vals, nulls: d.nulls}}
+	}
+	return Data{&body{kind: dPrim, pk: c.buf.pk, n: d.n, raw: d.raw, nulls: d.nulls}}
+}
+
 // endRun writes the codes and the values of the run, and starts a new one.
 func (w *Writer) endRun(c *column) {
 	d := c.dict
 	w.flushCodes(c)
-	vals := Data{&body{kind: dPrim, pk: c.buf.pk, n: d.n, raw: d.raw, nulls: d.nulls}}
-	if c.buf.kind == dBytes {
-		vals = Data{&body{kind: dBytes, n: d.n, bins: d.vals, nulls: d.nulls}}
-	}
+	vals := c.valuesArray()
 	w.beginFlat()
 	var root flatbuf.Off
-	w.withCompressor(c, func() { root = w.encode(c.t, vals, d.n) })
+	encode := func() { root = w.encode(c.t, vals, d.n) }
+	if c.last.run {
+		w.withNode(c.last.vals, c.last.comp, encode)
+		c.last.run, c.last.codes, c.last.vals = false, nil, nil
+	} else {
+		w.withCompressor(c, encode)
+	}
 	if seg, ok := w.endFlat(root); ok {
 		c.pieces = append(c.pieces, piece{rows: uint64(d.rows), seg: seg, nvals: d.n, codes: d.chunks})
 	}
