@@ -142,7 +142,14 @@ What the reader does to stay close to the reference, so that a change does not u
   one only to say which one is wrong;
 - a FastLanes block is unpacked 8 bytes at a time, which is 8, 4 or 2 lanes for words of 8, 16
   or 32 bits: one shift and one mask for all of them (`unpackBlock`);
-- the validity of the rows of a dictionary is made a byte at a time, with no test per row.
+- the validity of the rows of a dictionary is made a byte at a time, with no test per row;
+  with at most 256 values, no more than rows, the bit of each value is first put in a byte of
+  its own, and a row is one load (`gatherValidity`);
+- the codes of a dictionary are checked against its values once, 4 at a time with no branch,
+  before the rows are made, and not at all when they come unpacked from fewer bits than the
+  values need (`Array.bound`): the rows are then made with no clamp of the code;
+- the rows of a dictionary of strings of at most 256 values, no more than rows, read the start
+  and the end of their value in one lookup, from a table of pairs made for the batch.
 
 What the writer does with its memory, for the same reason:
 

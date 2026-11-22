@@ -137,6 +137,9 @@ func TestBitPackedEveryWidth(t *testing.T) {
 					if !bytes.Equal(a.Data, c.want()) {
 						t.Fatalf("%s, %d bits, offset %d, patches %v: wrong values", p, w, off, patches)
 					}
+					if want := uint64(1) << w; (patches || w == 64) != (a.bound == 0) || (a.bound != 0 && a.bound != want) {
+						t.Fatalf("%s, %d bits, patches %v: bound %d", p, w, patches, a.bound)
+					}
 				}
 			}
 		}
