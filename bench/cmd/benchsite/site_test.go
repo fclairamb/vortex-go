@@ -11,7 +11,7 @@ const page = "<!-- bench:begin -->\nold\n<!-- bench:end -->\n<!-- history:begin 
 
 const benchJSON = `{"commit":"a1d8357cdae3fbe2e35b755c5efd7529d377a149","date":"2026-11-20T10:56:13Z","vortex_version":"0.93.0","go_version":"go1.27.4","rust_version":"rustc 1.100.0","machine":{"os":"linux","cpu":"Acme CPU","cores":4},"cases":[
 {"name":"a/fast","threads":1,"go":{"ns_per_op":500000},"rust":{"ns_per_op":1000000,"rows_per_s":1},"ratio_to_rust":0.5},
-{"name":"b/slow","threads":4,"go":{"ns_per_op":3000000000},"rust":{"ns_per_op":1000000000},"parquet_go":{"ns_per_op":2000000000},"ratio_to_rust":3},
+{"name":"b/slow","threads":4,"go":{"ns_per_op":3000000000},"rust":{"ns_per_op":1000000000},"go_rows":{"ns_per_op":400000000},"parquet_go":{"ns_per_op":2000000000},"ratio_to_rust":3,"ratio_to_parquet_go":0.2},
 {"name":"c/norust","threads":1,"go":{"ns_per_op":900}}]}`
 
 func write(t *testing.T, dir, name, content string) string {
@@ -59,14 +59,42 @@ func TestSpeedThreeCases(t *testing.T) {
 	if i, j := strings.Index(out, "b/slow"), strings.Index(out, "a/fast"); i < 0 || j < 0 || i > j {
 		t.Error("the case where we lose is not first")
 	}
-	// The case with no Rust number: a dash for Rust, parquet-go and the ratio, and 1 bar.
+	// The case with no Rust number: a dash for Rust and the ratio, and 1 bar.
 	row := out[strings.Index(out, "c/norust"):]
 	row = row[:strings.Index(row, "</tr>")]
-	if n := strings.Count(row, dash); n != 3 {
-		t.Errorf("%d dashes in %q, want 3", n, row)
+	if n := strings.Count(row, dash); n != 2 {
+		t.Errorf("%d dashes in %q, want 2", n, row)
 	}
 	if !strings.Contains(out, "b/slow, 4 threads") || !strings.Contains(out, "c/norust, 1 thread<") {
 		t.Error("labels of the bars")
+	}
+}
+
+// TestSpeedParquet is the table of the ratios to parquet-go: one line per case that both
+// libraries read, with the two times and our time over the parquet-go one.
+func TestSpeedParquet(t *testing.T) {
+	out, err := renderSpeed(mustReport(t, benchJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out, `<tr data-testid="parquet-row-`); n != 1 {
+		t.Fatalf("%d rows, want 1", n)
+	}
+	row := out[strings.Index(out, `data-testid="parquet-row-0"`):]
+	row = row[:strings.Index(row, "</tr>")]
+	for _, want := range []string{"b/slow", `<td class="num">4</td>`, "400.0 ms", "2.00 s", `<td class="num faster">5.00x faster</td>`} {
+		if !strings.Contains(row, want) {
+			t.Errorf("%q is missing in %q", want, row)
+		}
+	}
+	// A report with no case that parquet-go read says so, and has no table.
+	none := strings.ReplaceAll(benchJSON, `"parquet_go"`, `"other"`)
+	out, err = renderSpeed(mustReport(t, none))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, `data-testid="parquet-empty"`) || strings.Contains(out, `data-testid="parquet-table"`) {
+		t.Error("no parquet-go number: the table must be replaced by a sentence")
 	}
 }
 

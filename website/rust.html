@@ -98,7 +98,7 @@
 </div>
 
 <h2 id="speed">Speed</h2>
-<p>Lower is better. Each case runs with one thread and with every core, on the same machine for Go, Rust and parquet-go. The ratio is our time over the Rust time: above 1, we are slower. The numbers are measured on every merge to <code>main</code> and filled in when this site is built.</p>
+<p>Lower is better. Each case runs with one thread and with every core, on the same machine for Go, Rust and parquet-go. The first table is our time over the Rust time on the same Vortex file: above 1, we are slower. The second one is our time over the time of parquet-go, the Go library for Parquet, on the same rows. The numbers are measured on every merge to <code>main</code> and filled in when this site is built.</p>
 <!-- bench:begin -->
 <p data-testid="speed-empty">no measurement yet</p>
 <!-- bench:end -->

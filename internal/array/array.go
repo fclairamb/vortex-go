@@ -13,6 +13,24 @@ func (b Bitmap) Get(i int) bool {
 	return b.Bytes[i>>3]&(1<<(i&7)) != 0
 }
 
+// bit returns bit i as a number, 0 or 1.
+func (b Bitmap) bit(i int) byte {
+	i += b.Off
+	return b.Bytes[i>>3] >> (i & 7) & 1
+}
+
+// byteAt returns the 8 bits from bit i, bit i being the low one. The bits past the end of
+// the bitmap are 0.
+func (b Bitmap) byteAt(i int) byte {
+	i += b.Off
+	k, s := i>>3, i&7
+	v := b.Bytes[k] >> s
+	if s != 0 && k+1 < len(b.Bytes) {
+		v |= b.Bytes[k+1] << (8 - s)
+	}
+	return v
+}
+
 // Slice returns the bits from bit i. The offset stays under 8.
 func (b Bitmap) Slice(i int) Bitmap {
 	i += b.Off

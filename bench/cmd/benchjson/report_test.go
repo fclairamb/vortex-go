@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
+	"testing/iotest"
 )
 
 func sample(t *testing.T, name string) string {
@@ -59,12 +61,38 @@ func TestBuildMergesTheThreeSources(t *testing.T) {
 	if one.ParquetGo == nil || one.ParquetGo.NsPerOp != 3000 {
 		t.Errorf("parquet-go: %+v", one.ParquetGo)
 	}
+	// The two harnesses of bench/ read the same rows: the ratio is ours over parquet-go's.
+	if one.GoRows == nil || one.GoRows.NsPerOp != 300 || one.RatioToParquetGo == nil || *one.RatioToParquetGo != 0.1 {
+		t.Errorf("rows: %+v ratio %v", one.GoRows, one.RatioToParquetGo)
+	}
 	four := caseOf(t, rep, "gen16/scan_full", 4)
 	if four.Go.NsPerOp != 12000 || four.Rust.NsPerOp != 1200 {
 		t.Errorf("4 threads: %+v", four)
 	}
-	if four.ParquetGo != nil {
-		t.Errorf("parquet-go has no 4-thread line: %+v", four.ParquetGo)
+	if four.ParquetGo != nil || four.GoRows != nil || four.RatioToParquetGo != nil {
+		t.Errorf("bench/ has no 4-thread line: %+v", four)
+	}
+}
+
+// TestBuildParquetOutputWithoutResult is the run of bench/ that failed before its first
+// benchmark: its output has no line, and the report must not be made without saying so.
+func TestBuildParquetOutputWithoutResult(t *testing.T) {
+	for name, out := range map[string]string{
+		"empty":            "",
+		"build failure":    "go: updates to go.mod needed; to update it:\n\tgo mod tidy\n",
+		"vortex-go only":   "BenchmarkCases/gen16/scan_full/vortex-go   2  100 ns/op\n",
+		"other benchmarks": "BenchmarkWriteRows/parquet-go  3 50 ns/op\n",
+	} {
+		in := inputs(t)
+		in.ParquetGo = strings.NewReader(out)
+		if _, err := Build(&in); err == nil || !strings.Contains(err.Error(), "no parquet-go result") {
+			t.Errorf("%s: got %v", name, err)
+		}
+	}
+	in := inputs(t)
+	in.ParquetGo = iotest.ErrReader(errors.New("disk"))
+	if _, err := Build(&in); err == nil || !strings.Contains(err.Error(), "disk") {
+		t.Errorf("read error: got %v", err)
 	}
 }
 

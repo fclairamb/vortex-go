@@ -2,6 +2,7 @@ package array
 
 import (
 	"bytes"
+	"math/rand/v2"
 	"strings"
 	"testing"
 
@@ -419,6 +420,120 @@ func TestOnPairDecodeNoAllocs(t *testing.T) {
 	for i, s := range strs {
 		if got := string(dst[outS[i]:outE[i]]); got != s {
 			t.Errorf("row %d = %q, want %q", i, got, s)
+		}
+	}
+}
+
+// fsstRandom makes n strings of symbols and of bytes that are no symbol, so of escapes, long
+// enough for the codes to be read 8 at a time.
+func fsstRandom(n int) []string {
+	rng := rand.New(rand.NewPCG(7, 11))
+	strs := make([]string, n)
+	for i := range strs {
+		var s []byte
+		for range rng.IntN(40) {
+			if rng.IntN(12) == 0 {
+				s = append(s, byte('x'+rng.IntN(3)), 0xff)
+				continue
+			}
+			s = append(s, fsstSymbols[rng.IntN(len(fsstSymbols))]...)
+		}
+		strs[i] = string(s)
+	}
+	return strs
+}
+
+// TestFSSTBulk decodes rows that are decoded in one pass, 8 codes at a time: with escapes,
+// with empty rows, and in the two forms.
+func TestFSSTBulk(t *testing.T) {
+	strs := fsstRandom(500)
+	in := newFSSTIn(fsstSymbols, strs)
+	checkStrings(t, mustDecode(t, in.seg(), utf8t, len(strs)), strs)
+	checkStrings(t, mustDecode(t, in.legacySeg(), utf8t, len(strs)), strs)
+	// Rows of symbols only.
+	plain := make([]string, 300)
+	for i := range plain {
+		plain[i] = strings.Repeat(fsstSymbols[i%len(fsstSymbols)], 1+i%7)
+	}
+	checkStrings(t, mustDecode(t, newFSSTIn(fsstSymbols, plain).seg(), utf8t, len(plain)), plain)
+}
+
+// TestFSSTBulkHostile is what the one pass refuses: the rows are then decoded one by one,
+// which says which one is wrong.
+func TestFSSTBulkHostile(t *testing.T) {
+	plain := make([]string, 64)
+	for i := range plain {
+		plain[i] = "abbcccddddeeeee"
+	}
+	cases := []struct {
+		name string
+		edit func(in *fsstIn)
+		want string
+	}{
+		{"code past the table, among 8 codes", func(in *fsstIn) { in.codes[3] = 40 }, "row 0 has code 40"},
+		{"code past the table, in the last codes", func(in *fsstIn) { in.codes[len(in.codes)-1] = 40 }, "row 63 has code 40"},
+		{"escape as the last byte", func(in *fsstIn) { in.codes[len(in.codes)-1] = fsstEscape }, "row 63 ends with an escape"},
+		{"row of fewer bytes", func(in *fsstIn) { in.ulen[5]++ }, "row 5 decodes to 15 bytes, declared 16"},
+		{"row of more bytes", func(in *fsstIn) { in.ulen[5]-- }, "row 5 decodes to more than its 14 bytes"},
+		{"symbol past the end", func(in *fsstIn) { in.ulen[63] -= 3 }, "row 63 decodes to more than its 12 bytes"},
+		{"escape past the end", func(in *fsstIn) {
+			in.codes = append(in.codes, fsstEscape, 'z')
+			in.offs[64] += 2
+		}, "row 63 decodes to more than its 15 bytes"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			in := newFSSTIn(fsstSymbols, plain)
+			c.edit(&in)
+			wantErr(t, in.seg(), utf8t, len(plain), c.want)
+		})
+	}
+}
+
+// TestFSSTRowsApart decodes rows whose codes do not follow each other: there is no one pass.
+func TestFSSTRowsApart(t *testing.T) {
+	in := newFSSTIn(fsstSymbols, []string{"abb", "ccc"})
+	tbl, err := newSymbolTable(in.symBuf, in.lenBuf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Row 1 is the codes of row 0 again: a, bb.
+	dst, starts, ends := make([]byte, 6), make([]int, 2), make([]int, 2)
+	if err := tbl.decode(dst, starts, ends, in.codes, []int{0, 0}, []int{2, 2}, []int{3, 3}); err != nil {
+		t.Fatal(err)
+	}
+	if string(dst) != "abbabb" || starts[1] != 3 || ends[1] != 6 {
+		t.Fatalf("decoded %q, row 1 is %d to %d", dst, starts[1], ends[1])
+	}
+}
+
+// TestGatherValidity checks the validity of the rows of a dictionary against the bits read
+// one by one, for a validity of the rows that starts at any bit of its first byte.
+func TestGatherValidity(t *testing.T) {
+	rng := rand.New(rand.NewPCG(5, 9))
+	raw := make([]byte, 16)
+	for i := range raw {
+		raw[i] = byte(rng.Uint32())
+	}
+	values := &Bitmap{Bytes: []byte{0b0110_1011, 0b1}, Off: 1}
+	for _, n := range []int{0, 5, 8, 21, 64} {
+		codes := make([]uint16, n)
+		for i := range codes {
+			codes[i] = uint16(rng.IntN(8))
+		}
+		for off := range 8 {
+			for _, valid := range []*Bitmap{nil, {Bytes: raw[:(off+n+7)/8], Off: off}} {
+				got := Bitmap{Bytes: gatherValidity(nil, values, codes, valid)}
+				for i, c := range codes {
+					want := values.Get(int(c)) && (valid == nil || valid.Get(i))
+					if got.Get(i) != want {
+						t.Fatalf("%d rows, offset %d: row %d is %v, want %v", n, off, i, got.Get(i), want)
+					}
+				}
+				if n%8 != 0 && got.Bytes[n/8]>>(n%8) != 0 {
+					t.Fatalf("%d rows, offset %d: bits are set past the rows", n, off)
+				}
+			}
 		}
 	}
 }

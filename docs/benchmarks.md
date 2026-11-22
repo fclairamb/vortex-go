@@ -13,7 +13,7 @@ same files:
 | Harness | Where | Runs |
 |---|---|---|
 | vortex-go | `bench_cases_test.go` (root module), `BenchmarkCases/<case>` | `go test -bench` |
-| parquet-go | `bench/bench_test.go` (module `bench/`), `BenchmarkCases/<case>/parquet-go` | the cases parquet-go has: full scan, 3 columns, filter |
+| bench/ | `bench/bench_test.go` (module `bench/`), `BenchmarkCases/<case>/vortex-go` and `/parquet-go` | the cases parquet-go has (full scan, 3 columns, filter): the same rows, in a Vortex file and in a Parquet file, read into the same structs with each library |
 | Rust | `tools/bench-rust/`, a Cargo project, the `vortex` crate pinned to `.vortex-version` | release build, native |
 
 The data, a case is `<data>/<operation>`:
@@ -51,13 +51,19 @@ A line is:
 ```json
 {"commit", "date", "vortex_version", "go_version", "rust_version",
  "machine": {"os", "cpu", "cores"},
- "cases": [{"name", "threads", "go", "rust", "parquet_go", "ratio_to_rust"}]}
+ "cases": [{"name", "threads", "go", "rust", "go_rows", "parquet_go", "ratio_to_rust",
+            "ratio_to_parquet_go"}]}
 ```
 
-`go`, `rust` and `parquet_go` hold `ns_per_op`, `rows_per_s` and `mb_per_s`, the median of
-the runs (5, 3 for parquet-go), not the mean. `rust` and `parquet_go` are absent for a case
+`go`, `rust`, `go_rows` and `parquet_go` hold `ns_per_op`, `rows_per_s` and `mb_per_s`, the
+median of the runs (5, 3 for the ones of `bench/`), not the mean. `rust` is absent for a case
 that harness does not run. `ratio_to_rust` is the Go time over the Rust time: above 1, vortex-go
 is slower.
+
+`go_rows` and `parquet_go` are the two harnesses of `bench/`, for the cases it runs: vortex-go
+and parquet-go reading the same rows into the same structs. `go` is not the number to put next
+to `parquet_go`: it is a scan of batches, with no struct. `ratio_to_parquet_go` is `go_rows`
+over `parquet_go`. `make bench-json` fails when `bench/` gives no parquet-go result.
 
 `benchstat` on a pull request (`make bench-compare`) compares one commit with `main`. The
 history is for what it cannot see: ten small slow-downs that each pass.
@@ -115,4 +121,11 @@ What the reader does to stay close to the reference, so that a change does not u
 - FoR, zigzag and ALP write over the integers their child just unpacked;
 - the rows of a dictionary layout are made a batch at a time, from the codes of the batch;
 - a comparison of an integer column with one literal is a test of range on the values of the
-  batch (`expr_fast.go`), not a walk of the filter per row.
+  batch (`expr_fast.go`), not a walk of the filter per row;
+- FSST decodes the codes of all the rows in one pass, 8 codes at a time, as the reference does:
+  a word of 8 codes with no escape is 8 stores with no test in between (`unsafex.Store64`).
+  The rows are the declared lengths, their sum is checked, and the rows are decoded one by
+  one only to say which one is wrong;
+- a FastLanes block is unpacked 8 bytes at a time, which is 8, 4 or 2 lanes for words of 8, 16
+  or 32 bits: one shift and one mask for all of them (`unpackBlock`);
+- the validity of the rows of a dictionary is made a byte at a time, with no test per row.
