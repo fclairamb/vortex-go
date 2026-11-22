@@ -212,6 +212,15 @@ func (t Table) Uint16s(id int) ([]uint16, error) {
 	return out, err
 }
 
+// AppendUint16s appends a vector of uint16 to dst: in its memory when it has room.
+func (t Table) AppendUint16s(dst []uint16, id int) ([]uint16, error) {
+	start, n, _, err := t.vector(id, 2)
+	for i := range n {
+		dst = append(dst, binary.LittleEndian.Uint16(t.buf[start+2*i:]))
+	}
+	return dst, err
+}
+
 // Uint32s returns a vector of uint32 as a new slice, its size bounded by the buffer.
 func (t Table) Uint32s(id int) ([]uint32, error) {
 	start, n, _, err := t.vector(id, 4)

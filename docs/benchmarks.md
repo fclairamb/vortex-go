@@ -156,7 +156,10 @@ What the reader does to stay close to the reference, so that a change does not u
   scan of a file of few rows, whose last batch is never given back, allocates at most a
   quarter more than it decodes, not up to twice;
 - runs of numbers fill their rows run by run (`fillRuns`), a take of numbers copies a word per
-  row, not a slice, and a constant number is a doubling copy: no copy call per row.
+  row, not a slice, and a constant number is a doubling copy: no copy call per row;
+- a node of the tree of an array allocates nothing for its children (`fbs.List` is a value),
+  the nodes of a decode come 16 at a time, and their buffer indices are in the node: the kept
+  rows of a sparse filter walk the tree again at every batch.
 
 What the writer does with its memory, for the same reason:
 
