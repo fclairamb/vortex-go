@@ -23,6 +23,10 @@ type unsigned interface {
 // ErrNegative reports a negative value given to the bit-packing, which packs unsigned values.
 var ErrNegative = errors.New("encode: cannot bit-pack a negative value")
 
+// errFull reports values that BitPackBest would pack in all the bits of their type. It is made
+// once: a compressor meets it on every array that is not worth packing.
+var errFull = errors.New("encode: the values need all the bits of their type")
+
 func bitsOf[U unsigned]() int { return 8 * unsafex.Size[U]() }
 
 // packBlock packs the 1024 values of blk, w bits each, into the 128*w bytes of dst: the
@@ -142,7 +146,11 @@ func patchWidth(rows int) (ptype, width int) { return narrow(uint64(rows) + 1) }
 func BitPackBest[T Int](e *Encoder, v []T, nulls []bool) (*Node, error) {
 	h := e.hist[:8*unsafex.Size[T]()+1]
 	Histogram(v, nulls, h)
-	return BitPack(e, v, nulls, BestWidth(h, unsafex.Size[T]()))
+	width := BestWidth(h, unsafex.Size[T]())
+	if width == 8*unsafex.Size[T]() {
+		return nil, errFull
+	}
+	return BitPack(e, v, nulls, width)
 }
 
 // BitPack packs the integers of v in width bits each, in FastLanes blocks of 1024. A value
@@ -169,7 +177,7 @@ func BitPack[T Int](e *Encoder, v []T, nulls []bool, width int) (*Node, error) {
 	raw := unsafex.Bytes(v)
 	blocks := (len(v) + blockSize - 1) / blockSize
 	packed := e.allocDirty(blocks * 128 * width) // every block is written whole
-	if width > 0 {
+	if width > 0 && !e.measure {
 		pack(packed, raw, w, width)
 	}
 	n := e.node(IDBitPacked)
@@ -206,15 +214,17 @@ func patches[T Int](e *Encoder, n *Node, v []T, nulls []bool, width, count int) 
 	w := unsafex.Size[T]()
 	blocks := (len(v) + blockSize - 1) / blockSize
 	idx, vals, offs := e.allocDirty(count*iw), e.allocDirty(count*w), e.allocDirty(blocks*8)
-	k := 0
-	for i, x := range v {
-		if i%blockSize == 0 {
-			binary.LittleEndian.PutUint64(offs[8*(i/blockSize):], uint64(k))
-		}
-		if !isNull(nulls, i) && bits.Len64(ubits(x)) > width {
-			putWidth(idx[k*iw:], iw, uint64(i))
-			putWidth(vals[k*w:], w, ubits(x))
-			k++
+	if !e.measure {
+		k := 0
+		for i, x := range v {
+			if i%blockSize == 0 {
+				binary.LittleEndian.PutUint64(offs[8*(i/blockSize):], uint64(k))
+			}
+			if !isNull(nulls, i) && bits.Len64(ubits(x)) > width {
+				putWidth(idx[k*iw:], iw, uint64(i))
+				putWidth(vals[k*w:], w, ubits(x))
+				k++
+			}
 		}
 	}
 	n.kid(e.leaf(idx, iw, nil, count))
