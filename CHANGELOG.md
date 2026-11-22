@@ -8,7 +8,7 @@ Faster scans and a faster writer, on the same format.
 
 ### Performance Improvements
 
-* **Scan**: a filter on an integer column and the decoding of its blocks do less work per row
+* **Scan**: decoding does less work per row
   * a FoR over bit-packed integers adds its reference as the blocks are unpacked ([#50](https://github.com/fclairamb/vortex-go/issues/50)) ([bc6720a](https://github.com/fclairamb/vortex-go/commit/bc6720aa8c491de4f8e74f4e4dbfb088873d22d3))
   * FSST makes the ranges of its rows in one pass, checks 8 codes at once ([#47](https://github.com/fclairamb/vortex-go/issues/47)) ([f3b3534](https://github.com/fclairamb/vortex-go/commit/f3b3534d3816d710ec0c010a351fbfb0f2542b77)), and checks the offsets and lengths of its rows with no branch per row ([#56](https://github.com/fclairamb/vortex-go/issues/56)) ([bc792df](https://github.com/fclairamb/vortex-go/commit/bc792dff3014786c6aeb1063928e36ec6987a8af))
   * a node of an array allocates nothing for its children, and nodes are allocated 16 at a time ([#52](https://github.com/fclairamb/vortex-go/issues/52)) ([b7add87](https://github.com/fclairamb/vortex-go/commit/b7add877047299a1f2b8182b3a00773029b264dd))
