@@ -66,6 +66,10 @@ type Array struct {
 	// fresh is set by a decoder whose Data nothing else reads: the decoder of the parent may
 	// then write its own values over it.
 	fresh bool
+	// bound, when not 0, is above every value of an array of unsigned integers: the ones
+	// fastlanes.bitpacked unpacks without patches are under 1<<w. A decoder that copies an
+	// array to change its values sets it to 0.
+	bound uint64
 }
 
 // Null reports whether row i is null.

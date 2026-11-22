@@ -278,7 +278,7 @@ func (n *Node) forRows(t DType, rows int, idx []int) (*Array, error) {
 	}
 	out := *enc
 	out.Data = addConst(n.target(enc), enc.Data, width, ref)
-	out.fresh = true
+	out.fresh, out.bound = true, 0
 	return &out, nil
 }
 
@@ -295,7 +295,7 @@ func (n *Node) zigZagRows(t DType, rows int, idx []int) (*Array, error) {
 	out := *enc
 	out.Type = t
 	out.Data = unzigzag(n.target(enc), enc.Data, width)
-	out.fresh = true
+	out.fresh, out.bound = true, 0
 	return &out, nil
 }
 
