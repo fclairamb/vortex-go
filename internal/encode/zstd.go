@@ -69,7 +69,7 @@ func (e *Encoder) zstdStrings(ls lineSet, nulls []bool, rows int) *Node {
 			total += len(ls.get(i))
 		}
 	}
-	raw := e.alloc(total + 4*valid)
+	raw := e.allocDirty(total + 4*valid) // each value writes its length and its bytes
 	o := 0
 	sizes := e.alloc(8 * ((valid + zstdValuesPerFrame - 1) / zstdValuesPerFrame))
 	k := 0
@@ -106,7 +106,7 @@ func (e *Encoder) zstdNode(raw []byte, valid int, nulls []bool, rows int, frameB
 		size := frameBytes(f)
 		src := raw[start : start+size]
 		start += size
-		dst := e.alloc(len(src) + len(src)>>10 + 64)
+		dst := e.allocDirty(len(src) + len(src)>>10 + 64) // the frame is appended to it
 		out := enc.EncodeAll(src, dst[:0])
 		node.add(out, 1)
 		values := min(zstdValuesPerFrame, valid-f*zstdValuesPerFrame)
