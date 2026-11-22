@@ -569,32 +569,102 @@ func TestFSSTRowsApart(t *testing.T) {
 }
 
 // TestGatherValidity checks the validity of the rows of a dictionary against the bits read
-// one by one, for a validity of the rows that starts at any bit of its first byte.
+// one by one, for a validity of the rows that starts at any bit of its first byte, with more
+// values than rows, fewer, and more than a table on the stack holds.
 func TestGatherValidity(t *testing.T) {
 	rng := rand.New(rand.NewPCG(5, 9))
-	raw := make([]byte, 16)
+	raw := make([]byte, 128)
 	for i := range raw {
 		raw[i] = byte(rng.Uint32())
 	}
-	values := &Bitmap{Bytes: []byte{0b0110_1011, 0b1}, Off: 1}
-	for _, n := range []int{0, 5, 8, 21, 64} {
-		codes := make([]uint16, n)
-		for i := range codes {
-			codes[i] = uint16(rng.IntN(8))
-		}
-		for off := range 8 {
-			for _, valid := range []*Bitmap{nil, {Bytes: raw[:(off+n+7)/8], Off: off}} {
-				got := Bitmap{Bytes: gatherValidity(nil, values, codes, valid)}
-				for i, c := range codes {
-					want := values.Get(int(c)) && (valid == nil || valid.Get(i))
-					if got.Get(i) != want {
-						t.Fatalf("%d rows, offset %d: row %d is %v, want %v", n, off, i, got.Get(i), want)
+	small := &Bitmap{Bytes: []byte{0b0110_1011, 0b1}, Off: 1}
+	big := &Bitmap{Bytes: raw[:40], Off: 3}
+	for _, c := range []struct {
+		values *Bitmap
+		vlen   int
+		rows   []int
+	}{
+		{small, 8, []int{0, 5, 8, 21, 64}},
+		{big, 300, []int{299, 300, 777}},
+	} {
+		for _, n := range c.rows {
+			codes := make([]uint16, n)
+			for i := range codes {
+				codes[i] = uint16(rng.IntN(c.vlen))
+			}
+			for off := range 8 {
+				for _, valid := range []*Bitmap{nil, {Bytes: raw[:(off+n+7)/8], Off: off}} {
+					got := Bitmap{Bytes: gatherValidity(new(Pool).NewArena(), c.values, c.vlen, codes, valid)}
+					for i, code := range codes {
+						want := c.values.Get(int(code)) && (valid == nil || valid.Get(i))
+						if got.Get(i) != want {
+							t.Fatalf("%d rows, offset %d: row %d is %v, want %v", n, off, i, got.Get(i), want)
+						}
 					}
-				}
-				if n%8 != 0 && got.Bytes[n/8]>>(n%8) != 0 {
-					t.Fatalf("%d rows, offset %d: bits are set past the rows", n, off)
+					if n%8 != 0 && got.Bytes[n/8]>>(n%8) != 0 {
+						t.Fatalf("%d rows, offset %d: bits are set past the rows", n, off)
+					}
 				}
 			}
 		}
+	}
+}
+
+// TestGatherRanges checks the ranges of the rows of a dictionary of strings, with more values
+// than rows, fewer, and more than a table on the stack holds, and that a code past the values
+// is refused.
+func TestGatherRanges(t *testing.T) {
+	rng := rand.New(rand.NewPCG(7, 3))
+	for _, c := range []struct{ vlen, rows int }{{3, 2}, {3, 10}, {300, 299}, {300, 1000}} {
+		from, to := make([]int, c.vlen), make([]int, c.vlen)
+		for k := range from {
+			from[k], to[k] = 3*k, 3*k+k%3
+		}
+		codes := make([]uint16, c.rows)
+		for i := range codes {
+			codes[i] = uint16(rng.IntN(c.vlen))
+		}
+		last := uint16(c.vlen - 1)
+		starts, ends := make([]int, c.rows), make([]int, c.rows)
+		if !gatherRanges(starts, ends, from, to, codes, nil, last, false) {
+			t.Fatalf("%d values, %d rows: a code is refused", c.vlen, c.rows)
+		}
+		for i, code := range codes {
+			if starts[i] != from[code] || ends[i] != to[code] {
+				t.Fatalf("%d values, %d rows: row %d is %d to %d, want %d to %d", c.vlen, c.rows, i, starts[i], ends[i], from[code], to[code])
+			}
+		}
+		codes[len(codes)-1] = last + 1
+		if gatherRanges(starts, ends, from, to, codes, nil, last, false) {
+			t.Fatalf("%d values, %d rows: code %d is accepted", c.vlen, c.rows, last+1)
+		}
+	}
+}
+
+// TestCodesIn checks the test of the codes against the largest value, for every width, with
+// a code that is just past it and one whose high bit is set.
+func TestCodesIn(t *testing.T) {
+	for n := range 9 {
+		codes := make([]uint64, n)
+		for i := range codes {
+			codes[i] = uint64(i)
+		}
+		if n > 0 && !codesIn(codes, uint64(n-1)) {
+			t.Fatalf("%d codes: a code is refused", n)
+		}
+		if n > 1 && codesIn(codes, uint64(n-2)) {
+			t.Fatalf("%d codes: code %d is accepted under %d", n, n-1, n-2)
+		}
+		for _, bad := range []uint64{uint64(n) + 1, 1 << 63, 1<<63 + uint64(n)} {
+			if n > 0 {
+				codes[n-1] = bad
+				if codesIn(codes, uint64(n)) {
+					t.Fatalf("%d codes: code %d is accepted under %d", n, bad, n)
+				}
+			}
+		}
+	}
+	if !codesIn([]uint8{255, 0}, 255) || codesIn([]uint8{0, 1, 2, 3, 4}, 3) {
+		t.Fatal("8-bit codes")
 	}
 }

@@ -17,6 +17,8 @@ func decodeBitPacked(n *Node, t DType, rows int) (*Array, error) {
 		if err := m.patches.apply(a.Data, width); err != nil {
 			return nil, err
 		}
+	} else if m.w < 64 {
+		a.bound = 1 << m.w
 	}
 	return a, nil
 }
