@@ -39,6 +39,12 @@ func TestFrameOfReference(t *testing.T) {
 			t.Fatalf("%s: wrong values", p)
 		}
 	}
+	// The values of a FoR over bitpacked integers are not under the bound of the packed ones.
+	packed := buf{data: refPack(make([]uint64, blockSize), 8, 1)}
+	bp := node(eBitPacked, pb(1, 0), []uint16{0})
+	if a := mustDecode(t, segment(node(eFoR, sUint(250), nil, bp), packed), primT(U8), 10); a.bound != 0 || a.Data[0] != 250 {
+		t.Fatalf("FoR over bitpacked: bound %d, value %d", a.bound, a.Data[0])
+	}
 	// A wrap, and a validity carried by the child.
 	seg := segment(node(eFoR, sUint(250), nil, node(ePrim, nil, []uint16{0}, bnode(1))), buf{data: []byte{10, 1}}, buf{data: []byte{0b01}})
 	a := mustDecode(t, seg, DType{Kind: Prim, PType: U8, Nullable: true}, 2)
