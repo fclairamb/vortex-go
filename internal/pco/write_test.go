@@ -3,6 +3,7 @@ package pco
 import (
 	"math"
 	"math/rand/v2"
+	"slices"
 	"testing"
 )
 
@@ -218,4 +219,62 @@ func FuzzWriteRoundTrip(f *testing.F) {
 		}
 		roundTrip(t, new(Coder), typ, vals, []int{1, 2, 7, 8192}[sel>>6])
 	})
+}
+
+// TestSortLatents compares the sort of the latents with slices.Sort: few latents and many,
+// latents that differ on every byte, on some bytes, on an odd number of bytes, and on none.
+func TestSortLatents(t *testing.T) {
+	rng := rand.New(rand.NewPCG(3, 5))
+	masks := []uint64{^uint64(0), 0xffff, 0xff, 0xff00ff, 0xff0000ff00, 0}
+	for _, n := range []int{0, 1, 7, radixMin - 1, radixMin, 3*radixMin + 1} {
+		for _, mask := range masks {
+			s := make([]uint64, n)
+			for i := range s {
+				s[i] = rng.Uint64()&mask | 0x1200_0000_0000_0000&^mask
+			}
+			want := slices.Clone(s)
+			slices.Sort(want)
+			got, tmp := sortLatents(s, nil)
+			if !slices.Equal(got, want) {
+				t.Fatalf("%d latents, mask %#x: not sorted", n, mask)
+			}
+			// the buffer is given back for the next sort, and it is the other slice
+			if n >= radixMin && (len(tmp) != n || &tmp[0] == &got[0]) {
+				t.Fatalf("%d latents, mask %#x: buffer of %d", n, mask, len(tmp))
+			}
+		}
+	}
+}
+
+// TestBinIndex compares the bin of a latent, found through the index, with the last bin whose
+// lower is at most the latent: for lowers that are close, far apart, and all in one part of
+// their range.
+func TestBinIndex(t *testing.T) {
+	rng := rand.New(rand.NewPCG(7, 9))
+	shapes := map[string]func(i int) uint64{
+		"one bin":  func(int) uint64 { return 0 },
+		"close":    func(int) uint64 { return uint64(rng.IntN(4)) },
+		"spread":   func(int) uint64 { return rng.Uint64() >> 8 },
+		"one part": func(i int) uint64 { return uint64(min(i/250, 1)) << 60 },
+	}
+	for name, step := range shapes {
+		for _, bins := range []int{1, 2, 17, maxBins} {
+			var tb table
+			x := uint64(1000)
+			for i := range bins {
+				tb.lowers = append(tb.lowers, x)
+				x += 1 + step(i)
+			}
+			tb.indexBins()
+			for range 2000 {
+				v := tb.lowers[rng.IntN(bins)] + uint64(rng.IntN(3))
+				if rng.IntN(10) == 0 {
+					v = tb.lowers[bins-1] + rng.Uint64()>>4
+				}
+				if got, want := tb.bin(v), upper(tb.lowers, v)-1; got != want {
+					t.Fatalf("%s, %d bins: bin of %d is %d, want %d", name, bins, v, got, want)
+				}
+			}
+		}
+	}
 }
