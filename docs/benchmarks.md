@@ -208,7 +208,10 @@ What the writer does with its memory, for the same reason:
 - the buffer of a column keeps the bytes of the strings of `OfStrings` where they are (a Go
   string never changes) and copies only the ones of `OfBytes`;
 - the buffer holds a decimal at the width of its precision, 1 to 32 bytes, not as a 32-byte
-  `Decimal`: the encoders and the statistics read it there, as the integers of its width.
+  `Decimal`: the encoders and the statistics read it there, as the integers of its width;
+- the codes of a dictionary and the count of the distinct values of a first block are found
+  in a table of the writer (`wtable.go`), not a Go map: a hash, compared first, then the
+  values of the run where they are.
 
 What the writer does to choose the encodings of strings with no more work than the reference:
 
