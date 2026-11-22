@@ -14,6 +14,7 @@
 <a href="index.html" data-testid="nav-home">Home</a>
 <a href="usage.html" data-testid="nav-usage">Usage</a>
 <a href="rust.html" aria-current="page" data-testid="nav-rust">Versus Rust</a>
+<a href="parquet.html" data-testid="nav-parquet">Versus parquet-go</a>
 </nav>
 </header>
 <main>
@@ -98,12 +99,23 @@
 </div>
 
 <h2 id="speed">Speed</h2>
-<p>Lower is better. Each case runs with one thread and with every core, on the same machine for Go, Rust and parquet-go. The first table is our time over the Rust time on the same Vortex file: above 1, we are slower. The second one is our time over the time of parquet-go, the Go library for Parquet, on the same rows. The numbers are measured on every merge to <code>main</code> and filled in when this site is built.</p>
+<p>Lower is better. Each case runs with one thread and with every core, on the same machine for Go and Rust, on the same Vortex file. A ratio is our time over the Rust time: above 1, we are slower. The numbers are measured on every merge to <code>main</code> and filled in when this site is built. The comparison with the Go library for Parquet is on <a href="parquet.html" data-testid="link-parquet">its own page</a>.</p>
+<h3 id="mmap">With and without a mapped file</h3>
+<p><code>OpenFile</code> reads each part of the file it needs into memory. <code>OpenMapped</code> maps the file in memory and decodes it where it is, with no copy. Every case that reads is measured both ways. The Rust reader opens the file with <code>open_path</code>, which reads it: its time is the same next to both.</p>
+<p>A mapped file is the fastest way to read a local file that the system already has in its cache, which is the case of these measurements. It has limits, which is why it is a function of its own and not the default:</p>
+<ul data-testid="mmap-limits">
+<li>It is for a local file: not a network file system, not an object store, not a reader of your own.</li>
+<li>Nothing may truncate or replace the file while it is read. The system reports a mapped byte it cannot read, a truncated file or a failing disk, by stopping the process, where <code>OpenFile</code> returns an error.</li>
+<li>The columns of a batch are views of the file: they are not read after <code>Close</code>.</li>
+<li>On a file that is not in the cache, a mapped read waits for the disk one page at a time, where <code>OpenFile</code> asks for a whole part at once: on slow storage the gain can be a loss.</li>
+<li>Where the platform cannot map a file, <code>OpenMapped</code> is <code>OpenFile</code>.</li>
+</ul>
 <!-- bench:begin -->
 <p data-testid="speed-empty">no measurement yet</p>
 <!-- bench:end -->
 
 <h3 id="history">The ratio to Rust over the commits</h3>
+<p class="note">The mean of the ratios of the cases, with <code>OpenFile</code>.</p>
 <!-- history:begin -->
 <p data-testid="history-empty">no measurement yet</p>
 <!-- history:end -->

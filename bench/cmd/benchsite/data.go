@@ -18,18 +18,23 @@ type result struct {
 	NsPerOp float64 `json:"ns_per_op"`
 }
 
-// benchCase is one case at one thread count. Rust is absent when that harness has no result
-// for it. GoRows and ParquetGo are the two libraries reading the same rows into the same
-// structs, and RatioToParquetGo is the time of the first over the time of the second.
+// benchCase is one case at one thread count, as benchjson writes it. Go and Rust read the same
+// Vortex file; GoRows and ParquetGo read the same rows into the same structs, each from its
+// file. GoMapped and GoRowsMapped are vortex-go again on the file mapped in memory. A result,
+// or a ratio, is absent when it was not measured.
 type benchCase struct {
-	Rust             *result  `json:"rust"`
-	GoRows           *result  `json:"go_rows"`
-	ParquetGo        *result  `json:"parquet_go"`
-	RatioToRust      *float64 `json:"ratio_to_rust"`
-	RatioToParquetGo *float64 `json:"ratio_to_parquet_go"`
-	Name             string   `json:"name"`
-	Go               result   `json:"go"`
-	Threads          int      `json:"threads"`
+	Rust                   *result  `json:"rust"`
+	GoMapped               *result  `json:"go_mapped"`
+	GoRows                 *result  `json:"go_rows"`
+	GoRowsMapped           *result  `json:"go_rows_mapped"`
+	ParquetGo              *result  `json:"parquet_go"`
+	RatioToRust            *float64 `json:"ratio_to_rust"`
+	RatioToRustMapped      *float64 `json:"ratio_to_rust_mapped"`
+	RatioToParquetGo       *float64 `json:"ratio_to_parquet_go"`
+	RatioToParquetGoMapped *float64 `json:"ratio_to_parquet_go_mapped"`
+	Name                   string   `json:"name"`
+	Go                     result   `json:"go"`
+	Threads                int      `json:"threads"`
 }
 
 type machine struct {

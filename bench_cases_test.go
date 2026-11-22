@@ -16,7 +16,9 @@ import (
 
 // The cases of bench/cases.json, run by BenchmarkCases. The same list drives the benchmarks
 // of parquet-go (bench/) and the Rust harness (tools/bench-rust), so a result is matched by
-// its name: BenchmarkCases/<case>. `make bench-json` runs it with -cpu 1,<cores>.
+// its name: BenchmarkCases/<case>. A case that reads runs twice: on a file OpenFile opened, and
+// as BenchmarkCases/<case>/mapped on a file OpenMapped opened. `make bench-json` runs it with
+// -cpu 1,<cores>.
 
 // benchSpec is bench/cases.json.
 type benchSpec struct {
@@ -55,37 +57,51 @@ func loadBenchSpec(tb testing.TB) benchSpec {
 	return s
 }
 
+// benchOpen opens the file of a case: OpenFile, or OpenMapped for the mapped run of the case.
+type benchOpen func(path string) (*vortex.File, error)
+
 // benchOps are the operations of a case. Each one runs the timed loop on a file.
-var benchOps = map[string]func(b *testing.B, path string, d benchData){
-	"open": func(b *testing.B, path string, _ benchData) {
+var benchOps = map[string]func(b *testing.B, path string, d benchData, open benchOpen){
+	"open": func(b *testing.B, path string, _ benchData, open benchOpen) {
 		b.ReportAllocs()
 		for b.Loop() {
-			f, err := vortex.OpenFile(path)
+			f, err := open(path)
 			if err != nil {
 				b.Fatal(err)
 			}
 			f.Close()
 		}
 	},
-	"scan_full": func(b *testing.B, path string, _ benchData) {
-		benchScan(b, openBench(b, path), vortex.Query{})
+	"scan_full": func(b *testing.B, path string, _ benchData, open benchOpen) {
+		benchScan(b, openWith(b, path, open), vortex.Query{})
 	},
-	"scan_3col": func(b *testing.B, path string, d benchData) {
-		benchScan(b, openBench(b, path), vortex.Query{}, d.Project...)
+	"scan_3col": func(b *testing.B, path string, d benchData, open benchOpen) {
+		benchScan(b, openWith(b, path, open), vortex.Query{}, d.Project...)
 	},
-	"scan_filter": func(b *testing.B, path string, d benchData) {
+	"scan_filter": func(b *testing.B, path string, d benchData, open benchOpen) {
 		q := vortex.Query{Filter: vortex.Col(d.Filter.Column).Lt(benchLiteral(b, d.Filter.Type, d.Filter.Lt))}
-		benchScan(b, openBench(b, path), q, d.Project...)
+		benchScan(b, openWith(b, path, open), q, d.Project...)
 	},
-	"scan_range": func(b *testing.B, path string, d benchData) {
-		f := openBench(b, path)
+	"scan_range": func(b *testing.B, path string, d benchData, open benchOpen) {
+		f := openWith(b, path, open)
 		n := float64(f.NumRows())
 		q := vortex.Query{Rows: vortex.Range{Start: int64(n * d.Range[0]), End: int64(n * d.Range[1])}}
 		benchScan(b, f, q)
 	},
-	"write_default": func(b *testing.B, path string, _ benchData) { benchWriteFile(b, path, vortex.Default) },
-	"write_none":    func(b *testing.B, path string, _ benchData) { benchWriteFile(b, path, vortex.None) },
-	"write_compact": func(b *testing.B, path string, _ benchData) { benchWriteFile(b, path, vortex.Compact) },
+	"write_default": func(b *testing.B, path string, _ benchData, _ benchOpen) { benchWriteFile(b, path, vortex.Default) },
+	"write_none":    func(b *testing.B, path string, _ benchData, _ benchOpen) { benchWriteFile(b, path, vortex.None) },
+	"write_compact": func(b *testing.B, path string, _ benchData, _ benchOpen) { benchWriteFile(b, path, vortex.Compact) },
+}
+
+// openWith opens the file of a benchmark with open, and closes it when the benchmark ends.
+func openWith(b *testing.B, path string, open benchOpen) *vortex.File {
+	b.Helper()
+	f, err := open(path)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { f.Close() })
+	return f
 }
 
 // benchLiteral is the value of a filter, of the Go type the column has.
@@ -121,7 +137,12 @@ func BenchmarkCases(b *testing.B) {
 	for _, c := range spec.Cases {
 		d := spec.Data[c.Data]
 		op := benchOps[c.Op]
-		b.Run(c.Name, func(b *testing.B) { op(b, benchDataPath(b, d), d) })
+		b.Run(c.Name, func(b *testing.B) { op(b, benchDataPath(b, d), d, vortex.OpenFile) })
+		// A case that reads runs a second time on the file mapped in memory. A case that
+		// writes reads nothing in its timed loop.
+		if !strings.HasPrefix(c.Op, "write_") {
+			b.Run(c.Name+"/mapped", func(b *testing.B) { op(b, benchDataPath(b, d), d, vortex.OpenMapped) })
+		}
 	}
 }
 
@@ -344,32 +365,5 @@ func TestBenchWriteCopy(t *testing.T) {
 				t.Errorf("%s: %d rows written, %d read", name, f.NumRows(), g.NumRows())
 			}
 		}
-	}
-}
-
-// BenchmarkMapped runs the scans of the generated file on a file that OpenMapped opened: the
-// same cases as BenchmarkCases/gen16, to read next to them.
-func BenchmarkMapped(b *testing.B) {
-	spec := loadBenchSpec(b)
-	d := spec.Data["gen16"]
-	for _, op := range []string{"scan_full", "scan_3col", "scan_filter", "scan_range"} {
-		b.Run(op, func(b *testing.B) {
-			f, err := vortex.OpenMapped(benchDataPath(b, d))
-			if err != nil {
-				b.Fatal(err)
-			}
-			b.Cleanup(func() { f.Close() })
-			q, cols := vortex.Query{}, d.Project
-			switch op {
-			case "scan_full":
-				cols = nil
-			case "scan_filter":
-				q.Filter = vortex.Col(d.Filter.Column).Lt(benchLiteral(b, d.Filter.Type, d.Filter.Lt))
-			case "scan_range":
-				n := float64(f.NumRows())
-				q.Rows, cols = vortex.Range{Start: int64(n * d.Range[0]), End: int64(n * d.Range[1])}, nil
-			}
-			benchScan(b, f, q, cols...)
-		})
 	}
 }

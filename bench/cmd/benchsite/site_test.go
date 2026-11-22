@@ -9,9 +9,11 @@ import (
 
 const page = "<!-- bench:begin -->\nold\n<!-- bench:end -->\n<!-- history:begin -->\nold\n<!-- history:end -->\n<!-- size:begin -->\nold\n<!-- size:end -->\n"
 
+const parquetPage = "<!-- parquet:begin -->\nold\n<!-- parquet:end -->\n"
+
 const benchJSON = `{"commit":"a1d8357cdae3fbe2e35b755c5efd7529d377a149","date":"2026-11-20T10:56:13Z","vortex_version":"0.93.0","go_version":"go1.27.4","rust_version":"rustc 1.100.0","machine":{"os":"linux","cpu":"Acme CPU","cores":4},"cases":[
 {"name":"a/fast","threads":1,"go":{"ns_per_op":500000},"rust":{"ns_per_op":1000000,"rows_per_s":1},"ratio_to_rust":0.5},
-{"name":"b/slow","threads":4,"go":{"ns_per_op":3000000000},"rust":{"ns_per_op":1000000000},"go_rows":{"ns_per_op":400000000},"parquet_go":{"ns_per_op":2000000000},"ratio_to_rust":3,"ratio_to_parquet_go":0.2},
+{"name":"b/slow","threads":4,"go":{"ns_per_op":3000000000},"go_mapped":{"ns_per_op":1500000000},"rust":{"ns_per_op":1000000000},"go_rows":{"ns_per_op":400000000},"go_rows_mapped":{"ns_per_op":250000000},"parquet_go":{"ns_per_op":2000000000},"ratio_to_rust":3,"ratio_to_rust_mapped":1.5,"ratio_to_parquet_go":0.2,"ratio_to_parquet_go_mapped":0.125},
 {"name":"c/norust","threads":1,"go":{"ns_per_op":900}}]}`
 
 func write(t *testing.T, dir, name, content string) string {
@@ -34,7 +36,7 @@ func mustReport(t *testing.T, s string) *report {
 }
 
 func TestSpeedThreeCases(t *testing.T) {
-	out, err := renderSpeed(mustReport(t, benchJSON))
+	out, err := renderCompare(mustReport(t, benchJSON), vsRust)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,21 +61,33 @@ func TestSpeedThreeCases(t *testing.T) {
 	if i, j := strings.Index(out, "b/slow"), strings.Index(out, "a/fast"); i < 0 || j < 0 || i > j {
 		t.Error("the case where we lose is not first")
 	}
-	// The case with no Rust number: a dash for Rust and the ratio, and 1 bar.
+	// The mapped run of a case is next to it: its time, and its own ratio to Rust.
+	slow := out[strings.Index(out, `data-testid="speed-row-0"`):]
+	slow = slow[:strings.Index(slow, "</tr>")]
+	for _, want := range []string{"b/slow", `<td class="num">1.00 s</td>`, `<td class="num">3.00 s</td>`, `<td class="num">1.50 s</td><td class="num slower">1.50x slower</td>`} {
+		if !strings.Contains(slow, want) {
+			t.Errorf("%q is missing in %q", want, slow)
+		}
+	}
+	if bars := out[strings.Index(out, `data-testid="speed-bars-0"`):]; strings.Count(bars[:strings.Index(bars, "</g>")], "<rect") != 3 {
+		t.Error("a case with a mapped run has 3 bars")
+	}
+	// The case with no Rust number and no mapped run: a dash for each and for the two
+	// ratios, and 1 bar.
 	row := out[strings.Index(out, "c/norust"):]
 	row = row[:strings.Index(row, "</tr>")]
-	if n := strings.Count(row, dash); n != 2 {
-		t.Errorf("%d dashes in %q, want 2", n, row)
+	if n := strings.Count(row, dash); n != 4 {
+		t.Errorf("%d dashes in %q, want 4", n, row)
 	}
 	if !strings.Contains(out, "b/slow, 4 threads") || !strings.Contains(out, "c/norust, 1 thread<") {
 		t.Error("labels of the bars")
 	}
 }
 
-// TestSpeedParquet is the table of the ratios to parquet-go: one line per case that both
-// libraries read, with the two times and our time over the parquet-go one.
-func TestSpeedParquet(t *testing.T) {
-	out, err := renderSpeed(mustReport(t, benchJSON))
+// TestParquet is the comparison with parquet-go: one line per case that both libraries read,
+// with the time of parquet-go, ours read and mapped, and each of ours over the parquet-go one.
+func TestParquet(t *testing.T) {
+	out, err := renderCompare(mustReport(t, benchJSON), vsParquet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,14 +96,23 @@ func TestSpeedParquet(t *testing.T) {
 	}
 	row := out[strings.Index(out, `data-testid="parquet-row-0"`):]
 	row = row[:strings.Index(row, "</tr>")]
-	for _, want := range []string{"b/slow", `<td class="num">4</td>`, "400.0 ms", "2.00 s", `<td class="num faster">5.00x faster</td>`} {
+	for _, want := range []string{
+		"b/slow", `<td class="num">4</td>`, `<td class="num">2.00 s</td>`,
+		`<td class="num">400.0 ms</td><td class="num faster">5.00x faster</td>`,
+		`<td class="num">250.0 ms</td><td class="num faster">8.00x faster</td>`,
+	} {
 		if !strings.Contains(row, want) {
 			t.Errorf("%q is missing in %q", want, row)
 		}
 	}
+	for _, want := range []string{`data-testid="parquet-table"`, `data-testid="parquet-chart"`, `data-testid="parquet-machine"`, "vs parquet-go", "<title>parquet-go: 2.00 s</title>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%q is missing", want)
+		}
+	}
 	// A report with no case that parquet-go read says so, and has no table.
 	none := strings.ReplaceAll(benchJSON, `"parquet_go"`, `"other"`)
-	out, err = renderSpeed(mustReport(t, none))
+	out, err = renderCompare(mustReport(t, none), vsParquet)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +123,7 @@ func TestSpeedParquet(t *testing.T) {
 
 func TestSpeedEmpty(t *testing.T) {
 	for _, r := range []*report{nil, {}} {
-		out, err := renderSpeed(r)
+		out, err := renderCompare(r, vsRust)
 		if err != nil || !strings.Contains(out, "no measurement yet") {
 			t.Errorf("%q, %v", out, err)
 		}
@@ -109,7 +132,7 @@ func TestSpeedEmpty(t *testing.T) {
 
 func TestHTMLIsEscaped(t *testing.T) {
 	r := mustReport(t, `{"machine":{"cpu":"<script>x</script>"},"cases":[{"name":"a&b","threads":1,"go":{"ns_per_op":1}}]}`)
-	out, _ := renderSpeed(r)
+	out, _ := renderCompare(r, vsRust)
 	if strings.Contains(out, "<script>") || !strings.Contains(out, "a&amp;b") {
 		t.Errorf("not escaped: %s", out)
 	}
@@ -211,8 +234,8 @@ func TestFill(t *testing.T) {
 
 func TestRun(t *testing.T) {
 	dir := t.TempDir()
-	p := write(t, dir, "rust.html", page)
-	args := []string{"-page", p, "-bench", filepath.Join(dir, "none.json"), "-history", filepath.Join(dir, "none.jsonl"), "-sizes", filepath.Join(dir, "none-sizes.json")}
+	p, pq := write(t, dir, "rust.html", page), write(t, dir, "parquet.html", parquetPage)
+	args := []string{"-page", p, "-parquet-page", pq, "-bench", filepath.Join(dir, "none.json"), "-history", filepath.Join(dir, "none.jsonl"), "-sizes", filepath.Join(dir, "none-sizes.json")}
 	// No data: every section says so, and the build does not fail.
 	if err := run(args); err != nil {
 		t.Fatal(err)
@@ -221,18 +244,32 @@ func TestRun(t *testing.T) {
 	if n := strings.Count(string(b), "no measurement yet"); n != 3 {
 		t.Errorf("%d sections with no measurement, want 3", n)
 	}
+	if b, _ = os.ReadFile(pq); !strings.Contains(string(b), `data-testid="parquet-empty"`) {
+		t.Errorf("the page of parquet-go: %s", b)
+	}
 	// With data.
 	write(t, dir, "bench.json", benchJSON)
 	write(t, dir, "history.jsonl", strings.ReplaceAll(benchJSON, "\n", "")+"\n")
 	write(t, dir, "sizes.json", `{"x.regular":1}`)
-	p = write(t, dir, "rust.html", page)
-	err := run([]string{"-page", p, "-bench", filepath.Join(dir, "bench.json"), "-history", filepath.Join(dir, "history.jsonl"), "-sizes", filepath.Join(dir, "sizes.json")})
+	p, pq = write(t, dir, "rust.html", page), write(t, dir, "parquet.html", parquetPage)
+	err := run([]string{"-page", p, "-parquet-page", pq, "-bench", filepath.Join(dir, "bench.json"), "-history", filepath.Join(dir, "history.jsonl"), "-sizes", filepath.Join(dir, "sizes.json")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	b, _ = os.ReadFile(p)
-	if strings.Contains(string(b), "no measurement yet") || !strings.Contains(string(b), "speed-table") {
+	if strings.Contains(string(b), "no measurement yet") || !strings.Contains(string(b), "speed-table") || strings.Contains(string(b), "parquet-table") {
 		t.Errorf("not filled: %s", b)
+	}
+	// The comparison with parquet-go is on its own page, and only there.
+	if b, _ = os.ReadFile(pq); !strings.Contains(string(b), "parquet-table") || strings.Contains(string(b), "speed-table") {
+		t.Errorf("the page of parquet-go is not filled: %s", b)
+	}
+	// Errors: a page of parquet-go that is missing, or that has no marker.
+	if run(append([]string{"-parquet-page", filepath.Join(dir, "missing.html")}, args[:2]...)) == nil {
+		t.Error("a missing page of parquet-go: no error")
+	}
+	if err := run(append([]string{"-parquet-page", write(t, dir, "plain-pq.html", "x")}, args[:2]...)); err == nil || !strings.Contains(err.Error(), "plain-pq.html") {
+		t.Errorf("a page of parquet-go with no marker: %v", err)
 	}
 	// Errors: a missing page, a page with no markers, a damaged history, a bad flag.
 	if run([]string{"-page", filepath.Join(dir, "missing.html")}) == nil {
