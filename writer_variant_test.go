@@ -309,6 +309,9 @@ func TestVariantRowWriterErrors(t *testing.T) {
 }
 
 func TestNoAllocationPerVariantWrite(t *testing.T) {
+	if raceEnabled {
+		t.Skip("the sync.Pool of the race detector drops what it is given at random, and the encoders use pools")
+	}
 	w := NewWriter(io.Discard, NewSchema(Field{"v", VariantType().AsNullable()}), WriteOptions{})
 	vals := make([]any, 1000)
 	for i := range vals {

@@ -107,7 +107,7 @@ func (e *Encoder) distinctOf(k *keys, n, rows, limit int, nulls []bool) (d, dist
 	distinct, nullCode = e.classify(k, n, nulls)
 	f1, f2 := 0, 0
 	for c := range distinct {
-		switch e.count[c] {
+		switch e.dt.count[c] {
 		case 1:
 			f1++
 		case 2:
@@ -129,6 +129,7 @@ func (e *Encoder) distinctOf(k *keys, n, rows, limit int, nulls []bool) (d, dist
 func EstimateDict[T Number](e *Encoder, sample []T, nulls []bool, rows int) int {
 	k := keys{raw: unsafex.Bytes(sample), w: unsafex.Size[T](), kind: keyNumbers}
 	d, _, _ := e.distinctOf(&k, len(sample), rows, 1<<min(8*k.w, 40)+boolInt(hasNull(nulls)), nulls)
+	e.done()
 	_, cw := narrow(uint64(max(d-1, 0)))
 	return rows*cw + d*k.w + validBytes(nulls, d)
 }
@@ -147,9 +148,10 @@ func EstimateDictStrings(e *Encoder, sample []string, nulls []bool, rows int) in
 
 func (e *Encoder) estimateVarBin(k *keys, n int, nulls []bool, rows int) int {
 	d, distinct, nullCode := e.distinctOf(k, n, rows, rows, nulls)
+	defer e.done()
 	long := 0
 	for c := range distinct {
-		if size := k.size(int(e.first[c])); c != nullCode && size > maxInline {
+		if size := k.size(int(e.dt.first[c])); c != nullCode && size > maxInline {
 			long += size
 		}
 	}

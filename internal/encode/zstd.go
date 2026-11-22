@@ -36,7 +36,7 @@ func Zstd[T Number](e *Encoder, v []T, nulls []bool) *Node {
 			valid++
 		}
 	}
-	raw := e.alloc(valid * w)
+	raw := e.allocDirty(valid * w) // every valid value is written
 	src := unsafex.Bytes(v)
 	k := 0
 	for i := range v {
@@ -71,7 +71,7 @@ func (e *Encoder) zstdStrings(ls lineSet, nulls []bool, rows int) *Node {
 	}
 	raw := e.allocDirty(total + 4*valid) // each value writes its length and its bytes
 	o := 0
-	sizes := e.alloc(8 * ((valid + zstdValuesPerFrame - 1) / zstdValuesPerFrame))
+	sizes := e.allocDirty(8 * ((valid + zstdValuesPerFrame - 1) / zstdValuesPerFrame))
 	k := 0
 	for i := range rows {
 		if isNull(nulls, i) {

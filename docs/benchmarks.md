@@ -144,6 +144,20 @@ What the reader does to stay close to the reference, so that a change does not u
   or 32 bits: one shift and one mask for all of them (`unpackBlock`);
 - the validity of the rows of a dictionary is made a byte at a time, with no test per row.
 
+What the writer does with its memory, for the same reason:
+
+- the compressors of a closed writer go to a pool (`wcompress.go`), and the next writer takes
+  them with their memory;
+- an `Encoder` keeps the blocks of its arena from one `Reset` to the next, so the same calls
+  take no new memory, and the first block is small: a writer has two encoders per column;
+- the memory of the FSST and OnPair trainings, of the Pco coder and of the tables of a
+  dictionary is taken from a pool for one call and given back at its end, so that the
+  columns share as many as there are calls at once;
+- `allocDirty` gives a buffer the encoder writes whole, with no clearing first. `alloc` clears
+  only what an earlier use wrote: the rest of a block is still zero. In the tests of
+  `internal/encode` a new block is full of a pattern, so that a byte read and never written
+  makes other bytes than the reference.
+
 What the writer does to choose the encodings of strings with no more work than the reference:
 
 - a dictionary of strings is not tried when more than half of the valid rows have distinct
