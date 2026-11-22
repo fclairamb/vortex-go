@@ -586,8 +586,9 @@ func (tb *table) indexBins() {
 	tb.indexShift = uint(max(bits.Len64(tb.lowers[last]-lo)-bits.Len(binBuckets-1), 0))
 	bin := 0
 	for b := range binBuckets {
-		first := lo + uint64(b)<<tb.indexShift
-		for bin < last && tb.lowers[bin+1] <= first {
+		// counted from the first lower: the end of the range may be past the largest number
+		first := uint64(b) << tb.indexShift
+		for bin < last && tb.lowers[bin+1]-lo <= first {
 			bin++
 		}
 		tb.index[b] = int32(bin)
