@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.2](https://github.com/fclairamb/vortex-go/compare/v0.1.1...v0.1.2) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/fclairamb/vortex-go to v0.1.1 ([#59](https://github.com/fclairamb/vortex-go/issues/59)) ([debb723](https://github.com/fclairamb/vortex-go/commit/debb723226d640988fe7c8fbe0054d9917977a5a))
+
+
+### Performance Improvements
+
+* **writer:** compress uuid columns and drop single-zone tables under Compact (dbbat archive at or below parquet-go) ([#57](https://github.com/fclairamb/vortex-go/issues/57)) ([26ce7b1](https://github.com/fclairamb/vortex-go/commit/26ce7b1c2e6caf5b5351ddc43e115cd4b0b51ac2))
+
 ## [0.1.1](https://github.com/fclairamb/vortex-go/compare/v0.1.0...v0.1.1) (2026-11-22)
 
 
