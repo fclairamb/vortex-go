@@ -716,6 +716,9 @@ func (w *Writer) Write(cols ...Data) error
     Write adds rows to the file: one Data per field of the schema, all of
     the same length. It returns an error when a Data does not fit its field,
     and then, or when the io.Writer fails, the writer is closed for writing.
-    Write reads the slices of the Data and does not keep them. The rows are in
-    the io.Writer when Close returns, some of them before.
+    Write keeps none of the slices of the Data: the caller may write them again
+    when it returns. It copies the bytes of OfBytes, not the ones of the strings
+    of OfStrings, which a Go string never changes: it points to them until
+    their chunk is written. The rows are in the io.Writer when Close returns,
+    some of them before.
 

@@ -1,9 +1,17 @@
 package vortex
 
-import "github.com/fclairamb/vortex-go/internal/variant"
+import (
+	"encoding/binary"
+	"slices"
+
+	"github.com/fclairamb/vortex-go/internal/unsafex"
+	"github.com/fclairamb/vortex-go/internal/variant"
+)
 
 // The buffer of a column: the rows that are not in a segment yet. Write copies the rows of
-// the caller into it (the caller may reuse its slices), a block at a time.
+// the caller into it (the caller may reuse its slices), a block at a time. A Go string cannot
+// change, so the bytes of a string are kept where they are, not copied: the writer never
+// writes into the values of its buffer.
 
 // newBody returns an empty buffer for a column of type t.
 func newBody(t Type) *body {
@@ -80,7 +88,7 @@ func appendRows(dst *body, src *body, t Type, lo, hi int, arena *[]byte) {
 	case dBytes:
 		appendBytes(dst, src, lo, hi, arena)
 	case dDec:
-		dst.decs = append(dst.decs, src.decs[lo:hi]...)
+		dst.raw = appendDecimals(dst.raw, src.decs[lo:hi], decimalWidth(t.precision))
 	case dVars:
 		appendVariants(dst, src, lo, hi, arena)
 	case dStruct:
@@ -93,6 +101,38 @@ func appendRows(dst *body, src *body, t Type, lo, hi int, arena *[]byte) {
 	dst.n += hi - lo
 }
 
+// appendDecimals adds the decimals v to dst, little-endian, width bytes each: checkDecimals
+// made sure that each valid one fits them, a null one is cut to them.
+func appendDecimals(dst []byte, v []Decimal, width int) []byte {
+	at := len(dst)
+	dst = slices.Grow(dst, len(v)*width)[:at+len(v)*width]
+	out := dst[at:]
+	switch width {
+	case 1:
+		for i, x := range v {
+			out[i] = byte(x.w[0])
+		}
+	case 2:
+		for i, x := range v {
+			binary.LittleEndian.PutUint16(out[2*i:], uint16(x.w[0]))
+		}
+	case 4:
+		for i, x := range v {
+			binary.LittleEndian.PutUint32(out[4*i:], uint32(x.w[0]))
+		}
+	case 8:
+		for i, x := range v {
+			binary.LittleEndian.PutUint64(out[8*i:], x.w[0])
+		}
+	default:
+		for i, x := range v {
+			le := x.le()
+			copy(out[i*width:], le[:width])
+		}
+	}
+	return dst
+}
+
 // appendVariants encodes the values lo to hi of src, which checkVariants checked, into the
 // metadata and the value of each row of dst.
 func appendVariants(dst, src *body, lo, hi int, arena *[]byte) {
@@ -103,14 +143,17 @@ func appendVariants(dst, src *body, lo, hi int, arena *[]byte) {
 	}
 }
 
-// appendBytes copies the strings of a utf8, binary or uuid column.
+// appendBytes adds the values of a utf8, binary or uuid column: the bytes of a slice, which
+// the caller may write again, are copied, the ones of a string are not.
 func appendBytes(dst, src *body, lo, hi int, arena *[]byte) {
-	for i := lo; i < hi; i++ {
-		if src.kind == dStr {
-			dst.bins = append(dst.bins, copyBytes(arena, src.strs[i]))
-		} else {
-			dst.bins = append(dst.bins, copyBytes(arena, src.bins[i]))
+	if src.kind == dStr {
+		for _, s := range src.strs[lo:hi] {
+			dst.bins = append(dst.bins, unsafex.StringBytes(s))
 		}
+		return
+	}
+	for _, v := range src.bins[lo:hi] {
+		dst.bins = append(dst.bins, copyBytes(arena, v))
 	}
 }
 

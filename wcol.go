@@ -208,7 +208,7 @@ func (c *column) reserve(ahead int) {
 	case dBytes:
 		b.bins = slices.Grow(b.bins, rows)
 	case dDec:
-		b.decs = slices.Grow(b.decs, rows)
+		b.raw = slices.Grow(b.raw, rows*decimalWidth(c.t.precision))
 	}
 }
 
@@ -300,10 +300,9 @@ type lastRun struct {
 	codes    *encode.Node         // the compressed codes of the run, nil for the plain ones
 	vals     *encode.Node         // the compressed values of the run, nil for the plain ones
 	comp     *compress.Compressor // the compressor of vals: the one of the column made codes
-	scratch  []byte
-	cost     int  // about what finishAlone costs, see tailCost
-	prepared bool // prepare took the last rows
-	run      bool // codes and vals are the arrays of the run of the dictionary
+	cost     int                  // about what finishAlone costs, see tailCost
+	prepared bool                 // prepare took the last rows
+	run      bool                 // codes and vals are the arrays of the run of the dictionary
 }
 
 // finishColumns does, on every core, the part of finish that only touches a column: the
@@ -372,10 +371,10 @@ func (c *column) finishAlone(w *Writer) {
 		cp := w.compressor(c)
 		cp.Reset()
 		t, codes := d.codesArray(n)
-		c.last.codes = compressData(cp, t, codes, &c.last.scratch)
+		c.last.codes = compressData(cp, t, codes)
 	}
 	c.last.comp = w.newCompressor(c.buf.kind)
-	c.last.vals = compressData(c.last.comp, c.t, c.valuesArray(), &c.last.scratch)
+	c.last.vals = compressData(c.last.comp, c.t, c.valuesArray())
 	c.last.run = true
 }
 
