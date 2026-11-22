@@ -162,29 +162,49 @@ func fsstRowsOf(starts, ends []int, data []byte, p PType, n int) (total, first, 
 // bytes, and checks the offsets of the codes of the rows, offs, against them: the offsets do
 // not decrease, stay within the n codes, and a row is not longer than its codes can make. It
 // returns the sum of the lengths, and the range of the codes of all the rows.
+//
+// The checks of a row are folded into the sign of bad, with no branch: the codes of the row,
+// what is left of the n codes after them, and what its codes can make minus its length are
+// not negative. A row past the n codes may make a wrong product, but its other term is
+// negative. When one of them is, fsstRowError says which row is wrong.
 func fsstRows[O integer](starts, ends []int, offs []O, n int) (total, first, last int, err error) {
 	offs, starts = offs[:len(ends)+1], starts[:len(ends)]
 	prev := int(offs[0])
-	if prev < 0 {
-		return 0, 0, 0, fmt.Errorf("offset 0 is %d, after 0", prev)
+	first, bad := prev, prev|(n-prev)
+	for i, l := range ends {
+		next := int(offs[i+1])
+		d := next - prev
+		bad |= d | (n - next) | (d*fsstMaxSymbol - l)
+		starts[i], total = total, total+l
+		ends[i], prev = total, next
 	}
-	first = prev
+	if bad < 0 {
+		for i := range ends { // the lengths back
+			ends[i] -= starts[i]
+		}
+		return 0, 0, 0, fsstRowError(ends, offs, n)
+	}
+	return total, first, prev, nil
+}
+
+// fsstRowError is the error of the first wrong row of fsstRows, ends holding the lengths.
+func fsstRowError[O integer](ends []int, offs []O, n int) error {
+	prev := int(offs[0])
+	if prev < 0 {
+		return fmt.Errorf("offset 0 is %d, after 0", prev)
+	}
 	for i, l := range ends {
 		next := int(offs[i+1])
 		if next < prev {
-			return 0, 0, 0, fmt.Errorf("offset %d is %d, after %d", i+1, next, prev)
+			return fmt.Errorf("offset %d is %d, after %d", i+1, next, prev)
 		}
 		// The codes past the n there are are checked at the end: they make no bytes here.
 		if limit := (min(next, n) - min(prev, n)) * fsstMaxSymbol; l > limit {
-			return 0, 0, 0, fmt.Errorf("row %d is declared %d bytes, its codes hold at most %d", i, l, limit)
+			return fmt.Errorf("row %d is declared %d bytes, its codes hold at most %d", i, l, limit)
 		}
-		starts[i], total = total, total+l // at most 8 times the codes: the sum cannot overflow
-		ends[i], prev = total, next
+		prev = next
 	}
-	if prev > n {
-		return 0, 0, 0, fmt.Errorf("offset %d is past the %d elements", prev, n)
-	}
-	return total, first, prev, nil
+	return fmt.Errorf("offset %d is past the %d elements", prev, n)
 }
 
 // denseChild decodes child i of the node as rows integers of type p with no null.
