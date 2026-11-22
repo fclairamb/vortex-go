@@ -322,8 +322,13 @@ func (s *fsstState) optimize(share int, prune bool) {
 			s.addCandidate(merged, int(s.c2[int(code1)<<9+int(code2)])*symLen(merged))
 		})
 	})
+	// Best gain first, then the longest symbol, then the largest: the first test settles nearly
+	// every pair, so the two others are only made when it does not.
 	slices.SortFunc(s.cands, func(a, b fsstCand) int {
-		return cmp.Or(cmp.Compare(b.gain, a.gain), cmp.Compare(symLen(b.sym), symLen(a.sym)), cmp.Compare(b.sym, a.sym))
+		if a.gain != b.gain {
+			return cmp.Compare(b.gain, a.gain)
+		}
+		return cmp.Or(cmp.Compare(symLen(b.sym), symLen(a.sym)), cmp.Compare(b.sym, a.sym))
 	})
 	s.clearBuilt()
 	inserted := 0

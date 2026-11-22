@@ -101,11 +101,13 @@ type table struct {
 	fw      []float64
 	cnt     []uint32
 	sym     []uint32 // per state
-	next    []uint32
-	read    []uint8
-	start   []int32  // per symbol, where its states start in byNext
-	byNext  []uint32 // the states of each symbol, by the first state they lead to
-	ansLog  int
+	start   []int32  // per symbol, where its states start in byBase
+	byBase  []uint32 // the states of each symbol, in the order of the table
+	// index is, for each of the binBuckets parts of the range of the lowers, the bin of its
+	// first value: the bin of a latent is looked for among the bins of its part.
+	index      [binBuckets + 1]int32
+	indexShift uint
+	ansLog     int
 }
 
 // varEnc is a table and the symbols of the latents of a page.
@@ -122,18 +124,19 @@ type seg struct{ start, n int }
 
 // Coder codes numbers. The memory it uses is kept from one call to the next.
 type Coder struct {
-	w      bitWriter
-	out    []byte
-	marks  []int
-	coded  []Coded
-	pages  [][]byte
-	pageN  []int
-	prim   []uint64
-	sec    []uint64
-	state  []uint64
-	sorted []uint64
-	segs   []seg
-	sample []seg
+	w       bitWriter
+	out     []byte
+	marks   []int
+	coded   []Coded
+	pages   [][]byte
+	pageN   []int
+	prim    []uint64
+	sec     []uint64
+	state   []uint64
+	sorted  []uint64
+	sortTmp []uint64
+	segs    []seg
+	sample  []seg
 	// the training of the bins
 	upos []int
 	logs []float64 // logs[k] is the base 2 logarithm of k, for the counts of a bin
@@ -203,12 +206,14 @@ func (c *Coder) chunk(vals []uint64, pageN int) {
 	c.split(pl, vals, c.segs)
 	nb := t.Bits()
 	c.sorted = append(c.sorted[:0], c.prim...)
-	slices.Sort(c.sorted)
+	c.sorted, c.sortTmp = sortLatents(c.sorted, c.sortTmp)
 	c.train(&c.vars[0].table, c.sorted, nb)
+	c.vars[0].indexBins()
 	if pl.mult {
 		c.sorted = append(c.sorted[:0], c.sec...)
-		slices.Sort(c.sorted)
+		c.sorted, c.sortTmp = sortLatents(c.sorted, c.sortTmp)
 		c.train(&c.vars[1].table, c.sorted, nb)
+		c.vars[1].indexBins()
 	}
 	c.w = bitWriter{buf: c.out}
 	c.meta(pl)
@@ -264,11 +269,11 @@ func (c *Coder) cost(p plan, vals []uint64, segs []seg) float64 {
 	nb := c.t.Bits()
 	c.split(p, vals, segs)
 	c.sorted = append(c.sorted[:0], c.prim...)
-	slices.Sort(c.sorted)
+	c.sorted, c.sortTmp = sortLatents(c.sorted, c.sortTmp)
 	total := c.train(&c.vars[0].table, c.sorted, nb)
 	if p.mult {
 		c.sorted = append(c.sorted[:0], c.sec...)
-		slices.Sort(c.sorted)
+		c.sorted, c.sortTmp = sortLatents(c.sorted, c.sortTmp)
 		total += c.train(&c.vars[1].table, c.sorted, nb)
 	}
 	return total
@@ -547,51 +552,102 @@ func (tb *table) quantize(total, est int) {
 	tb.ansLog = lg - tz
 }
 
-// build derives the states of the tANS table from the weights: what the decoder does, and for
-// each symbol the states that lead to it, which the encoder walks backwards.
+// build derives the states of the tANS table from the weights: for each symbol, its states
+// in the order of the table, which the encoder walks backwards.
 func (tb *table) build() {
 	size := 1 << tb.ansLog
 	nBins := len(tb.weights)
-	tb.sym, tb.next, tb.read = grow(tb.sym, size), grow(tb.next, size), grow(tb.read, size)
+	tb.sym = grow(tb.sym, size)
 	spreadSymbols(tb.sym, tb.weights)
-	tb.cnt = append(tb.cnt[:0], tb.weights...)
 	tb.start = grow(tb.start, nBins+1)
-	clear(tb.start)
+	tb.start[0] = 0
 	for sym, w := range tb.weights {
 		tb.start[sym+1] = tb.start[sym] + int32(w)
 	}
-	tb.byNext = grow(tb.byNext, size)
-	for state, sym := range tb.sym {
-		base := tb.cnt[sym]
-		toRead := bits.LeadingZeros32(base) - bits.LeadingZeros32(uint32(size))
-		tb.read[state] = uint8(toRead)
-		tb.next[state] = base<<toRead - uint32(size)
-		tb.byNext[tb.start[sym]+int32(base-tb.weights[sym])] = uint32(state)
-		tb.cnt[sym]++
+	// cnt is where the next state of each symbol goes
+	tb.cnt = grow(tb.cnt, nBins)
+	for sym := range tb.cnt {
+		tb.cnt[sym] = uint32(tb.start[sym])
 	}
-	for sym := range nBins {
-		slices.SortFunc(tb.byNext[tb.start[sym]:tb.start[sym+1]], func(a, b uint32) int {
-			return int(tb.next[a]) - int(tb.next[b])
-		})
+	tb.byBase = grow(tb.byBase, size)
+	for state, sym := range tb.sym {
+		tb.byBase[tb.cnt[sym]] = uint32(state)
+		tb.cnt[sym]++
 	}
 }
 
-// bin is the index of the bin of x.
-func (tb *table) bin(x uint64) int { return upper(tb.lowers, x) - 1 }
+// binBuckets is the number of parts the range of the lowers of a table is cut in.
+const binBuckets = 256
 
-// stateFor is the state of the symbol sym whose range holds the state to, the one the decoder
-// goes to the state to from.
-func (tb *table) stateFor(sym int, to uint32) uint32 {
-	states := tb.byNext[tb.start[sym]:tb.start[sym+1]]
-	lo, hi := 0, len(states)
-	for hi-lo > 1 {
-		if mid := (lo + hi) / 2; tb.next[states[mid]] <= to {
+// indexBins fills the index of the bins: the bin of the first value of each part of the range
+// of the lowers, and one more that is the last bin.
+func (tb *table) indexBins() {
+	lo, last := tb.lowers[0], len(tb.lowers)-1
+	tb.indexShift = uint(max(bits.Len64(tb.lowers[last]-lo)-bits.Len(binBuckets-1), 0))
+	bin := 0
+	for b := range binBuckets {
+		// counted from the first lower: the end of the range may be past the largest number
+		first := uint64(b) << tb.indexShift
+		for bin < last && tb.lowers[bin+1]-lo <= first {
+			bin++
+		}
+		tb.index[b] = int32(bin)
+	}
+	tb.index[binBuckets] = int32(last)
+}
+
+// bin is the index of the bin of x, a latent the bins were made from: the last bin whose
+// lower is at most x, looked for among the bins of the part of the range x is in.
+func (tb *table) bin(x uint64) int {
+	b := min((x-tb.lowers[0])>>tb.indexShift, binBuckets-1)
+	lo, hi := int(tb.index[b]), int(tb.index[b+1])
+	for lo < hi {
+		if mid := (lo + hi + 1) / 2; tb.lowers[mid] <= x {
 			lo = mid
 		} else {
-			hi = mid
+			hi = mid - 1
 		}
 	}
-	return states[lo]
+	return lo
+}
+
+// radixMin is the number of latents from which they are sorted a byte at a time.
+const radixMin = 1 << 10
+
+// sortLatents sorts s and returns it, with tmp, a buffer of the same size that it used: the
+// two may have been swapped. Many latents are sorted a byte at a time, from the low one, and
+// only on the bytes that are not the same in all of them: the latents of a chunk are close.
+func sortLatents(s, tmp []uint64) (sorted, buf []uint64) {
+	if len(s) < radixMin {
+		slices.Sort(s)
+		return s, tmp
+	}
+	tmp = grow(tmp, len(s))
+	var diff uint64
+	for _, x := range s {
+		diff |= x ^ s[0]
+	}
+	var count [256]int
+	for shift := uint(0); shift < 64; shift += 8 {
+		if diff>>shift&0xff == 0 {
+			continue
+		}
+		count = [256]int{}
+		for _, x := range s {
+			count[x>>shift&0xff]++
+		}
+		pos := 0
+		for i := range count {
+			count[i], pos = pos, pos+count[i]
+		}
+		for _, x := range s {
+			d := x >> shift & 0xff
+			tmp[count[d]] = x
+			count[d]++
+		}
+		s, tmp = tmp, s
+	}
+	return s, tmp
 }
 
 // meta writes the metadata of a chunk.
@@ -636,13 +692,23 @@ func (v *varEnc) symbols(lat []uint64) {
 	n := len(lat)
 	v.ansV, v.ansN = grow(v.ansV, n), grow(v.ansN, n)
 	v.offV, v.offN = grow(v.offV, n), grow(v.offN, n)
+	size := uint32(1) << v.ansLog
 	for lane := range interleaving {
 		to := uint32(0)
 		if lane < n {
 			for i := lane + (n-1-lane)/interleaving*interleaving; i >= 0; i -= interleaving {
 				b := v.bin(lat[i])
-				st := v.stateFor(b, to)
-				v.ansV[i], v.ansN[i] = to-v.next[st], v.read[st]
+				// The decoder goes to the state to from the state of the bin whose range
+				// holds it: the one whose base is the high bits of to, as many as make a
+				// number from the weight of the bin to twice it. The low bits are what
+				// the decoder reads.
+				w, x := v.weights[b], to+size
+				k := bits.Len32(x) - bits.Len32(w)
+				if x>>k < w {
+					k--
+				}
+				st := v.byBase[v.start[b]+int32(x>>k-w)]
+				v.ansV[i], v.ansN[i] = x&(1<<k-1), uint8(k)
 				v.offV[i], v.offN[i] = lat[i]-v.lowers[b], v.offBits[b]
 				to = st
 			}
