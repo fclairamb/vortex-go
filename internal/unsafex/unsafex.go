@@ -111,6 +111,13 @@ func StringBytes(s string) []byte {
 	return unsafe.Slice(unsafe.StringData(s), len(s))
 }
 
+// String views the bytes of b as a string, without copying them. b must never be written
+// again: the caller gives it to strings only, and the garbage collector keeps it alive as long
+// as one of them is.
+func String(b []byte) string {
+	return unsafe.String(unsafe.SliceData(b), len(b))
+}
+
 // Gather stores in dst[i] the field of rows[i] that sits off bytes into the row: the reverse
 // of Put. V must be the exact type of the field, or have its layout, and off and the size of
 // V come from reflect, which the caller checks. It reads min(len(rows), len(dst)) rows, and

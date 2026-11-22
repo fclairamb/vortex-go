@@ -47,9 +47,7 @@ func fastLeaf(row, gt reflect.Type, vt Type, off uintptr) fastFn {
 	case reflect.Bool:
 		return getLeaf(l, func(c *Column) func(int) bool { return c.Bool })
 	case reflect.String:
-		return getLeaf(l, func(c *Column) func(int) string {
-			return func(i int) string { return string(c.Bytes(i)) }
-		})
+		return getLeaf(l, batchStrings)
 	case reflect.Slice:
 		if isBytes(gt) && vt.kind != List {
 			return getLeaf(l, func(c *Column) func(int) []byte { return c.Bytes })
@@ -62,6 +60,43 @@ func fastLeaf(row, gt reflect.Type, vt Type, off uintptr) fastFn {
 		}
 	}
 	return numberLeaf(l)
+}
+
+// batchStrings returns how to read row i of a Utf8 column as a string, for a row that is
+// not null. The strings of the batch share one block that the garbage collector owns, a copy
+// of their bytes: one allocation for the column of the batch, not one per row. The block
+// never points into the memory of the scan, which the next batch reuses, nor into a mapped
+// file. It is the bytes from the first to the last that a row uses when that is no more than
+// the bytes of the rows (rows end to end, a dictionary, a constant), and the bytes of each row
+// end to end otherwise: never more than the strings of the rows put together. The ranges of
+// the null rows are not read.
+func batchStrings(c *Column) func(int) string {
+	n, data, valid := c.arr.Len, c.arr.Data, c.arr.Validity
+	starts, ends := c.arr.Starts[:n], c.arr.Ends[:n]
+	lo, hi, total := len(data), 0, 0
+	for i, s := range starts {
+		if valid == nil || valid.Get(i) {
+			e := ends[i]
+			lo, hi, total = min(lo, s), max(hi, e), total+e-s
+		}
+	}
+	if total == 0 {
+		return func(int) string { return "" }
+	}
+	if hi-lo <= total {
+		block := make([]byte, hi-lo)
+		copy(block, data[lo:hi])
+		return func(i int) string { return unsafex.String(block[starts[i]-lo : ends[i]-lo]) }
+	}
+	block, strs := make([]byte, 0, total), make([]string, n)
+	for i, s := range starts {
+		if valid == nil || valid.Get(i) {
+			at := len(block)
+			block = append(block, data[s:ends[i]]...)
+			strs[i] = unsafex.String(block[at:])
+		}
+	}
+	return func(i int) string { return strs[i] }
 }
 
 // slot is the place of a field to fill, and what it is.
