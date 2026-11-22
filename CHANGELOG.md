@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.2](https://github.com/fclairamb/vortex-go/compare/v0.1.1...v0.1.2) (2026-11-22)
+
+
+### Performance Improvements
+
+* **writer:** smaller files under `Compact`: uuid columns are now compressed and single-zone zone-map tables are dropped, bringing the dbbat archive to parquet-go's size or below ([#57](https://github.com/fclairamb/vortex-go/issues/57)) ([26ce7b1](https://github.com/fclairamb/vortex-go/commit/26ce7b1c2e6caf5b5351ddc43e115cd4b0b51ac2))
+
+
+### Miscellaneous
+
+* **deps:** the benchmark module now depends on vortex-go v0.1.1 ([#59](https://github.com/fclairamb/vortex-go/issues/59)) ([debb723](https://github.com/fclairamb/vortex-go/commit/debb723226d640988fe7c8fbe0054d9917977a5a))
+
 ## [0.1.1](https://github.com/fclairamb/vortex-go/compare/v0.1.0...v0.1.1) (2026-11-22)
 
 
