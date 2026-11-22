@@ -53,10 +53,7 @@ func constantArray(v *scalar.Value, t DType, rows int) (*Array, error) {
 		if err != nil {
 			return nil, err
 		}
-		a.Data = make([]byte, 0, rows*len(one))
-		for range rows {
-			a.Data = append(a.Data, one...)
-		}
+		a.Data = bytes.Repeat(one, rows) // a doubling copy, not a copy per row
 	case Utf8, Binary, Decimal:
 		return bytesConstant(a, v, t, rows)
 	case List, FixedSizeList:

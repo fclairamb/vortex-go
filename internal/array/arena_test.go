@@ -1,6 +1,7 @@
 package array
 
 import (
+	"math"
 	"testing"
 
 	"github.com/fclairamb/vortex-go/internal/unsafex"
@@ -61,5 +62,42 @@ func TestArenaReuse(t *testing.T) {
 	p.Recycle()
 	if got := other.Bytes(2500, false); &got[0] != &b[0] {
 		t.Fatal("Recycle did not release the arena")
+	}
+}
+
+// TestArenaClass checks that a class holds what it is asked for, at most a quarter more, that
+// the class of its size is itself, and that the classes grow with the size.
+func TestArenaClass(t *testing.T) {
+	prev := -1
+	for n := 9; n < 1<<20; n += 1 + n/1000 {
+		c, size := class(n)
+		if size < n || 4*size > 5*n+4 {
+			t.Fatalf("%d elements: class of %d", n, size)
+		}
+		if again, s := class(size); again != c || s != size {
+			t.Fatalf("%d elements: class %d of %d, then %d of %d", n, c, size, again, s)
+		}
+		if c < prev || c >= classes-1 {
+			t.Fatalf("%d elements: class %d after %d", n, c, prev)
+		}
+		prev = c
+	}
+	if c, _ := class(math.MaxInt); c+1 >= classes {
+		t.Fatalf("the largest class is %d, the pool has %d", c, classes)
+	}
+}
+
+// TestTakeFixed takes values of every width, a word of the machine or not, with a null row.
+func TestTakeFixed(t *testing.T) {
+	for _, w := range []int{1, 2, 4, 8, 16} {
+		data := make([]byte, 3*w)
+		for i := range data {
+			data[i] = byte(i + 1)
+		}
+		got := takeFixed(nil, data, w, []int{2, -1, 0})
+		want := append(append(append([]byte(nil), data[2*w:]...), make([]byte, w)...), data[:w]...)
+		if string(got) != string(want) {
+			t.Fatalf("%d bytes: %v, want %v", w, got, want)
+		}
 	}
 }
