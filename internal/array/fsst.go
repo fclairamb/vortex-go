@@ -24,13 +24,11 @@ func decodeFSST(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	var p fsstParts
 	if n.NumBuffers() == 3 {
-		err = p.current(n, &m, lp, rows)
-	} else {
-		err = p.legacy(n, t, lp, rows)
+		return n.fsstCurrent(t, &m, lp, tbl, rows)
 	}
-	if err != nil {
+	var p fsstParts
+	if err := p.legacy(n, t, lp, rows); err != nil {
 		return nil, err
 	}
 	a := &Array{Type: t, Len: rows, Validity: p.valid}
@@ -75,7 +73,7 @@ func (n *Node) fsstHead(t DType) (m message, lp PType, tbl *symbolTable, err err
 	return m, lp, tbl, err
 }
 
-// fsstParts is what the children of an FSST array say about its rows.
+// fsstParts is what the children of an FSST array of the older form say about its rows.
 type fsstParts struct {
 	valid        *Bitmap
 	starts, ends []int // per row, the range of codes
@@ -83,33 +81,122 @@ type fsstParts struct {
 	codes        []byte
 }
 
-// current reads the form with 3 buffers.
-func (p *fsstParts) current(n *Node, m *message, lp PType, rows int) error {
+// fsstCurrent decodes the form with 3 buffers. The lengths of the rows are read into the ends
+// of the rows, which one pass over the offsets of the codes turns into the ranges of the rows,
+// checking both: the lengths and the offsets are read where their child decoded them.
+func (n *Node) fsstCurrent(t DType, m *message, lp PType, tbl *symbolTable, rows int) (*Array, error) {
 	cp, err := intType("codes_offsets_ptype", m.varint[2])
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if c := n.NumChildren(); c != 2 && c != 3 {
-		return fmt.Errorf("expected 2 or 3 children, got %d", c)
+		return nil, fmt.Errorf("expected 2 or 3 children, got %d", c)
 	}
-	if p.codes, err = n.Buffer(2); err != nil {
-		return err
-	}
-	if p.ulen, err = n.ints(0, "uncompressed lengths", lp, rows); err != nil {
-		return err
-	}
-	offs, err := n.ints(1, "codes offsets", cp, rows+1)
+	codes, err := n.Buffer(2)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := checkOffsets(offs, len(p.codes)); err != nil {
-		return err
+	lens, err := n.denseChild(0, "uncompressed lengths", lp, rows)
+	if err != nil {
+		return nil, err
 	}
-	p.starts, p.ends = offs[:rows], offs[1:]
+	offs, err := n.denseChild(1, "codes offsets", cp, rows+1)
+	if err != nil {
+		return nil, err
+	}
+	ar := n.ctx.opt.Arena
+	a := &Array{Type: t, Len: rows}
+	a.Starts, a.Ends = ar.Ints(rows, false), ar.Ints(rows, false)
+	if !fillInts(a.Ends, lens.Data, lp) {
+		_, err := toInts(nil, lens, "uncompressed lengths", lp, nil)
+		return nil, err
+	}
+	total, first, last, err := fsstRowsOf(a.Starts, a.Ends, offs.Data, cp, len(codes))
+	if err != nil {
+		return nil, err
+	}
 	if n.NumChildren() == 3 {
-		p.valid, err = n.Validity(2, rows)
+		if a.Validity, err = n.Validity(2, rows); err != nil {
+			return nil, err
+		}
 	}
-	return err
+	a.Data = ar.Bytes(total, false)
+	// The codes of the rows follow each other: they are decoded in one pass, and the rows
+	// are the declared lengths (see decode). When they do not decode to the sum of the
+	// lengths, the rows are decoded one by one, to say which one is wrong.
+	if tbl.bulk(a.Data, codes[first:last]) != total {
+		offsets, _ := toInts(nil, offs, "codes offsets", cp, nil) // fsstRows checked them
+		ulen := make([]int, rows)
+		for i := range ulen {
+			ulen[i] = a.Ends[i] - a.Starts[i]
+		}
+		if err := tbl.decode(a.Data, a.Starts, a.Ends, codes, offsets[:rows], offsets[1:], ulen); err != nil {
+			return nil, err
+		}
+	}
+	return a, nil
+}
+
+// fsstRowsOf is fsstRows for offsets of type p, in data.
+func fsstRowsOf(starts, ends []int, data []byte, p PType, n int) (total, first, last int, err error) {
+	switch p {
+	case U8:
+		return fsstRows(starts, ends, data, n)
+	case I8:
+		return fsstRows(starts, ends, words[int8](data), n)
+	case U16:
+		return fsstRows(starts, ends, words[uint16](data), n)
+	case I16:
+		return fsstRows(starts, ends, words[int16](data), n)
+	case U32:
+		return fsstRows(starts, ends, words[uint32](data), n)
+	case I32:
+		return fsstRows(starts, ends, words[int32](data), n)
+	case U64:
+		return fsstRows(starts, ends, words[uint64](data), n)
+	}
+	return fsstRows(starts, ends, words[int64](data), n)
+}
+
+// fsstRows turns the lengths of the rows, in ends, into the ranges of the rows in the decoded
+// bytes, and checks the offsets of the codes of the rows, offs, against them: the offsets do
+// not decrease, stay within the n codes, and a row is not longer than its codes can make. It
+// returns the sum of the lengths, and the range of the codes of all the rows.
+func fsstRows[O integer](starts, ends []int, offs []O, n int) (total, first, last int, err error) {
+	offs, starts = offs[:len(ends)+1], starts[:len(ends)]
+	prev := int(offs[0])
+	if prev < 0 {
+		return 0, 0, 0, fmt.Errorf("offset 0 is %d, after 0", prev)
+	}
+	first = prev
+	for i, l := range ends {
+		next := int(offs[i+1])
+		if next < prev {
+			return 0, 0, 0, fmt.Errorf("offset %d is %d, after %d", i+1, next, prev)
+		}
+		// The codes past the n there are are checked at the end: they make no bytes here.
+		if limit := (min(next, n) - min(prev, n)) * fsstMaxSymbol; l > limit {
+			return 0, 0, 0, fmt.Errorf("row %d is declared %d bytes, its codes hold at most %d", i, l, limit)
+		}
+		starts[i], total = total, total+l // at most 8 times the codes: the sum cannot overflow
+		ends[i], prev = total, next
+	}
+	if prev > n {
+		return 0, 0, 0, fmt.Errorf("offset %d is past the %d elements", prev, n)
+	}
+	return total, first, prev, nil
+}
+
+// denseChild decodes child i of the node as rows integers of type p with no null.
+func (n *Node) denseChild(i int, what string, p PType, rows int) (*Array, error) {
+	a, err := n.Child(i, DType{Kind: Prim, PType: p}, rows)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", what, err)
+	}
+	if a.Validity != nil {
+		return nil, fmt.Errorf("%s: has nulls", what)
+	}
+	return a, nil
 }
 
 // legacy reads the form with 2 buffers.
@@ -145,6 +232,9 @@ type symbolTable struct {
 	sym [256]uint64 // little-endian: the first byte of the symbol is the low one
 	len [256]uint8  // 0 for the escape, and for a code that has no symbol
 	n   int
+	// past is 256-n in every byte: added to a code, it carries out of the byte when the code
+	// has no symbol (bulk). 0 when there is no symbol.
+	past uint64
 }
 
 // newSymbolTable reads the symbols (8 bytes each) and their lengths (one byte each).
@@ -160,6 +250,9 @@ func newSymbolTable(syms, lens []byte) (*symbolTable, error) {
 		return nil, fmt.Errorf("%d symbols and %d symbol lengths", n, len(lens))
 	}
 	tbl := &symbolTable{n: n}
+	if n > 0 {
+		tbl.past = uint64(256-n) * fsstLow
+	}
 	for i := range n {
 		l := lens[i]
 		if l < 1 || l > fsstMaxSymbol {
@@ -209,40 +302,37 @@ const (
 //
 // The codes are read 8 at a time. A word of 8 codes with no escape, when dst has 64 bytes
 // left, is 8 stores of 8 bytes with no test in between: a symbol is at most 8 bytes, the
-// bytes past it are overwritten by what follows. A code with no symbol has a length of 0: its
-// length minus one has every high bit set, which bad keeps for the end. The other codes, the
-// ones around an escape and the last ones, are decoded one by one, with every test.
+// bytes past it are overwritten by what follows. A code with no symbol is one of n or more:
+// added to 256-n, it carries out of its byte, which a few operations on the word find for its
+// 8 codes at once, and bad keeps for the end. The other codes, the ones around an escape and
+// the last ones, are decoded one by one, with every test.
 func (tbl *symbolTable) bulk(dst, codes []byte) int {
-	var bad uint
+	var bad uint64
+	past, pastLow := tbl.past, tbl.past&^fsstHigh
 	o := 0
 	for c := 0; c < len(codes); {
-		if c+8 <= len(codes) && o+8*fsstMaxSymbol <= len(dst) {
+		if c+8 <= len(codes) && o+8*fsstMaxSymbol <= len(dst) && past != 0 {
 			w := binary.LittleEndian.Uint64(codes[c:])
 			if x := ^w; (x-fsstLow)&^x&fsstHigh == 0 { // no byte of w is 255
-				l := uint(tbl.len[byte(w)])
+				// The carry out of bit 7 of each byte of w+past, from the bits 7 of w and past,
+				// and the carry into it, which is bit 7 of the sum of their low 7 bits.
+				bad |= w&past | (w|past)&((w&^fsstHigh)+pastLow)
 				unsafex.Store64(dst, o, tbl.sym[byte(w)])
-				o, bad = o+int(l), bad|(l-1)
-				l = uint(tbl.len[byte(w>>8)])
+				o += int(tbl.len[byte(w)])
 				unsafex.Store64(dst, o, tbl.sym[byte(w>>8)])
-				o, bad = o+int(l), bad|(l-1)
-				l = uint(tbl.len[byte(w>>16)])
+				o += int(tbl.len[byte(w>>8)])
 				unsafex.Store64(dst, o, tbl.sym[byte(w>>16)])
-				o, bad = o+int(l), bad|(l-1)
-				l = uint(tbl.len[byte(w>>24)])
+				o += int(tbl.len[byte(w>>16)])
 				unsafex.Store64(dst, o, tbl.sym[byte(w>>24)])
-				o, bad = o+int(l), bad|(l-1)
-				l = uint(tbl.len[byte(w>>32)])
+				o += int(tbl.len[byte(w>>24)])
 				unsafex.Store64(dst, o, tbl.sym[byte(w>>32)])
-				o, bad = o+int(l), bad|(l-1)
-				l = uint(tbl.len[byte(w>>40)])
+				o += int(tbl.len[byte(w>>32)])
 				unsafex.Store64(dst, o, tbl.sym[byte(w>>40)])
-				o, bad = o+int(l), bad|(l-1)
-				l = uint(tbl.len[byte(w>>48)])
+				o += int(tbl.len[byte(w>>40)])
 				unsafex.Store64(dst, o, tbl.sym[byte(w>>48)])
-				o, bad = o+int(l), bad|(l-1)
-				l = uint(tbl.len[byte(w>>56)])
+				o += int(tbl.len[byte(w>>48)])
 				unsafex.Store64(dst, o, tbl.sym[byte(w>>56)])
-				o, bad, c = o+int(l), bad|(l-1), c+8
+				o, c = o+int(tbl.len[byte(w>>56)]), c+8
 				continue
 			}
 		}
@@ -250,7 +340,7 @@ func (tbl *symbolTable) bulk(dst, codes []byte) int {
 			return -1
 		}
 	}
-	if bad >= fsstMaxSymbol {
+	if bad&fsstHigh != 0 {
 		return -1
 	}
 	return o
