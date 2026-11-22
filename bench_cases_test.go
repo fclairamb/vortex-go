@@ -122,8 +122,8 @@ func benchLiteral(tb testing.TB, kind string, v int64) any {
 // number of rows of the generated file.
 func benchDataPath(b *testing.B, d benchData) string {
 	b.Helper()
-	if d.Generated && d.Generator == "dbbat_wide" {
-		return dbbatBenchFile(b, d.File)
+	if d.Generated && strings.HasPrefix(d.Generator, "dbbat_") {
+		return dbbatBenchFile(b, d.Generator, d.File)
 	}
 	if d.Generated {
 		return benchFile(b)

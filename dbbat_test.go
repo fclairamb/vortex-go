@@ -155,6 +155,18 @@ func TestDBBatSize(t *testing.T) {
 		t.Errorf("row_data under Compact is %d bytes, over 110%% of plain zstd, %d", got, plain)
 	}
 
+	// the scheme picked per block of rows: each block alone in a file, the encodings it names
+	for lo := 0; lo < len(text); lo += block {
+		data := writeDBBat(t, text[lo:min(lo+block, len(text))], vortex.Compact, vortex.WriteOptions{})
+		var names []string
+		for _, e := range []string{"vortex.zstd", "vortex.fsst", "vortex.dict", "vortex.varbin", "vortex.varbinview", "vortex.constant", "vortex.sparse"} {
+			if bytes.Contains(data, []byte(e)) {
+				names = append(names, e)
+			}
+		}
+		t.Logf("row_data rows %d-%d: %d bytes, encodings %v", lo, min(lo+block, len(text)), len(data), names)
+	}
+
 	// 16 bytes a row of random uuid cannot shrink: the other columns are what is left
 	whole := len(writeDBBat(t, rows, vortex.Compact, vortex.WriteOptions{}))
 	other := whole - got - 16*len(rows)
@@ -218,17 +230,30 @@ func TestDBBatNoZstd(t *testing.T) {
 	}
 }
 
-// dbbatBenchFile is the file of the benchmarks of the archive of dbbat, the wide case of
-// 100,000 rows written with Default, made on the first use.
-func dbbatBenchFile(b *testing.B, path string) string {
+// dbbatBenchFile is the file of the benchmarks of the archive of dbbat, a case of dbbatCases
+// ("dbbat_" and its name is the generator of bench/cases.json) written with Default, made on the first use.
+func dbbatBenchFile(b *testing.B, generator, path string) string {
 	b.Helper()
+	var c *struct {
+		name     string
+		n, stmts int
+		wide     bool
+	}
+	for i := range dbbatCases {
+		if "dbbat_"+dbbatCases[i].name == generator {
+			c = &dbbatCases[i]
+		}
+	}
+	if c == nil {
+		b.Fatalf("no generator %q", generator)
+	}
 	if _, err := os.Stat(path); err == nil {
 		return path
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		b.Fatal(err)
 	}
-	data := writeDBBat(b, dbbatRows(100_000, 40, true), vortex.Default, vortex.WriteOptions{})
+	data := writeDBBat(b, dbbatRows(c.n, c.stmts, c.wide), vortex.Default, vortex.WriteOptions{})
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		b.Fatal(err)
