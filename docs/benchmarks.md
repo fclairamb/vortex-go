@@ -135,7 +135,9 @@ What the reader does to stay close to the reference, so that a change does not u
 - FoR, zigzag and ALP write over the integers their child just unpacked;
 - the rows of a dictionary layout are made a batch at a time, from the codes of the batch;
 - a comparison of an integer column with one literal is a test of range on the values of the
-  batch (`expr_fast.go`), not a walk of the filter per row;
+  batch (`expr_fast.go`), not a walk of the filter per row: the value minus the low end of the
+  range, as an unsigned integer of its width, against the width of the range, one comparison
+  and no branch;
 - FSST decodes the codes of all the rows in one pass, 8 codes at a time, as the reference does:
   a word of 8 codes with no escape is 8 stores with no test in between (`unsafex.Store64`).
   The rows are the declared lengths, their sum is checked, and the rows are decoded one by
