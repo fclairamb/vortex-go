@@ -6,18 +6,35 @@ import "fmt"
 // the packed blocks, children the patches (indices, values, and their chunk offsets if the
 // metadata has some) then the validity. Signed types are packed as unsigned.
 func decodeBitPacked(n *Node, t DType, rows int) (*Array, error) {
+	return n.bitPackedPlus(t, rows, 0, false)
+}
+
+// bitPackedPlus decodes the fastlanes.bitpacked node n, plus ref, wrapping, when add is set: a
+// fastlanes.for over it, whose reference is added as the blocks are unpacked, as the
+// reference reader does. It is added after them when there are patches, which are values
+// before the reference, or when the values have every bit of their type.
+func (n *Node) bitPackedPlus(t DType, rows int, ref uint64, add bool) (*Array, error) {
 	m, err := n.bitPackedParts(t, rows)
 	if err != nil {
 		return nil, err
 	}
 	width := t.PType.Width()
 	a := &Array{Type: t, Len: rows, Data: n.ctx.opt.Arena.Bytes(rows*width, false), fresh: true, Validity: m.valid}
-	unpackWidth(width, a.Data, m.packed, m.w, m.off, rows)
+	fused := add && m.patches == nil && m.w < 8*width
+	var in uint64
+	if fused {
+		in = ref
+	}
+	unpackWidth(width, a.Data, m.packed, m.w, m.off, rows, in)
 	if m.patches != nil {
 		if err := m.patches.apply(a.Data, width); err != nil {
 			return nil, err
 		}
-	} else if m.w < 64 {
+	}
+	switch {
+	case add && !fused:
+		addConst(a.Data, a.Data, width, ref)
+	case !add && m.patches == nil && m.w < 64:
 		a.bound = 1 << m.w
 	}
 	return a, nil
