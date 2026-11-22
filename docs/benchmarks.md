@@ -147,7 +147,7 @@ What the reader does to stay close to the reference, so that a change does not u
   one only to say which one is wrong. A code with no symbol is found for the 8 codes of a word
   at once, from the carry out of each byte of the word plus 256 minus the symbols. The ranges
   of the rows are made in one pass over the lengths and the offsets of the codes, where their
-  children decoded them, which checks them too;
+  children decoded them, which checks them too, in the sign of one or, with no branch per row;
 - a FastLanes block is unpacked 8 bytes at a time, which is 8, 4 or 2 lanes for words of 8, 16
   or 32 bits: one shift and one mask for all of them (`unpackBlock`);
 - the validity of the rows of a dictionary is made a byte at a time, with no test per row;
