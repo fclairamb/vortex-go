@@ -24,5 +24,10 @@ BenchmarkCases/gen16/open-4  	 100	 11 ns/op	 5 B/op	 1 allocs/op
 BenchmarkCases/gen16/open-4  	 100	 13 ns/op	 5 B/op	 1 allocs/op
 BenchmarkCases/gen16/open-4  	 100	 9 ns/op	 5 B/op	 1 allocs/op
 BenchmarkCases/gen16/write_none-4  	 1	 500 ns/op	 7 file-bytes
+BenchmarkCases/gen16/scan_full/mapped  	 3	 1500 ns/op	 700.5 decoded-MB/s	 6.5e+06 rows/s
+BenchmarkCases/gen16/scan_full/mapped  	 3	 600 ns/op	 700.5 decoded-MB/s	 6.5e+06 rows/s
+BenchmarkCases/gen16/scan_full/mapped  	 3	 900 ns/op	 700.5 decoded-MB/s	 6.5e+06 rows/s
+BenchmarkCases/gen16/scan_full/mapped-4  	 3	 2400 ns/op	 700.5 decoded-MB/s	 6.5e+06 rows/s
+BenchmarkCases/gen16/open/mapped  	 100	 8 ns/op	 5 B/op	 1 allocs/op
 BenchmarkOpen-4  5 100 ns/op
 PASS
