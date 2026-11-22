@@ -51,8 +51,8 @@ func pick[T any](c *Compressor, x at, v []T, nulls []bool, l *cands, plainCost f
 	c.raw.restore(raw)
 	c.nulls.restore(bools)
 	c.bins.restore(bins)
-	if best == sPlain {
-		return nil
+	if best == sPlain || x.probe && best != sDict {
+		return nil // a probe only asks whether it is a dictionary
 	}
 	if n := apply(x, best, v, nulls); n != nil && cost(n) < plain {
 		return n
@@ -188,6 +188,9 @@ func applyInt[T encode.Int](c *Compressor, x at, p PType, s scheme, v []T, nulls
 		n = encode.RLE(x.e, v, nulls)
 	case sDict:
 		n = encode.Dict(x.e, v, nulls)
+		if beatsBare(x, n, numberCost(v, nulls)) {
+			return n
+		}
 	case sSparse:
 		n, _ = encode.Sparse(x.e, v, nulls)
 	case sPco:
@@ -243,6 +246,9 @@ func applyFloat[T encode.Float](c *Compressor, x at, p PType, s scheme, v []T, n
 		n, _ = encode.ALPRD(x.e, v, nulls)
 	case sDict:
 		n = encode.Dict(x.e, v, nulls)
+		if beatsBare(x, n, numberCost(v, nulls)) {
+			return n
+		}
 	case sSparse:
 		n, _ = encode.Sparse(x.e, v, nulls) // there is a valid value
 	case sRLE:
