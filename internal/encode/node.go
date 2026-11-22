@@ -154,6 +154,14 @@ func (e *Encoder) Reset() {
 // alloc returns n zeroed bytes, aligned on 8 bytes, that live until the next Reset. A buffer
 // that is too small is replaced by a larger one: the slices already given out stay valid.
 func (e *Encoder) alloc(n int) []byte {
+	b := e.allocDirty(n)
+	clear(b)
+	return b
+}
+
+// allocDirty is alloc without the zeroes: the bytes are what an earlier use left. It is for
+// the caller that writes every byte it reads, which saves a pass over a large buffer.
+func (e *Encoder) allocDirty(n int) []byte {
 	e.off = (e.off + 7) &^ 7
 	e.need += (n + 7) &^ 7
 	if e.off+n > len(e.arena) {
@@ -162,7 +170,6 @@ func (e *Encoder) alloc(n int) []byte {
 	}
 	b := e.arena[e.off : e.off+n : e.off+n]
 	e.off += n
-	clear(b)
 	return b
 }
 
@@ -187,7 +194,7 @@ func (e *Encoder) keep(b []byte) []byte {
 	if len(b) == 0 {
 		return nil
 	}
-	return append(e.alloc(len(b))[:0], b...)
+	return append(e.allocDirty(len(b))[:0], b...)
 }
 
 // leaf is a primitive array of the raw bytes, with the validity of nulls when a row is null.
