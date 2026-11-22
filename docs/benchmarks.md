@@ -132,7 +132,10 @@ What the reader does to stay close to the reference, so that a change does not u
   from one batch to the next, and a batch is valid until the next one;
 - a segment is read to the same alignment it has in the file, and the decoders read and write
   numbers where they are (`unsafex.Slice`), with no copy to a slice of bytes and back;
-- FoR, zigzag and ALP write over the integers their child just unpacked;
+- FoR, zigzag and ALP write over the integers their child just unpacked; a FoR over
+  bit-packed integers adds its reference as each block is unpacked, as the reference reader
+  does, 8 bytes at a time: a value is under the high bit of its lane, so the low bits of the
+  reference add to all the lanes of the word with no carry between them;
 - the rows of a dictionary layout are made a batch at a time, from the codes of the batch;
 - a comparison of an integer column with one literal is a test of range on the values of the
   batch (`expr_fast.go`), not a walk of the filter per row: the value minus the low end of the
