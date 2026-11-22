@@ -142,14 +142,21 @@ bench-rust:
 # output of a harness goes to a file, then to the log: a harness that fails stops the target,
 # which a pipe to tee did not do. Neither this nor bench-rust is part of check. VORTEX_BENCH_ROWS lowers the
 # size of the generated file.
+# One go test per thread count: with -cpu 1,<cores>, the sub-benchmarks of BenchmarkCases run a
+# first time before -cpu is applied, on every core, and that run was counted as one of the runs
+# at 1 thread (10.9 ms for 29.6 ms on gen16/scan_3col, 2026-11-22).
 BENCH_RUNS ?= 5
 PARQUET_RUNS ?= 3
 BENCH_TMP = .cache/bench-json
 bench-json: bench-rust
 	mkdir -p $(BENCH_TMP)
 	cores=$$(getconf _NPROCESSORS_ONLN); cpus=1; [ "$$cores" -gt 1 ] && cpus="1,$$cores"; \
-	{ go test -run '^$$' -bench '^BenchmarkCases$$' -benchmem -count $(BENCH_RUNS) -benchtime 1x -cpu $$cpus . > $(BENCH_TMP)/go.txt; s=$$?; cat $(BENCH_TMP)/go.txt; [ $$s -eq 0 ]; } && \
-	{ go -C bench test -run '^$$' -bench '^BenchmarkCases$$' -benchmem -count $(PARQUET_RUNS) -benchtime 1x -cpu $$cpus . > $(BENCH_TMP)/parquet.txt; s=$$?; cat $(BENCH_TMP)/parquet.txt; [ $$s -eq 0 ]; } && \
+	: > $(BENCH_TMP)/go.txt && : > $(BENCH_TMP)/parquet.txt && \
+	for cpu in $$(echo $$cpus | tr , ' '); do \
+	  { go test -run '^$$' -bench '^BenchmarkCases$$' -benchmem -count $(BENCH_RUNS) -benchtime 1x -cpu $$cpu . > $(BENCH_TMP)/go-$$cpu.txt; s=$$?; cat $(BENCH_TMP)/go-$$cpu.txt; [ $$s -eq 0 ]; } && \
+	  { go -C bench test -run '^$$' -bench '^BenchmarkCases$$' -benchmem -count $(PARQUET_RUNS) -benchtime 1x -cpu $$cpu . > $(BENCH_TMP)/parquet-$$cpu.txt; s=$$?; cat $(BENCH_TMP)/parquet-$$cpu.txt; [ $$s -eq 0 ]; } && \
+	  cat $(BENCH_TMP)/go-$$cpu.txt >> $(BENCH_TMP)/go.txt && cat $(BENCH_TMP)/parquet-$$cpu.txt >> $(BENCH_TMP)/parquet.txt || exit 1; \
+	done && \
 	tools/bench-rust/target/release/bench-rust --cases bench/cases.json --root . --runs $(BENCH_RUNS) --threads $$cpus > $(BENCH_TMP)/rust.jsonl && \
 	go -C bench run ./cmd/benchjson -cases cases.json -go ../$(BENCH_TMP)/go.txt -parquet ../$(BENCH_TMP)/parquet.txt \
 		-rust ../$(BENCH_TMP)/rust.jsonl -commit "$$(git rev-parse HEAD)" -vortex-version "$$(cat .vortex-version)" \

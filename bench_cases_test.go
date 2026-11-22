@@ -17,8 +17,8 @@ import (
 // The cases of bench/cases.json, run by BenchmarkCases. The same list drives the benchmarks
 // of parquet-go (bench/) and the Rust harness (tools/bench-rust), so a result is matched by
 // its name: BenchmarkCases/<case>. A case that reads runs twice: on a file OpenFile opened, and
-// as BenchmarkCases/<case>/mapped on a file OpenMapped opened. `make bench-json` runs it with
-// -cpu 1,<cores>.
+// as BenchmarkCases/<case>/mapped on a file OpenMapped opened. `make bench-json` runs it once
+// with -cpu 1 and once with -cpu <cores>.
 
 // benchSpec is bench/cases.json.
 type benchSpec struct {
