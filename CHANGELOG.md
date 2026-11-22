@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.3](https://github.com/fclairamb/vortex-go/compare/v0.1.2...v0.1.3) (2026-11-22)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/fclairamb/vortex-go to v0.1.2 ([#64](https://github.com/fclairamb/vortex-go/issues/64)) ([3ff7afb](https://github.com/fclairamb/vortex-go/commit/3ff7afb199c229a3224f7cfcbed0fe1fd08ee54d))
+
+
+### Performance Improvements
+
+* **scan:** FastLanes rows need no division, and the loops of FoR, zigzag and ALP no bounds check ([#61](https://github.com/fclairamb/vortex-go/issues/61)) ([d776078](https://github.com/fclairamb/vortex-go/commit/d7760787221f31b943e6b888eb3afca6d533c5ed))
+* **writer:** a dictionary finds its codes in a table of its own, not a Go map ([#63](https://github.com/fclairamb/vortex-go/issues/63)) ([e070039](https://github.com/fclairamb/vortex-go/commit/e070039e56b3ad13592d7514fcb5a82d9096bb6c))
+* **writer:** strings are not copied, decimals are held at their width ([#60](https://github.com/fclairamb/vortex-go/issues/60)) ([2152598](https://github.com/fclairamb/vortex-go/commit/21525989b7d9b4f07561bb6a1253f1f6d37e4039))
+
 ## [0.1.2](https://github.com/fclairamb/vortex-go/compare/v0.1.1...v0.1.2) (2026-11-22)
 
 
