@@ -95,30 +95,42 @@ func (n *node) selectFast(rows int, sel []int) ([]int, bool) {
 func selectInts(sel []int, a *array.Array, r intRange) int {
 	switch a.Type.PType {
 	case array.I8:
-		return selectRange(sel, unsafex.Slice[int8](a.Data), int8(r.lo), int8(r.hi), r.out)
+		return selectRange[int8, uint8](sel, unsafex.Slice[int8](a.Data), int8(r.lo), int8(r.hi), r.out)
 	case array.I16:
-		return selectRange(sel, unsafex.Slice[int16](a.Data), int16(r.lo), int16(r.hi), r.out)
+		return selectRange[int16, uint16](sel, unsafex.Slice[int16](a.Data), int16(r.lo), int16(r.hi), r.out)
 	case array.I32:
-		return selectRange(sel, unsafex.Slice[int32](a.Data), int32(r.lo), int32(r.hi), r.out)
+		return selectRange[int32, uint32](sel, unsafex.Slice[int32](a.Data), int32(r.lo), int32(r.hi), r.out)
 	case array.I64:
-		return selectRange(sel, unsafex.Slice[int64](a.Data), int64(r.lo), int64(r.hi), r.out)
+		return selectRange[int64, uint64](sel, unsafex.Slice[int64](a.Data), int64(r.lo), int64(r.hi), r.out)
 	case array.U8:
-		return selectRange(sel, a.Data, uint8(r.lo), uint8(r.hi), r.out)
+		return selectRange[uint8, uint8](sel, a.Data, uint8(r.lo), uint8(r.hi), r.out)
 	case array.U16:
-		return selectRange(sel, unsafex.Slice[uint16](a.Data), uint16(r.lo), uint16(r.hi), r.out)
+		return selectRange[uint16, uint16](sel, unsafex.Slice[uint16](a.Data), uint16(r.lo), uint16(r.hi), r.out)
 	case array.U32:
-		return selectRange(sel, unsafex.Slice[uint32](a.Data), uint32(r.lo), uint32(r.hi), r.out)
+		return selectRange[uint32, uint32](sel, unsafex.Slice[uint32](a.Data), uint32(r.lo), uint32(r.hi), r.out)
 	}
-	return selectRange(sel, unsafex.Slice[uint64](a.Data), r.lo, r.hi, r.out)
+	return selectRange[uint64, uint64](sel, unsafex.Slice[uint64](a.Data), r.lo, r.hi, r.out)
 }
 
 // selectRange writes in sel the rows of vals, one per row of sel, that are from lo to hi, or
-// outside when out is set. It returns their number.
-func selectRange[T unsafex.Number](sel []int, vals []T, lo, hi T, out bool) int {
-	k := 0
-	for i, v := range vals[:len(sel)] {
+// outside when out is set. It returns their number. lo is at most hi: a value is in the range
+// when it minus lo, as the unsigned integer U of its width, is at most hi minus lo, which is
+// one comparison.
+func selectRange[T unsafex.Integer, U unsafex.Unsigned](sel []int, vals []T, lo, hi T, out bool) int {
+	k, span := 0, U(hi-lo)
+	vals = vals[:len(sel)]
+	if out {
+		for i, v := range vals {
+			sel[k] = i
+			if U(v-lo) > span {
+				k++
+			}
+		}
+		return k
+	}
+	for i, v := range vals {
 		sel[k] = i
-		if (v >= lo && v <= hi) != out {
+		if U(v-lo) <= span {
 			k++
 		}
 	}
