@@ -166,3 +166,42 @@ func TestBuilderEmptyTable(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestBuilderSharesVTables: tables of the same shape point to a vtable written once, and each
+// still reads its own fields. (A table that starts after a vtable of 6 bytes has 2 bytes of
+// padding in it, so its vtable says another size: four tables of one field have two vtables.)
+func TestBuilderSharesVTables(t *testing.T) {
+	b := NewBuilder(0)
+	var offs []Off
+	for i := range 4 {
+		b.StartTable(2)
+		b.Uint32(0, uint32(10+i), 0)
+		offs = append(offs, b.EndTable())
+	}
+	v := b.Offsets(offs)
+	b.StartTable(1)
+	b.Ref(0, v)
+	buf := b.Finish(b.EndTable())
+	root, err := Root(buf, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	list, err := root.Tables(0)
+	if err != nil || list.Len() != 4 {
+		t.Fatal(err)
+	}
+	vtables := map[int]bool{}
+	for i := range 4 {
+		tab, err := list.Table(i)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if v, _ := tab.Uint32(0, 0); v != uint32(10+i) {
+			t.Errorf("table %d: %d", i, v)
+		}
+		vtables[tab.vt] = true
+	}
+	if len(vtables) != 2 {
+		t.Errorf("4 tables of one field have %d vtables, want 2", len(vtables))
+	}
+}

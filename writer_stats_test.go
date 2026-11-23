@@ -276,3 +276,72 @@ func TestMaskedRootStatistics(t *testing.T) {
 		t.Errorf("max %+v", got)
 	}
 }
+
+// TestCompactStatistics: under Compact, the root array of a chunk has no statistics, and a file
+// the reference reader reads whole in its first read has no statistics segment. A larger file
+// keeps its file statistics, and Default keeps both.
+func TestCompactStatistics(t *testing.T) {
+	hasFileStats := func(file []byte) bool {
+		psLen := int(binary.LittleEndian.Uint16(file[len(file)-6:]))
+		ps, err := fbs.ReadPostscript(file[len(file)-8-psLen : len(file)-8])
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, ok, err := ps.Statistics()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	hasRootStats := func(f *File, file []byte) bool {
+		l := f.layout.children[0]
+		for len(l.segments) == 0 {
+			l = l.children[0]
+		}
+		s := f.segments[l.segments[0]]
+		b := file[s.Offset : s.Offset+uint64(s.Length)]
+		n := int(binary.LittleEndian.Uint32(b[len(b)-4:]))
+		arr, err := fbs.ReadArray(b[len(b)-4-n:len(b)-4], maxDTypeDepth)
+		if err != nil {
+			t.Fatal(err)
+		}
+		root, _, _ := arr.Root()
+		_, ok, err := root.Stats()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ok
+	}
+	small := []Data{Of([]int64{5, 3, 9})}
+	big := make([]int64, 20_000) // 160 KB that nothing compresses: over the first read
+	r := uint64(1)
+	for i := range big {
+		r = r*6364136223846793005 + 1442695040888963407
+		big[i] = int64(r)
+	}
+	for _, c := range []struct {
+		name            string
+		mode            Compression
+		data            []Data
+		file, rootStats bool
+	}{
+		{"compact small", Compact, small, false, false},
+		{"compact big", Compact, []Data{Of(big)}, true, false},
+		{"default small", Default, small, true, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			lowered(t, &testOptions, WriteOptions{Compression: c.mode})
+			f, file := writeFile(t, NewSchema(Field{"k", Int64Type()}), c.data)
+			if got := hasFileStats(file); got != c.file {
+				t.Errorf("file statistics: %v, want %v (%d bytes)", got, c.file, len(file))
+			}
+			if got := hasRootStats(f, file); got != c.rootStats {
+				t.Errorf("statistics on the root array: %v, want %v", got, c.rootStats)
+			}
+			got, err := readBack(f, Int64Type())
+			if err != nil || len(got) != c.data[0].n {
+				t.Fatalf("%d rows, %v", len(got), err)
+			}
+		})
+	}
+}

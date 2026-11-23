@@ -278,15 +278,27 @@ func (w *Writer) flushPlain(c *column) {
 
 // writeChunk writes the rows of b, a chunk of the column, as a flat layout.
 func (w *Writer) writeChunk(c *column, b *body) {
-	s := c.arrayStats(b)
+	var s astat
+	if w.chunkStats() {
+		s = c.arrayStats(b)
+	}
 	w.writeChunkWith(c, b, &s)
 }
+
+// chunkStats says whether the root array of a chunk carries the statistics of its rows. Under
+// Compact it does not: a reader prunes with the zones table and the file statistics, never with
+// the statistics of an array (the flat layout of the reference prunes nothing), and those hold
+// the same values. They were most of the structure of a chunk of few rows: a uuid has a min and
+// a max of 77 bytes each.
+func (w *Writer) chunkStats() bool { return w.opt.Compression != Compact }
 
 // writeChunkWith is writeChunk with the statistics of the rows, found before.
 func (w *Writer) writeChunkWith(c *column, b *body, s *astat) {
 	w.start()
 	w.beginFlat()
-	w.stats, w.statsID = s.table(w.fb), rootID(c.t)
+	if w.chunkStats() {
+		w.stats, w.statsID = s.table(w.fb), rootID(c.t)
+	}
 	root := w.encode(c.t, Data{b}, b.n)
 	w.stats = 0
 	if seg, ok := w.endFlat(root); ok {
@@ -393,7 +405,8 @@ func (w *Writer) finish(c *column) {
 		w.flushPlain(c)
 	}
 	// Compact: a column of one zone has no table of zones, the statistics of the file say what
-	// it would; a small file favors the size of its structure over what a reader may skip
+	// it would (a file small enough to have none is read whole anyway, see Writer.fileStats); a
+	// small file favors the size of its structure over what a reader may skip
 	if c.zones != nil && c.rows > 0 && (c.zones.n > 1 || w.opt.Compression != Compact) && w.err == nil {
 		w.writeZones(c)
 	}
