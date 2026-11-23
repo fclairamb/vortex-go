@@ -47,23 +47,42 @@ func Pco[T Number](e *Encoder, v []T, nulls []bool) *Node {
 	return n
 }
 
+// pcoValues fills st.vals with the valid values of v. A value is read as one word of its
+// width, little-endian, not a byte at a time: the width is that of T, so the words are
+// aligned as v is.
+func pcoValues[T Number](st *pcoState, v []T, nulls []bool) {
+	src := unsafex.Bytes(v)
+	st.vals = st.vals[:0]
+	switch unsafex.Size[T]() {
+	case 2:
+		words := unsafex.Slice[uint16](src)
+		for i := range v {
+			if !isNull(nulls, i) {
+				st.vals = append(st.vals, uint64(words[i]))
+			}
+		}
+	case 4:
+		words := unsafex.Slice[uint32](src)
+		for i := range v {
+			if !isNull(nulls, i) {
+				st.vals = append(st.vals, uint64(words[i]))
+			}
+		}
+	default:
+		words := unsafex.Slice[uint64](src)
+		for i := range v {
+			if !isNull(nulls, i) {
+				st.vals = append(st.vals, words[i])
+			}
+		}
+	}
+}
+
 // pcoNode returns the node, and the bytes of its chunk metadata buffers.
 func pcoNode[T Number](e *Encoder, v []T, nulls []bool) (*Node, int) {
 	st := pcoStates.Get().(*pcoState)
 	defer pcoStates.Put(st)
-	w := unsafex.Size[T]()
-	src := unsafex.Bytes(v)
-	st.vals = st.vals[:0]
-	for i := range v {
-		if isNull(nulls, i) {
-			continue
-		}
-		var b uint64
-		for k := 0; k < w; k++ {
-			b |= uint64(src[i*w+k]) << (8 * k)
-		}
-		st.vals = append(st.vals, b)
-	}
+	pcoValues(st, v, nulls)
 	coded := st.coder.Compress(pcoType[T](), st.vals, pcoValuesPerPage)
 	node := e.node(IDPco)
 	meta := protowire.AppendBytes(e.tmp[:0], 1, pco.WriteHeader(e.tmp2[:0]))

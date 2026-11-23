@@ -259,4 +259,9 @@ What the writer does to choose the encodings of numbers with no more work than t
   does not write them (`Encoder.Measure`). A trial only reads the sizes of its arrays;
 - the probe of the dictionary layout keeps the scheme its sample chose, with the number and a
   hash of its rows: when the first chunk is the rows of the probe, it is not sampled again.
-  The hash holds no reference to the rows, so the probe does not keep a buffer alive.
+  The hash holds no reference to the rows, so the probe does not keep a buffer alive;
+- Pco reads the values of a chunk as one word of their width each, not a byte at a time
+  (`pcoValues`); a plan is chosen on the estimate of the dynamic program over the cuts of the
+  sorted latents, with no tANS table built (`estimate`), the table made only for the plan that
+  wins (`train`); and the low value of each cut is read once for the whole program, not
+  looked up again for every pair of cuts.

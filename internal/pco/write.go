@@ -139,6 +139,7 @@ type Coder struct {
 	sample  []seg
 	// the training of the bins
 	upos []int
+	loV  []uint64  // loV[j] is the latent at cut j: the low value of the bin that starts there
 	logs []float64 // logs[k] is the base 2 logarithm of k, for the counts of a bin
 	dp   []float64
 	from []int32
@@ -270,11 +271,12 @@ func (c *Coder) cost(p plan, vals []uint64, segs []seg) float64 {
 	c.split(p, vals, segs)
 	c.sorted = append(c.sorted[:0], c.prim...)
 	c.sorted, c.sortTmp = sortLatents(c.sorted, c.sortTmp)
-	total := c.train(&c.vars[0].table, c.sorted, nb)
+	total, _ := c.estimate(c.sorted, nb)
 	if p.mult {
 		c.sorted = append(c.sorted[:0], c.sec...)
 		c.sorted, c.sortTmp = sortLatents(c.sorted, c.sortTmp)
-		total += c.train(&c.vars[1].table, c.sorted, nb)
+		second, _ := c.estimate(c.sorted, nb)
+		total += second
 	}
 	return total
 }
@@ -448,9 +450,11 @@ func (c *Coder) unoptimized(s []uint64) {
 	c.upos = append(c.upos, m)
 }
 
-// train makes the bins and the tANS table of the sorted latents s, and returns the bits they
-// are estimated to take.
-func (c *Coder) train(tb *table, s []uint64, nb int) float64 {
+// estimate is the fewest bits the sorted latents s are estimated to take, and the tANS size
+// the bins are optimized for: the partition of the cuts of unoptimized that the dynamic
+// program finds. It builds no table, which a plan is chosen without; train makes the table
+// of the partition it leaves in upos and from.
+func (c *Coder) estimate(s []uint64, nb int) (float64, int) {
 	m := len(s)
 	nLog := 0
 	if m > 1 {
@@ -468,18 +472,36 @@ func (c *Coder) train(tb *table, s []uint64, nb int) float64 {
 		c.logs = append(c.logs, math.Log2(float64(k)))
 	}
 	logs := c.logs
+	upos := c.upos
+	dp := c.dp
+	// the low value of each cut is read once, not looked up again for every pair of cuts
+	c.loV = grow(c.loV, nu)
+	loV := c.loV
+	for j := 0; j < nu; j++ {
+		loV[j] = s[upos[j]]
+	}
 	for i := 1; i <= nu; i++ {
-		hiV := s[c.upos[i]-1]
+		ui := upos[i]
+		hiV := s[ui-1]
 		best, from := math.Inf(1), 0
-		for j := range i {
-			n := c.upos[i] - c.upos[j]
-			cost := c.dp[j] + float64(n)*(lm-logs[n]+float64(bits.Len64(hiV-s[c.upos[j]]))) + meta
+		for j := 0; j < i; j++ {
+			n := ui - upos[j]
+			cost := dp[j] + float64(n)*(lm-logs[n]+float64(bits.Len64(hiV-loV[j]))) + meta
 			if cost < best {
 				best, from = cost, j
 			}
 		}
-		c.dp[i], c.from[i] = best, int32(from)
+		dp[i], c.from[i] = best, int32(from)
 	}
+	return dp[nu], est
+}
+
+// train makes the bins and the tANS table of the sorted latents s, and returns the bits they
+// are estimated to take.
+func (c *Coder) train(tb *table, s []uint64, nb int) float64 {
+	nBits, est := c.estimate(s, nb)
+	m := len(s)
+	nu := len(c.upos) - 1
 	c.cuts = c.cuts[:0]
 	for i := nu; i > 0; i = int(c.from[i]) {
 		c.cuts = append(c.cuts, int32(i))
@@ -498,7 +520,7 @@ func (c *Coder) train(tb *table, s []uint64, nb int) float64 {
 	}
 	tb.quantize(m, est)
 	tb.build()
-	return c.dp[nu]
+	return nBits
 }
 
 // quantize turns the counts of the bins into the weights of a tANS table of 2^est states, more
