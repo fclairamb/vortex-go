@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.3](https://github.com/fclairamb/vortex-go/compare/v0.1.2...v0.1.3) (2026-11-22)
+
+
+### Performance Improvements
+
+* **writer:** faster, leaner writes: strings are no longer copied, decimals are held at their own width ([#60](https://github.com/fclairamb/vortex-go/issues/60)) ([2152598](https://github.com/fclairamb/vortex-go/commit/21525989b7d9b4f07561bb6a1253f1f6d37e4039)), and dictionary encoding looks its codes up in a dedicated table instead of a Go map ([#63](https://github.com/fclairamb/vortex-go/issues/63)) ([e070039](https://github.com/fclairamb/vortex-go/commit/e070039e56b3ad13592d7514fcb5a82d9096bb6c))
+* **scan:** faster decoding: FastLanes rows no longer need a division, and the FoR, zigzag and ALP loops run without bounds checks ([#61](https://github.com/fclairamb/vortex-go/issues/61)) ([d776078](https://github.com/fclairamb/vortex-go/commit/d7760787221f31b943e6b888eb3afca6d533c5ed))
+
+
+### Miscellaneous
+
+* **deps:** the benchmark module now depends on vortex-go v0.1.2 ([#64](https://github.com/fclairamb/vortex-go/issues/64)) ([3ff7afb](https://github.com/fclairamb/vortex-go/commit/3ff7afb199c229a3224f7cfcbed0fe1fd08ee54d))
+
 ## [0.1.2](https://github.com/fclairamb/vortex-go/compare/v0.1.1...v0.1.2) (2026-11-22)
 
 
