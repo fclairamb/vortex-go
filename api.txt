@@ -170,7 +170,9 @@ const (
 	// dictionaries, run-end, ALP, FSST...), as the reference writer does.
 	Default Compression = iota
 	// Compact favors a small file over the time to write it: zstd is a candidate too, for
-	// the numbers and the strings.
+	// the numbers and the strings. Its structure is smaller too: a chunk carries no
+	// statistics of its own, a column of one zone has no table of zones, and a file that a
+	// reader reads whole in its first read (about 64 KiB) has no file statistics.
 	Compact
 	// None writes the values as they are, in plain arrays.
 	None

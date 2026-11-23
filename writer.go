@@ -24,7 +24,9 @@ const (
 	// dictionaries, run-end, ALP, FSST...), as the reference writer does.
 	Default Compression = iota
 	// Compact favors a small file over the time to write it: zstd is a candidate too, for
-	// the numbers and the strings.
+	// the numbers and the strings. Its structure is smaller too: a chunk carries no
+	// statistics of its own, a column of one zone has no table of zones, and a file that a
+	// reader reads whole in its first read (about 64 KiB) has no file statistics.
 	Compact
 	// None writes the values as they are, in plain arrays.
 	None
@@ -521,7 +523,10 @@ func (w *Writer) footer() {
 	keys, offsets := w.writeMetadata()
 	dtype := w.segment(func() flatbuf.Off { return w.dtypeTable(w.schema.root) })
 	layout := w.segment(func() flatbuf.Off { return w.layoutTable(w.root, w.rows) })
-	stats := w.segment(w.fileStatsTable)
+	var stats [2]uint64
+	if w.fileStats() {
+		stats = w.segment(w.fileStatsTable)
+	}
 	foot := w.segment(w.footerTable)
 	w.fb.Reset()
 	seg := func(s [2]uint64) flatbuf.Off {
@@ -531,12 +536,18 @@ func (w *Writer) footer() {
 		w.fb.Uint8(2, 3, 0) // alignment 8
 		return w.fb.EndTable()
 	}
-	d, l, st, f := seg(dtype), seg(layout), seg(stats), seg(foot)
+	d, l, f := seg(dtype), seg(layout), seg(foot)
+	var st flatbuf.Off
+	if stats[1] > 0 {
+		st = seg(stats)
+	}
 	md := w.metadataVector(keys, offsets)
 	w.fb.StartTable(5)
 	w.fb.Ref(0, d)
 	w.fb.Ref(1, l)
-	w.fb.Ref(2, st)
+	if st != 0 {
+		w.fb.Ref(2, st)
+	}
 	w.fb.Ref(3, f)
 	if md != 0 {
 		w.fb.Ref(4, md)
@@ -552,6 +563,23 @@ func (w *Writer) footer() {
 	binary.LittleEndian.PutUint16(trailer[2:], uint16(len(ps)))
 	copy(trailer[4:], magic)
 	w.put(trailer[:])
+}
+
+// firstRead is the bytes at the end of a file that the reference reader reads first, to find
+// the postscript: the longest postscript and the trailer (vortex-file/src/open.rs).
+const firstRead = math.MaxUint16
+
+// smallFooter bounds the footer and the postscript of a file whose body is under firstRead:
+// the segment specs are 16 bytes each, so this leaves room for over a thousand of them.
+const smallFooter = 1 << 14
+
+// fileStats says whether the file has its statistics segment. Under Compact, a file the
+// reference reader reads whole in its first read has none: they can save it no read, and a
+// file of few rows has more bytes of statistics than of values (a uuid has a min and a max of
+// 77 bytes, twice since the aggregates are written next to the legacy statistics). It is
+// decided once the dtype and the layout are written, on the bytes written so far.
+func (w *Writer) fileStats() bool {
+	return w.opt.Compression != Compact || w.pos+smallFooter > firstRead
 }
 
 // segment writes the flatbuffer that build makes, aligned to 8, and returns its offset and
@@ -727,7 +755,17 @@ func (w *Writer) dtypeStruct(t Type) flatbuf.Off {
 	types := make([]flatbuf.Off, len(t.fields))
 	for i, f := range t.fields {
 		names[i] = b.String(f.Name)
-		types[i] = w.dtypeTable(f.Type)
+		// a type equal to the one of an earlier field is that field's table: a flatbuffer may
+		// point twice to a table, and a schema of three uuids holds one
+		for j := range i {
+			if t.fields[j].Type.Equal(f.Type) {
+				types[i] = types[j]
+				break
+			}
+		}
+		if types[i] == 0 {
+			types[i] = w.dtypeTable(f.Type)
+		}
 	}
 	nv, tv := b.Offsets(names), b.Offsets(types)
 	b.StartTable(3)

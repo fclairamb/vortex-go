@@ -3,7 +3,7 @@ module github.com/fclairamb/vortex-go/bench
 go 1.26.0
 
 require (
-	github.com/fclairamb/vortex-go v0.1.2
+	github.com/fclairamb/vortex-go v0.1.3
 	github.com/parquet-go/parquet-go v0.32.1
 )
 
