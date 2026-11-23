@@ -48,12 +48,12 @@ The schema of `dbbat_test.go` (one row per captured result row: a constant uuid,
 runs for a query, a random uuid, two integers and the row as JSON text) against parquet-go 0.32.1
 with zstd (row groups of 50,000 rows), file sizes in KB:
 
-| Capture | parquet-go, zstd | `Default` before | `Compact` before | `Default` now | `Compact` now |
-|---|---|---|---|---|---|
-| 3 rows | 2 | 8 | 8 | 8 | 5 |
-| 100k rows, narrow JSON | 2,240 | 5,643 | 4,981 | 4,373 | 1,877 |
-| 100k rows, wide JSON | 5,455 | 9,055 | 8,264 | 7,774 | 5,159 |
-| 1M rows, wide JSON | 54,572 | 90,582 | 82,635 | 76,830 | 51,590 |
+| Capture | parquet-go, zstd | `Default`, plain uuids | `Compact`, plain uuids | `Default`, compressed uuids | `Compact`, compressed uuids | `Default` now | `Compact` now |
+|---|---|---|---|---|---|---|---|
+| 3 rows | 2 (2,068 bytes) | 8 | 8 | 8 (8,480 bytes) | 5 (5,408 bytes) | 7 (7,552 bytes) | **1.9 (1,968 bytes)** |
+| 100k rows, narrow JSON | 2,240 | 5,643 | 4,981 | 4,373 | 1,877 | 4,372 | 1,874 |
+| 100k rows, wide JSON | 5,455 | 9,055 | 8,264 | 7,774 | 5,159 | 7,772 | 5,153 |
+| 1M rows, wide JSON | 54,572 | 90,582 | 82,635 | 76,830 | 51,590 | 76,822 | 51,549 |
 
 The text was not the gap: under `Compact` the `row_data` column alone is within 3% of
 `zstd.EncodeAll` (same level, same chunks) on the wide case, and `TestDBBatSize` holds it under
@@ -63,6 +63,35 @@ like any `u8` array (`Compact` makes them a few KB with zstd), and a column of a
 a `Compact` file has no zone table, since the statistics of the file hold the same two values.
 The parquet numbers are the ones measured on 2026-11-22; ours come from
 `dbbatRows` (seeded: the uuids differ from dbbat's `uuid.New`, the sizes do not).
+
+### The 3-row file
+
+Once the uuids were compressed, the 3-row file was structure: about 270 bytes of values in
+5,408 bytes. Where its bytes go under `Compact`, at each step of
+`specs/done/2026/11/2026-11-23-02-small-files.md`:
+
+| Part | Before | One vtable per shape | One dtype per type | No chunk statistics | No file statistics (now) |
+|---|---|---|---|---|---|
+| Magic and padding | 36 | 32 | 32 | 16 | 16 |
+| Column segments (6) | 1,856 | 1,856 | 1,856 | 848 | 848 |
+| DType | 708 | 552 | 376 | 376 | 376 |
+| Layout | 304 | 224 | 224 | 224 | 224 |
+| File statistics | 1,912 | 1,808 | 1,808 | 1,808 | none |
+| Footer | 416 | 376 | 376 | 376 | 376 |
+| Postscript and trailer | 176 | 168 | 168 | 168 | 128 |
+| **Total** | **5,408** | **5,016** | **4,840** | **3,816** | **1,968** |
+
+- A flatbuffer table points to a vtable already written with the same bytes, as the reference
+  builder does (every mode).
+- The fields of equal types point to one dtype table: the three uuids share theirs (every mode).
+- Under `Compact`, the root array of a chunk carries no statistics: a uuid's min and max were 77
+  bytes each. The zones table and the file statistics hold the values a reader prunes with, and
+  the flat layout of the reference prunes nothing with an array's statistics.
+- Under `Compact`, a file that the reader's first read (64 KiB from the end) holds whole has no
+  statistics segment, which the postscript allows: they could save it no read. They were the
+  legacy `field_stats` and the aggregates, the same values twice. A larger file keeps them.
+
+`TestDBBatTiny` holds the 3-row file at 2,068 bytes at most.
 
 ## Where the numbers are
 

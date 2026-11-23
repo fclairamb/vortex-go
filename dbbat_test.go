@@ -179,12 +179,20 @@ func TestDBBatSize(t *testing.T) {
 	}
 }
 
-// TestDBBatTiny: a file of three rows has no table of zones under Compact, and a filter on it
-// still finds its rows.
+// parquetTiny is the size of the 3-row case written by parquet-go 0.32.1 with zstd, as dbbat
+// writes its archive (measured in dbbat on 2026-11-22, docs/benchmarks.md).
+const parquetTiny = 2068
+
+// TestDBBatTiny: a file of three rows under Compact is no bigger than its Parquet twin: no
+// table of zones, no statistics, so a filter on it still finds its rows by reading them.
 func TestDBBatTiny(t *testing.T) {
 	rows := dbbatRows(3, 2, false)
 	compact := writeDBBat(t, rows, vortex.Compact, vortex.WriteOptions{})
 	def := writeDBBat(t, rows, vortex.Default, vortex.WriteOptions{})
+	t.Logf("3 rows: Compact %d bytes, Default %d, parquet-go %d", len(compact), len(def), parquetTiny)
+	if len(compact) > parquetTiny {
+		t.Errorf("Compact is %d bytes, parquet-go %d", len(compact), parquetTiny)
+	}
 	if len(compact) >= len(def) {
 		t.Errorf("Compact is %d bytes, Default %d", len(compact), len(def))
 	}

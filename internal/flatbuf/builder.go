@@ -1,6 +1,9 @@
 package flatbuf
 
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+)
 
 // Off is the position of a table, a vector or a string that a Builder has written: its
 // distance from the end of the buffer. It is only meaningful for the Builder that returned it.
@@ -14,6 +17,7 @@ type Off uint32
 type Builder struct {
 	buf      []byte // the message is buf[head:]
 	fields   []int  // the offset of each field of the open table, 0 when absent
+	vtables  []int  // the position (its distance from the end) of each vtable written
 	head     int
 	minAlign int
 	start    int // the size of the buffer when the open table started
@@ -32,6 +36,7 @@ func (b *Builder) Reset() {
 	b.head = len(b.buf)
 	b.minAlign = 1
 	b.fields = b.fields[:0]
+	b.vtables = b.vtables[:0]
 }
 
 // size is the number of bytes written.
@@ -207,7 +212,9 @@ func (b *Builder) Union(id int, typ uint8, value Off) {
 	b.Uint8(id, typ, 0)
 }
 
-// EndTable writes the vtable and returns the table.
+// EndTable writes the vtable and returns the table. A vtable equal to one already written is
+// not written again: the table points to the first one, as the reference builder does, so a
+// message of many tables of the same shape (the fields of a schema, say) carries one vtable.
 func (b *Builder) EndTable() Off {
 	b.prep(4, 0)
 	b.putUint32Raw(0) // the offset to the vtable, set below
@@ -225,7 +232,18 @@ func (b *Builder) EndTable() Off {
 	}
 	b.putUint16(uint16(table - b.start))
 	b.putUint16(uint16(4 + 2*n))
-	binary.LittleEndian.PutUint32(b.buf[len(b.buf)-table:], uint32(b.size()-table))
+	at := b.size()
+	vt := b.buf[b.head : b.head+at-table] // b.head, not a position kept before: a grow moves it
+	for _, old := range b.vtables {
+		if o := b.buf[len(b.buf)-old:]; len(o) >= len(vt) && bytes.Equal(o[:len(vt)], vt) {
+			b.head, at = len(b.buf)-table, old // the vtable is dropped
+			break
+		}
+	}
+	if at == b.size() {
+		b.vtables = append(b.vtables, at)
+	}
+	binary.LittleEndian.PutUint32(b.buf[len(b.buf)-table:], uint32(int32(at-table)))
 	return Off(table)
 }
 
