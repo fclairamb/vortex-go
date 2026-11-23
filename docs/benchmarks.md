@@ -138,7 +138,7 @@ two runs of the same commit, raise the run count (`BENCH_RUNS`) before anything 
 
 ## Finding where the time goes
 
-Two traps cost a morning on 2026-11-21, on a Mac:
+Traps that cost time on a Mac (2026-11-21 and 2026-11-22):
 
 - **A CPU profile on macOS blames the system calls.** `go tool pprof` showed 40 to 70% of a
   scan in `pread`, where a clock around the read gave 2%. Read the profile for the share of
@@ -149,6 +149,15 @@ Two traps cost a morning on 2026-11-21, on a Mac:
   (`-count 5`), run the two harnesses one after the other, and compare one column at a time: a
   copy of `bench/cases.json` whose `project` is one column gives the time of that column in
   both languages, which says which decoder to look at.
+- **`-bench 'BenchmarkCases/<case>/mapped$'` also runs `<case>`.** `go test` matches a
+  pattern level by level, and `<case>` matches the levels it has: its run, which reads the
+  file with `pread`, lands in the profile of the mapped one. Read the `mapped` lines of the
+  output, and the share of a decoder in the profile, not the share of the reads. A pattern
+  with a `/` inside parentheses matches nothing: write `(gen16|tpch_lineitem)/scan_full`,
+  not `(gen16/scan_full|tpch_lineitem/scan_full)`.
+- **`runtime.madvise` under `mheap.allocSpan` is the cost of new memory on macOS** (10 to 20%
+  of a write with a fresh writer per run). Linux does no system call there: allocate less
+  rather than chase it.
 
 What the reader does to stay close to the reference, so that a change does not undo it:
 
