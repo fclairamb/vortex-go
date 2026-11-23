@@ -198,6 +198,15 @@ What the reader does to stay close to the reference, so that a change does not u
 - the buffers of a pool are in classes a quarter of a power of two apart, not powers of two: a
   scan of a file of few rows, whose last batch is never given back, allocates at most a
   quarter more than it decodes, not up to twice;
+- an arena keeps its small buffers, under 512 elements, from one Release to the next, in
+  place of sharing them through the pool: a filter that keeps few rows decodes into the same
+  memory from one batch to the next, and a buffer too small for what the arena decodes now
+  is dropped, not kept for ever;
+- the rows path of a segment, the one a filter or a range reads some rows only through,
+  opens its nodes once and gives its arrays from a slab the context keeps: a segment
+  decoded batch after batch allocates no node and no array once it is running. The
+  reference of a FoR and the base of a sequence are read as the bits of a 64-bit integer,
+  with no byte slice made and padded;
 - runs of numbers fill their rows run by run (`fillRuns`), a take of numbers copies a word per
   row, not a slice, and a constant number is a doubling copy: no copy call per row;
 - a node of the tree of an array allocates nothing for its children (`fbs.List` is a value),

@@ -28,10 +28,14 @@ const (
 // errNoRows says that an encoding of the tree has no way to decode some rows only.
 var errNoRows = errors.New("no decoding of some rows")
 
-// Rows is a serialized array whose rows are decoded some at a time.
+// Rows is a serialized array whose rows are decoded some at a time. Its nodes are opened
+// once, on the first Decode, and its arrays come from a slab it keeps: a segment decoded
+// batch after batch allocates nothing once it is running.
 type Rows struct {
 	ctx  *context
-	root nodeRef
+	root *Node
+	id   string
+	ref  nodeRef
 }
 
 // OpenRows reads the tree of the serialized array of seg, like Decode does, and decodes
@@ -41,12 +45,12 @@ func OpenRows(seg []byte, specs []string, opt Options) (*Rows, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Rows{ctx: ctx, root: root}, nil
+	return &Rows{ctx: ctx, ref: root}, nil
 }
 
 // Can reports whether every encoding on the way to the rows of the array decodes some rows
 // only: Decode is then ok, unless the array is not what its tree says.
-func (r *Rows) Can() bool { return r.ctx.canRows(r.root) }
+func (r *Rows) Can() bool { return r.ctx.canRows(r.ref) }
 
 // canRows reports whether rowsOf has a path for the node fb and for the children it reads by
 // rows.
@@ -75,24 +79,22 @@ func (c *context) canRows(fb nodeRef) bool {
 // decodes all of them.
 func (r *Rows) Decode(t DType, rows int, idx []int, ar *Arena) (*Array, bool, error) {
 	r.ctx.opt.Arena = ar
-	a, err := r.ctx.rows(r.root, t, rows, idx)
+	r.ctx.rowAt = 0
+	if r.root == nil {
+		id, n, err := r.ctx.node(r.ref, "", rows)
+		if err != nil {
+			return nil, false, err
+		}
+		r.id, r.root = id, n
+	}
+	a, err := r.root.rowsOf(r.id, t, rows, idx)
 	if errors.Is(err, errNoRows) {
 		return nil, false, nil
 	}
-	return a, err == nil, err
-}
-
-// rows decodes the rows idx of the node fb, an array of the type t and of that many rows.
-func (c *context) rows(fb nodeRef, t DType, rows int, idx []int) (*Array, error) {
-	id, n, err := c.node(fb, "", rows)
 	if err != nil {
-		return nil, err
+		return nil, false, fmt.Errorf("%s: %w", r.id, err)
 	}
-	a, err := n.rowsOf(id, t, rows, idx)
-	if err != nil && !errors.Is(err, errNoRows) {
-		return nil, fmt.Errorf("%s: %w", id, err)
-	}
-	return a, err
+	return a, true, nil
 }
 
 // rowsOf decodes the rows idx of the node, whose encoding is id.
@@ -129,24 +131,39 @@ func (n *Node) rowsOf(id string, t DType, rows int, idx []int) (*Array, error) {
 	return nil, errNoRows
 }
 
-// childRows decodes the rows idx of child i.
+// childRows decodes the rows idx of child i, opened once and kept for the next decode.
 func (n *Node) childRows(i int, t DType, rows int, idx []int) (*Array, error) {
-	return n.ctx.rows(n.childRef(i), t, rows, idx)
+	if i >= len(n.rowKids) {
+		n.rowKids = slices.Grow(n.rowKids, i+1-len(n.rowKids))[:i+1]
+	}
+	k := &n.rowKids[i]
+	if k.n == nil {
+		id, node, err := n.ctx.node(n.childRef(i), "", rows)
+		if err != nil {
+			return nil, err
+		}
+		k.id, k.n = id, node
+	}
+	a, err := k.n.rowsOf(k.id, t, rows, idx)
+	if err != nil && !errors.Is(err, errNoRows) {
+		return nil, fmt.Errorf("%s: %w", k.id, err)
+	}
+	return a, err
 }
 
 // validityRows is the validity of the rows idx, from the validity of all the rows: nil when
-// there is none.
-func (n *Node) validityRows(valid *Bitmap, idx []int) *Bitmap {
+// there is none. The bitmap is out's own, not a new one.
+func (n *Node) validityRows(valid *Bitmap, idx []int, out *Array) *Bitmap {
 	if valid == nil {
 		return nil
 	}
-	out := &Bitmap{Bytes: n.ctx.opt.Arena.Bytes((len(idx)+7)/8, true)}
+	out.vbits = Bitmap{Bytes: n.ctx.opt.Arena.Bytes((len(idx)+7)/8, true)}
 	for k, i := range idx {
 		if valid.Get(i) {
-			out.Bytes[k>>3] |= 1 << (k & 7)
+			out.vbits.Bytes[k>>3] |= 1 << (k & 7)
 		}
 	}
-	return out
+	return &out.vbits
 }
 
 // checkRows checks that the rows idx are rows of an array of that many: they are in
@@ -168,7 +185,8 @@ func (n *Node) primitiveRows(t DType, rows int, idx []int) (*Array, error) {
 		return nil, err
 	}
 	w := t.PType.Width()
-	out := &Array{Type: t, Len: len(idx), Data: n.ctx.opt.Arena.Bytes(len(idx)*w, false), fresh: true}
+	out := n.ctx.rowsArray()
+	*out = Array{Type: t, Len: len(idx), Data: n.ctx.opt.Arena.Bytes(len(idx)*w, false), fresh: true}
 	if k := len(idx); k > 0 && idx[k-1]-idx[0] == k-1 {
 		copy(out.Data, all.Data[idx[0]*w:]) // rows that follow each other
 	} else {
@@ -176,7 +194,7 @@ func (n *Node) primitiveRows(t DType, rows int, idx []int) (*Array, error) {
 			copy(out.Data[k*w:(k+1)*w], all.Data[i*w:])
 		}
 	}
-	out.Validity = n.validityRows(all.Validity, idx)
+	out.Validity = n.validityRows(all.Validity, idx, out)
 	return out, nil
 }
 
@@ -225,7 +243,8 @@ func (n *Node) bitPackedRows(t DType, rows int, idx []int) (*Array, error) {
 		return nil, err
 	}
 	width := t.PType.Width()
-	a := &Array{Type: t, Len: len(idx), Data: n.ctx.opt.Arena.Bytes(len(idx)*width, false), fresh: true}
+	a := n.ctx.rowsArray()
+	*a = Array{Type: t, Len: len(idx), Data: n.ctx.opt.Arena.Bytes(len(idx)*width, false), fresh: true}
 	if k := len(idx); k > 0 && idx[k-1]-idx[0] == k-1 {
 		// Rows that follow each other are unpacked a block at a time, from the block of the first.
 		at := idx[0] + m.off
@@ -249,7 +268,7 @@ func (n *Node) bitPackedRows(t DType, rows int, idx []int) (*Array, error) {
 			return nil, err
 		}
 	}
-	a.Validity = n.validityRows(m.valid, idx)
+	a.Validity = n.validityRows(m.valid, idx, a)
 	return a, nil
 }
 
@@ -276,10 +295,11 @@ func (n *Node) forRows(t DType, rows int, idx []int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := *enc
+	out := n.ctx.rowsArray()
+	*out = *enc
 	out.Data = addConst(n.target(enc), enc.Data, width, ref)
 	out.fresh, out.bound = true, 0
-	return &out, nil
+	return out, nil
 }
 
 // zigZagRows is decodeZigZag for the rows idx.
@@ -292,11 +312,12 @@ func (n *Node) zigZagRows(t DType, rows int, idx []int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := *enc
+	out := n.ctx.rowsArray()
+	*out = *enc
 	out.Type = t
 	out.Data = unzigzag(n.target(enc), enc.Data, width)
 	out.fresh, out.bound = true, 0
-	return &out, nil
+	return out, nil
 }
 
 // alpRows is decodeALP for the rows idx.
@@ -309,7 +330,8 @@ func (n *Node) alpRows(t DType, rows int, idx []int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := &Array{Type: t, Len: len(idx), Validity: ints.Validity}
+	out := n.ctx.rowsArray()
+	*out = Array{Type: t, Len: len(idx), Validity: ints.Validity}
 	out.Data = alpFloats(n.target(ints), ints.Data, t.PType, m.e, m.f)
 	if !m.hasPatches {
 		return out, nil
@@ -330,7 +352,8 @@ func (n *Node) sequenceRows(t DType, rows int, idx []int) (*Array, error) {
 	if err := checkRows(idx, rows); err != nil {
 		return nil, err
 	}
-	a := &Array{Type: t, Len: len(idx), Data: n.ctx.opt.Arena.Bytes(len(idx)*width, false)}
+	a := n.ctx.rowsArray()
+	*a = Array{Type: t, Len: len(idx), Data: n.ctx.opt.Arena.Bytes(len(idx)*width, false)}
 	var b [8]byte
 	for k, i := range idx {
 		binary.LittleEndian.PutUint64(b[:], base+uint64(i)*step)
@@ -349,7 +372,9 @@ func (n *Node) decimalPartsRows(t DType, rows int, idx []int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Array{Type: t, Len: len(idx), Data: msp.Data, Width: p.Width(), Validity: msp.Validity}, nil
+	out := n.ctx.rowsArray()
+	*out = Array{Type: t, Len: len(idx), Data: msp.Data, Width: p.Width(), Validity: msp.Validity}
+	return out, nil
 }
 
 // intRows decodes the rows idx of child i, non-null integers of type p, as ints.
@@ -394,13 +419,14 @@ func (n *Node) fsstRows(t DType, rows int, idx []int) (*Array, error) {
 		return nil, err
 	}
 	ar := n.ctx.opt.Arena
-	a := &Array{Type: t, Len: len(idx)}
+	a := n.ctx.rowsArray()
+	*a = Array{Type: t, Len: len(idx)}
 	if n.NumChildren() == 3 {
 		valid, err := n.Validity(2, rows)
 		if err != nil {
 			return nil, err
 		}
-		a.Validity = n.validityRows(valid, idx)
+		a.Validity = n.validityRows(valid, idx, a)
 	}
 	total, err := outputSize(ulen, starts, ends, fsstMaxSymbol)
 	if err != nil {

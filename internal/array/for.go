@@ -1,7 +1,6 @@
 package array
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"github.com/fclairamb/vortex-go/internal/scalar"
@@ -64,11 +63,10 @@ func (n *Node) forParts(t DType) (width int, ref uint64, err error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("reference: %w", err)
 	}
-	b, err := primBytes(&v, t.PType)
-	if err != nil {
+	if ref, err = primBits(&v, t.PType); err != nil {
 		return 0, 0, fmt.Errorf("reference: %w", err)
 	}
-	return width, binary.LittleEndian.Uint64(append(b, 0, 0, 0, 0, 0, 0, 0, 0)), nil
+	return width, ref, nil
 }
 
 // zigZagParts checks a vortex.zigzag node of an array of type t, and returns the width of its

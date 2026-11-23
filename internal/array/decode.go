@@ -37,6 +37,11 @@ type context struct {
 	specs []string
 	bufs  [][]byte
 	slab  []Node // the nodes not given out yet
+	// rowArrays are the arrays the rows path gives out, kept from one Decode to the next:
+	// rowAt counts the ones of the current decode. A segment decoded batch after batch then
+	// allocates no array.
+	rowArrays []Array
+	rowAt     int
 }
 
 // Node is a node of the tree of a serialized array, as a decoder sees it.
@@ -45,8 +50,27 @@ type Node struct {
 	path     string
 	metadata []byte
 	buffers  []uint16
+	rowKids  []rowKid // the children opened for the rows path, kept from one Decode to the next
 	children fbs.List[fbs.ArrayNode]
 	inline   [4]uint16 // where buffers is, for a node of at most 4 buffers
+}
+
+// rowKid is a child opened for the rows path: its encoding and its node, read once.
+type rowKid struct {
+	n  *Node
+	id string
+}
+
+// rowsArray returns an empty array of the rows path, from the slab of the context: the
+// arrays of the decode before are overwritten, as the batch that reads them is done with.
+func (c *context) rowsArray() *Array {
+	if c.rowAt == len(c.rowArrays) {
+		c.rowArrays = append(c.rowArrays, Array{})
+	}
+	a := &c.rowArrays[c.rowAt]
+	c.rowAt++
+	*a = Array{}
+	return a
 }
 
 // Decoder builds the array of the given type and number of rows from a node.

@@ -193,8 +193,18 @@ func nullConstant(t DType, rows int) (*Array, error) {
 
 // primBytes is the little-endian encoding of v as a value of type p.
 func primBytes(v *scalar.Value, p PType) ([]byte, error) {
+	u, err := primBits(v, p)
+	if err != nil {
+		return nil, err
+	}
+	return binary.LittleEndian.AppendUint64(nil, u)[:p.Width()], nil
+}
+
+// primBits is primBytes without the bytes: v as the bits of a 64-bit integer, zero past the
+// width of p. It allocates nothing.
+func primBits(v *scalar.Value, p PType) (uint64, error) {
 	if p.Float() {
-		return floatBytes(v, p)
+		return floatBits(v, p)
 	}
 	var u uint64
 	neg := false
@@ -204,28 +214,28 @@ func primBytes(v *scalar.Value, p PType) ([]byte, error) {
 	case scalar.Uint:
 		u = v.Uint
 	default:
-		return nil, fmt.Errorf("a value of kind %d cannot be a %s", v.Kind, p)
+		return 0, fmt.Errorf("a value of kind %d cannot be a %s", v.Kind, p)
 	}
 	bits := uint(8 * p.Width())
 	if p.Signed() {
 		s := int64(u)
 		if (!neg && u > math.MaxInt64) || s<<(64-bits)>>(64-bits) != s {
-			return nil, fmt.Errorf("the value does not fit in %s", p)
+			return 0, fmt.Errorf("the value does not fit in %s", p)
 		}
 	} else if neg || (bits < 64 && u>>bits != 0) {
-		return nil, fmt.Errorf("the value does not fit in %s", p)
+		return 0, fmt.Errorf("the value does not fit in %s", p)
 	}
-	return binary.LittleEndian.AppendUint64(nil, u)[:p.Width()], nil
+	return u << (64 - bits) >> (64 - bits), nil
 }
 
-func floatBytes(v *scalar.Value, p PType) ([]byte, error) {
+func floatBits(v *scalar.Value, p PType) (uint64, error) {
 	switch {
 	case v.Kind == scalar.F16 && p == F16:
-		return binary.LittleEndian.AppendUint16(nil, uint16(v.Uint)), nil
+		return uint64(uint16(v.Uint)), nil
 	case v.Kind == scalar.F32 && p == F32:
-		return binary.LittleEndian.AppendUint32(nil, math.Float32bits(v.F32)), nil
+		return uint64(math.Float32bits(v.F32)), nil
 	case v.Kind == scalar.F64 && p == F64:
-		return binary.LittleEndian.AppendUint64(nil, math.Float64bits(v.F64)), nil
+		return math.Float64bits(v.F64), nil
 	}
-	return nil, fmt.Errorf("a value of kind %d cannot be a %s", v.Kind, p)
+	return 0, fmt.Errorf("a value of kind %d cannot be a %s", v.Kind, p)
 }

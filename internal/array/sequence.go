@@ -1,7 +1,6 @@
 package array
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -67,11 +66,9 @@ func sequenceParams(baseMsg, stepMsg []byte, p PType) (base, step uint64, err er
 	if err != nil {
 		return 0, 0, fmt.Errorf("base: %w", err)
 	}
-	baseBytes, err := primBytes(&bv, p)
-	if err != nil {
+	if base, err = primBits(&bv, p); err != nil {
 		return 0, 0, fmt.Errorf("base: %w", err)
 	}
-	base = binary.LittleEndian.Uint64(append(baseBytes, 0, 0, 0, 0, 0, 0, 0, 0))
 	sv, err := scalar.Decode(stepMsg)
 	if err != nil {
 		return 0, 0, fmt.Errorf("multiplier: %w", err)
