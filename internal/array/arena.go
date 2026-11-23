@@ -2,13 +2,16 @@ package array
 
 import (
 	"math/bits"
+	"slices"
 	"sync"
 
 	"github.com/fclairamb/vortex-go/internal/unsafex"
 )
 
-// minPooled is the smallest buffer, in elements, that a pool keeps: a smaller one costs less
-// to allocate than to share.
+// minPooled is the smallest buffer, in elements, that a pool shares between arenas: a
+// smaller one costs less to allocate than to share. An arena keeps its own small buffers
+// from one Release to the next, so a decode of few rows, a filter that keeps little, works
+// in the same memory too.
 const minPooled = 512
 
 // Pool keeps the buffers of the arrays a scan is done with, for the arrays it decodes next: a
@@ -36,19 +39,20 @@ func (p *Pool) Retire(a *Arena) {
 // batch reads stays as it is.
 func (p *Pool) Forget() {
 	p.mu.Lock()
-	p.retired = nil
+	clear(p.retired)
+	p.retired = p.retired[:0]
 	p.mu.Unlock()
 }
 
 // Recycle releases the retired arenas: the consumer has moved on to the next batch.
 func (p *Pool) Recycle() {
 	p.mu.Lock()
-	retired := p.retired
-	p.retired = nil
-	p.mu.Unlock()
-	for _, a := range retired {
-		a.Release()
+	for _, a := range p.retired {
+		a.release()
 	}
+	clear(p.retired)
+	p.retired = p.retired[:0]
+	p.mu.Unlock()
 }
 
 // NewArena returns an arena of the pool. A nil pool has the nil arena.
@@ -63,9 +67,11 @@ func (p *Pool) NewArena() *Arena {
 // by Release. The nil arena allocates, and gives nothing back. An arena is used by one
 // goroutine at a time.
 type Arena struct {
-	pool  *Pool
-	bytes [][]byte
-	ints  [][]int
+	pool       *Pool
+	bytes      [][]byte
+	ints       [][]int
+	smallBytes [][]byte // the buffers under minPooled, kept for the next decode
+	smallInts  [][]int
 }
 
 // classes is the number of classes of the buffers of a pool, and one more.
@@ -93,8 +99,18 @@ func alignedBytes(n int) []byte {
 // Bytes returns n bytes, aligned for any number: unsafex.Slice shares them. They are zero
 // when zero is set, and anything otherwise: the caller then writes every one of them.
 func (a *Arena) Bytes(n int, zero bool) []byte {
-	if a == nil || n < minPooled {
+	if a == nil {
 		return alignedBytes(n)
+	}
+	if n < minPooled {
+		b := takeSmall(&a.smallBytes, n)
+		if b == nil {
+			b = alignedBytes(n)
+		} else if zero {
+			clear(b[:n])
+		}
+		a.bytes = append(a.bytes, b)
+		return b[:n:n]
 	}
 	c, size := class(n)
 	p := a.pool
@@ -112,8 +128,18 @@ func (a *Arena) Bytes(n int, zero bool) []byte {
 
 // Ints is Bytes for ints.
 func (a *Arena) Ints(n int, zero bool) []int {
-	if a == nil || n < minPooled {
+	if a == nil {
 		return make([]int, n)
+	}
+	if n < minPooled {
+		b := takeSmall(&a.smallInts, n)
+		if b == nil {
+			b = make([]int, n)
+		} else if zero {
+			clear(b[:n])
+		}
+		a.ints = append(a.ints, b)
+		return b[:n:n]
 	}
 	c, size := class(n)
 	p := a.pool
@@ -143,23 +169,53 @@ func takeFree[T any](free *[classes][][]T, c int) []T {
 	return nil
 }
 
-// Release gives the buffers of the arena back to its pool: the arrays made in it must not be
-// read any more. The arena is empty, and can be used again.
+// takeSmall removes a buffer of at least n elements from the small buffers of an arena, and
+// returns it: nil when there is none. When none is large enough, they are all too small for
+// what the arena decodes now: they are dropped, so that a decode whose rows grow does not
+// keep every size it ever made.
+func takeSmall[T any](free *[][]T, n int) []T {
+	for i, b := range *free {
+		if cap(b) >= n {
+			*free = slices.Delete(*free, i, i+1)
+			return b
+		}
+	}
+	clear(*free)
+	*free = (*free)[:0]
+	return nil
+}
+
+// Release gives the buffers of the arena back: the arrays made in it must not be read any
+// more. The arena is empty, and can be used again.
 func (a *Arena) Release() {
 	if a == nil || len(a.bytes)+len(a.ints) == 0 {
 		return
 	}
+	a.pool.mu.Lock()
+	a.release()
+	a.pool.mu.Unlock()
+}
+
+// release gives the buffers back, the lock of the pool held: the small ones stay with the
+// arena, for its next decode, the others go to the pool.
+func (a *Arena) release() {
 	p := a.pool
-	p.mu.Lock()
 	for _, b := range a.bytes {
+		if cap(b) < minPooled {
+			a.smallBytes = append(a.smallBytes, b)
+			continue
+		}
 		c, _ := class(cap(b))
 		p.bytes[c] = append(p.bytes[c], b)
 	}
 	for _, b := range a.ints {
+		if cap(b) < minPooled {
+			a.smallInts = append(a.smallInts, b)
+			continue
+		}
 		c, _ := class(cap(b))
 		p.ints[c] = append(p.ints[c], b)
 	}
-	p.mu.Unlock()
 	clear(a.bytes)
 	clear(a.ints)
 	a.bytes, a.ints = a.bytes[:0], a.ints[:0]

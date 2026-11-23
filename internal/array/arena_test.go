@@ -29,7 +29,7 @@ func TestArenaNil(t *testing.T) {
 func TestArenaReuse(t *testing.T) {
 	p := new(Pool)
 	a := p.NewArena()
-	small := a.Bytes(8, false) // under the smallest pooled size: not kept
+	small := a.Bytes(8, false) // under the smallest shared size: kept by the arena itself
 	b, v := a.Bytes(3000, false), a.Ints(3000, false)
 	if len(small) != 8 || len(b) != 3000 || cap(b) != 3000 || len(v) != 3000 || !unsafex.Aligned(b, 8) {
 		t.Fatalf("%d, %d, %d", len(small), len(b), len(v))
@@ -62,6 +62,50 @@ func TestArenaReuse(t *testing.T) {
 	p.Recycle()
 	if got := other.Bytes(2500, false); &got[0] != &b[0] {
 		t.Fatal("Recycle did not release the arena")
+	}
+}
+
+// TestArenaSmall checks that an arena keeps its small buffers from one Release to the next:
+// the same memory comes back, zeroed when asked, and a size that grows drops the ones too
+// small for it.
+func TestArenaSmall(t *testing.T) {
+	p := new(Pool)
+	a := p.NewArena()
+	b, v := a.Bytes(80, false), a.Ints(80, false)
+	for i := range b {
+		b[i], v[i] = 0xff, -1
+	}
+	a.Release()
+	if got := a.Bytes(60, false); &got[0] != &b[0] || got[0] != 0xff {
+		t.Fatal("the small bytes are not reused")
+	}
+	if got := a.Ints(60, true); &got[0] != &v[0] || got[0] != 0 || got[59] != 0 {
+		t.Fatal("the small ints are not reused, or not zeroed")
+	}
+	a.Release()
+	if got := a.Bytes(60, true); &got[0] != &b[0] || got[0] != 0 || got[59] != 0 {
+		t.Fatal("the small bytes are not reused, or not zeroed")
+	}
+	if got := a.Ints(60, false); &got[0] != &v[0] {
+		t.Fatal("the small ints are not reused")
+	}
+	a.Release()
+	// Nothing is large enough for 100: the buffers of 80 are dropped, not kept for ever.
+	if got := a.Bytes(100, false); &got[0] == &b[0] {
+		t.Fatal("a buffer too small was reused")
+	}
+	if got := a.Ints(100, false); &got[0] == &v[0] {
+		t.Fatal("a buffer too small was reused")
+	}
+	a.Release()
+	if len(a.smallBytes) != 1 || len(a.smallInts) != 1 {
+		t.Fatalf("%d small bytes and %d small ints kept, want 1 and 1", len(a.smallBytes), len(a.smallInts))
+	}
+	// A retired arena keeps its small buffers too: Recycle releases it the same way.
+	p.Retire(a)
+	p.Recycle()
+	if got := a.Bytes(100, false); len(got) != 100 {
+		t.Fatalf("%d bytes after Recycle", len(got))
 	}
 }
 
