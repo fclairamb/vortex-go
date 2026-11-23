@@ -3,11 +3,14 @@ name = "variantjson"
 version = "0.1.0"
 edition = "2024"
 publish = false
+default-run = "variantjson"
 
 # Prints each row of the Variant column "v" of a Vortex file as one line of JSON, with the
 # reference reader at the pinned release (python vortex-data 0.93.0 has no Variant in its API,
 # so tools/oracle/oracle.py cannot read these files). `make interop` runs it. The pin follows
-# .vortex-version, like tools/vectors and tools/bench-rust.
+# .vortex-version, like tools/vectors and tools/bench-rust. src/bin/filemeta.rs reads and
+# writes the user metadata of a file with the same crates, for the same reason: vortex-data has
+# no metadata in its API (`make interop`, `make metadata`).
 [dependencies]
 vortex = { version = "=0.93.0", default-features = false, features = ["files", "zstd", "tokio", "parquet-variant"] }
 vortex-parquet-variant = "=0.93.0"

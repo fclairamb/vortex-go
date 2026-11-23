@@ -44,6 +44,7 @@ type File struct {
 	readers         map[string]layoutMaker // the layout readers, by identifier
 	mem             sync.Pool              // the memory of the scans that ended, see scanMem
 	segments        []fbs.SegmentSpec
+	meta            []metaEntry // the user metadata, sorted by key
 	size            int64
 	numRows         int64
 	gap, maxRead    int64 // how reads are merged, see mergeLimits
@@ -140,7 +141,16 @@ func openTail(r io.ReaderAt, size int64, tail []byte) (*File, error) {
 	if err != nil {
 		return nil, err
 	}
-	return load(b, segs, size)
+	meta, err := readMetadata(ps, uint64(psStart), size, b)
+	if err != nil {
+		return nil, err
+	}
+	f, err := load(b, segs, size)
+	if err != nil {
+		return nil, err
+	}
+	f.meta = meta
+	return f, nil
 }
 
 // segment is a located flatbuffer of the file.

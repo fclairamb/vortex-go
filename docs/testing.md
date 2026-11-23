@@ -221,6 +221,13 @@ integers), `patched` (patches applied on top of an inner array) and `decimal_byt
   mode. The six ratios are in `testdata/size-ratios.json`; `SIZE_RATIOS_UPDATE=1` rewrites
   it after an improvement. The files go to the oracle too, with the hashes of the
   reference's own files: the reference reader must read back the same rows.
+- **User metadata.** The reference has no metadata in its Python API, so a Rust binary of
+  `tools/variantjson`, `filemeta`, does both sides: `make metadata` writes
+  `testdata/metadata/rust.vortex` with the reference writer (16 entries, a key of 64 bytes, an
+  empty value, one of 80 KiB) and what its reader reads back, which `go test` compares with ours
+  through `Open`, `OpenFile` and `OpenMapped`; `make interop` has it read the entries of a file
+  we wrote (`TestInteropMetadata`), for the newest edition and for `core 2025.05.0`, whose rows
+  Vortex 0.64 and 0.83, which predate the field, still read.
 - **Write faults.** An `io.Writer` that fails at call N, for every N. `Write` or `Close`
   returns the error.
 

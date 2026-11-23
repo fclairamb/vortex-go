@@ -12,6 +12,19 @@ encodings of each chunk picked by a compressor, like the reference writer,
 and NewRowWriter writes a slice of structs. The goals are in docs/goals.md,
 the planned interface in docs/interface.md and the test plan in docs/testing.md.
 
+CONSTANTS
+
+const (
+	// MaxMetadataEntries is the number of metadata entries a file may hold.
+	MaxMetadataEntries = 16
+	// MaxMetadataKeyBytes is the length of a metadata key, in bytes of UTF-8.
+	MaxMetadataKeyBytes = 64
+)
+    The limits of the user metadata of a file, the ones of the reference
+    (MAX_METADATA_SEGMENTS and MAX_METADATA_KEY_BYTES): its writer refuses more,
+    its reader refuses a file with more.
+
+
 VARIABLES
 
 var (
@@ -322,6 +335,18 @@ func (f *File) Close() error
     an error that wraps os.ErrClosed. It does nothing for a File made by Open.
     A second call returns nil.
 
+func (f *File) Metadata(key string) ([]byte, bool, error)
+    Metadata returns the value of a key of the metadata of the file, and whether
+    the file has it. The value is a new slice, the caller's to keep. A value is
+    read with the rest of the end of the file at Open when it lies there, as the
+    small ones the writer stores just before the footer do; another one is read
+    now, from the reader of the file, and the error is the one of that read.
+    After Close, that read returns an error that wraps os.ErrClosed.
+
+func (f *File) MetadataKeys() []string
+    MetadataKeys returns the keys of the metadata of the file, sorted. A file
+    holds at most MaxMetadataEntries of them.
+
 func (f *File) NumRows() int64
     NumRows returns the number of rows of the file.
 
@@ -475,6 +500,11 @@ func NewRowWriter[T any](w io.Writer, o WriteOptions) *RowWriter[T]
 func (w *RowWriter[T]) Close() error
     Close writes the footer. A second Close returns nil, and Close does not
     close the io.Writer.
+
+func (w *RowWriter[T]) SetMetadata(key string, value []byte) error
+    SetMetadata adds an entry to the metadata of the file, or replaces the
+    value of its key, as Writer.SetMetadata does. It returns the error of
+    NewRowWriter, if any.
 
 func (w *RowWriter[T]) Write(rows []T) (int, error)
     Write adds rows to the file. It returns the number of rows it took, which is
@@ -661,6 +691,14 @@ func (d VariantDecimal) String() string
     String prints the decimal, like Decimal.Text with the scale of the value.
 
 type WriteOptions struct {
+	// Metadata is the user metadata of the file: values the reader gets back by their key
+	// (File.Metadata), that are not rows, a version or an index say. The writer copies the map
+	// and stores each value as it is, in the order of the keys. Writer.SetMetadata adds the
+	// entries known once the rows are written. A key is a non-empty UTF-8 string of at most
+	// MaxMetadataKeyBytes bytes, and a file holds at most MaxMetadataEntries entries: more,
+	// as the reference writer and reader refuse, is an error of the first Write or Close.
+	// The readers before Vortex 0.87 ignore it, whatever the Edition.
+	Metadata map[string][]byte
 	// Edition is the edition the file must be readable with, as the upstream names it
 	// ("core 2025.05.0"). Empty is the newest the library knows, "core 2026.08.3". The writer
 	// only makes what the edition has: a file for an edition before "core 2026.08.0" has the
@@ -711,6 +749,15 @@ func (w *Writer) Close() error
     Close writes the footer. The writer is closed for writing, and w is left
     open. A file with no row has one empty chunk. A second Close returns nil;
     Close returns the error that closed the writer for writing, if any.
+
+func (w *Writer) SetMetadata(key string, value []byte) error
+    SetMetadata adds an entry to the metadata of the file, or replaces the
+    value of its key: the way to store what is only known once the rows
+    are written. The writer keeps a copy of value and writes it at Close.
+    A key is a non-empty UTF-8 string of at most MaxMetadataKeyBytes bytes,
+    and a file holds at most MaxMetadataEntries entries: SetMetadata returns
+    an error for an entry beyond these, and the writer goes on without it.
+    After Close it returns ErrWriterClosed.
 
 func (w *Writer) Write(cols ...Data) error
     Write adds rows to the file: one Data per field of the schema, all of

@@ -92,6 +92,34 @@ for b, err := range f.Scan(ctx, q, "id", "price", "name") {
   `map` before `core 2026.08.2`, `uuid` before `core 2026.08.3`. An unknown edition is an
   error too.
 
+## User metadata
+
+```go
+type WriteOptions struct{ /* ... */ Metadata map[string][]byte }
+func (w *Writer) SetMetadata(key string, value []byte) error  // and RowWriter[T]
+func (f *File) MetadataKeys() []string                          // sorted
+func (f *File) Metadata(key string) ([]byte, bool, error)
+const MaxMetadataEntries, MaxMetadataKeyBytes = 16, 64
+```
+
+- **Opaque bytes by a string key**, what the postscript's `metadata` field holds upstream
+  (`PostscriptMetadata`, Vortex 0.87 and later; the readers before it ignore the field, so it is
+  not tied to an edition). A version of the caller's schema, an index of the rows.
+- **Two ways in.** `WriteOptions.Metadata` for what is known up front, `SetMetadata` for what is
+  only known once the rows are written (the offsets of each query in dbbat's archive). Both copy
+  the value; a key set twice keeps the last value.
+- **The reference's limits**: 16 entries, a key non-empty, UTF-8, at most 64 bytes. A bad entry
+  in the options is an error of the first `Write` or `Close`, like a bad schema; `SetMetadata`
+  returns its own error and the writer goes on without the entry. The reader refuses a file
+  that breaks them, or whose value lies outside the file or off its alignment (`ErrCorrupt`), as
+  the reference reader does.
+- **On disk**: the values follow the last data segment, in the order of their keys, before the
+  dtype and the footer, aligned to 1, as the reference writer puts them.
+- **Reads.** `Open` keeps the values that lie in the bytes it read anyway (the end of the file,
+  the last 64 KiB, more when the footer starts before), so a small value costs no read; a larger one is read by `Metadata`, its own
+  bytes only. That read is the only reason `Metadata` returns an error. The value is a new slice
+  each call.
+
 ## Opening, schema and errors
 
 ```go

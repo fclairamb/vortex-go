@@ -32,6 +32,14 @@ const (
 
 // WriteOptions are the options of a Writer.
 type WriteOptions struct {
+	// Metadata is the user metadata of the file: values the reader gets back by their key
+	// (File.Metadata), that are not rows, a version or an index say. The writer copies the map
+	// and stores each value as it is, in the order of the keys. Writer.SetMetadata adds the
+	// entries known once the rows are written. A key is a non-empty UTF-8 string of at most
+	// MaxMetadataKeyBytes bytes, and a file holds at most MaxMetadataEntries entries: more,
+	// as the reference writer and reader refuse, is an error of the first Write or Close.
+	// The readers before Vortex 0.87 ignore it, whatever the Edition.
+	Metadata map[string][]byte
 	// Edition is the edition the file must be readable with, as the upstream names it
 	// ("core 2025.05.0"). Empty is the newest the library knows, "core 2026.08.3". The writer
 	// only makes what the edition has: a file for an edition before "core 2026.08.0" has the
@@ -90,6 +98,7 @@ type Writer struct {
 	err       error
 	w         io.Writer
 	schema    *Schema
+	userMeta  map[string][]byte // the user metadata, see SetMetadata
 	root      *layoutBuild
 	fb        *flatbuf.Builder
 	enc       *encode.Encoder      // the encoders of a forced encoding
@@ -210,6 +219,9 @@ func NewWriter(w io.Writer, s *Schema, o WriteOptions) *Writer {
 	}
 	if wr.err == nil {
 		wr.err = validEdition(s.root, "", wr.opt.Edition)
+	}
+	if wr.err == nil {
+		wr.err = wr.setMetadata(o.Metadata)
 	}
 	wr.root = newLayoutBuild(s.root, false)
 	wr.leaves = countLeaves(wr.root)
@@ -506,6 +518,7 @@ func storageKind(t Type) Kind {
 
 // footer writes the dtype, the layout, the footer, the postscript and the trailer.
 func (w *Writer) footer() {
+	keys, offsets := w.writeMetadata()
 	dtype := w.segment(func() flatbuf.Off { return w.dtypeTable(w.schema.root) })
 	layout := w.segment(func() flatbuf.Off { return w.layoutTable(w.root, w.rows) })
 	stats := w.segment(w.fileStatsTable)
@@ -519,11 +532,15 @@ func (w *Writer) footer() {
 		return w.fb.EndTable()
 	}
 	d, l, st, f := seg(dtype), seg(layout), seg(stats), seg(foot)
+	md := w.metadataVector(keys, offsets)
 	w.fb.StartTable(5)
 	w.fb.Ref(0, d)
 	w.fb.Ref(1, l)
 	w.fb.Ref(2, st)
 	w.fb.Ref(3, f)
+	if md != 0 {
+		w.fb.Ref(4, md)
+	}
 	ps := w.fb.Finish(w.fb.EndTable())
 	if len(ps) > maxPostscript {
 		w.setErr(fmt.Errorf("vortex: Close: a postscript of %d bytes, at most %d", len(ps), maxPostscript))
