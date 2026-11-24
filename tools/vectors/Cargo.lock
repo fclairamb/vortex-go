@@ -33,17 +33,6 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
 name = "alp"
-version = "0.0.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b23203d5e87df8d8393c8021b53f9193b697ba13fc4ef653911dc1235e87bfd7"
-dependencies = [
- "fastlanes 0.6.1",
- "itertools 0.15.0",
- "num-traits",
-]
-
-[[package]]
-name = "alp"
 version = "0.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2916af7a226350979de64665dc17a8b3f04568c00a1eb5485278aa1bcaa62591"
@@ -773,18 +762,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a296e5a895621edf9fa8329c83aa1cb69a964643e36cf54d8d7a69b789089537"
 dependencies = [
  "ext-trait",
-]
-
-[[package]]
-name = "fastlanes"
-version = "0.6.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a516528425408429de7661e7101f7e7ad54f7d3fab859a3a6de239f508d17e2"
-dependencies = [
- "const_for",
- "num-traits",
- "pastey",
- "seq-macro",
 ]
 
 [[package]]
@@ -2159,7 +2136,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "vortex",
- "vortex-alp 0.93.0",
+ "vortex-alp",
  "vortex-buffer 0.93.0",
  "vortex-error 0.93.0",
  "vortex-fastlanes 0.93.0",
@@ -2182,7 +2159,7 @@ version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c87541497253b0a0b8345f14b420ee4e8553f23dfa362de77585769b9732446"
 dependencies = [
- "vortex-alp 0.94.0",
+ "vortex-alp",
  "vortex-array 0.94.0",
  "vortex-arrow",
  "vortex-btrblocks",
@@ -2214,29 +2191,11 @@ dependencies = [
 
 [[package]]
 name = "vortex-alp"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "514c43807defff4b9d05d96715a59a732b9a48c4521c5f217a6319da77aee6da"
-dependencies = [
- "alp 0.0.4",
- "itertools 0.14.0",
- "num-traits",
- "prost",
- "vortex-array 0.93.0",
- "vortex-buffer 0.93.0",
- "vortex-error 0.93.0",
- "vortex-fastlanes 0.93.0",
- "vortex-mask 0.93.0",
- "vortex-session 0.93.0",
-]
-
-[[package]]
-name = "vortex-alp"
 version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c62c4a94f2396ba41fefc3d073cce715db2f495385d9ec322b046c0eb5bfaffb"
 dependencies = [
- "alp 0.0.6",
+ "alp",
  "fearless_simd",
  "fearless_simd_macros",
  "itertools 0.14.0",
@@ -2396,7 +2355,7 @@ checksum = "a2be58b7fceba35c3ff18946af5e7ba442fc8f06474cd8cd5c5b28bc64c971df"
 dependencies = [
  "itertools 0.14.0",
  "rand",
- "vortex-alp 0.94.0",
+ "vortex-alp",
  "vortex-array 0.94.0",
  "vortex-buffer 0.94.0",
  "vortex-compressor",
