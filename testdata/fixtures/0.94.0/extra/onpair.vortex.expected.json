@@ -1,0 +1,72 @@
+{
+  "columns": {
+    "nullable_text": {
+      "first": [
+        "user_265@acme.com",
+        "user_368@acme.com",
+        "user_71@acme.com",
+        "user_472@acme.com",
+        "None"
+      ],
+      "last": [
+        "user_130@acme.com",
+        "user_226@acme.com",
+        "user_144@acme.com",
+        "user_384@acme.com",
+        "user_74@acme.com"
+      ],
+      "nulls": 863,
+      "sha256": "9a9aea18b0dd345d478935a6efbfdf20dbbb64457221a33b950ce6c914917129"
+    },
+    "text": {
+      "first": [
+        "item-427-acme",
+        "item-286-acme",
+        "item-237-acme",
+        "item-656-acme",
+        "item-207-acme"
+      ],
+      "last": [
+        "item-509-acme",
+        "item-656-acme",
+        "item-291-acme",
+        "item-242-acme",
+        "item-54-acme"
+      ],
+      "nulls": 0,
+      "sha256": "bd53eb77406d481a866135390405bd99fe9ca3cbe53dc0c4dafdcd81d8d5f31f"
+    }
+  },
+  "encodings": [
+    "fastlanes.bitpacked.v2",
+    "fastlanes.for.v2",
+    "vortex.constant",
+    "vortex.dict",
+    "vortex.onpair",
+    "vortex.primitive",
+    "vortex.shared",
+    "vortex.sparse",
+    "vortex.struct"
+  ],
+  "rows": 3000,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "nullable_text"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "text"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

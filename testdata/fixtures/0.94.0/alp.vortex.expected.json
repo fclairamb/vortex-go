@@ -1,0 +1,303 @@
+{
+  "columns": {
+    "f32_near_int": {
+      "first": [
+        "0.0",
+        "1.0",
+        "2.0",
+        "3.0",
+        "4.0"
+      ],
+      "last": [
+        "1019.0",
+        "1020.0",
+        "1021.0",
+        "1022.0",
+        "1023.0"
+      ],
+      "nulls": 0,
+      "sha256": "b9220e45ac5d69a2919bb9b58f9659e618c38330b8ffb114801fdf20b702d5e1"
+    },
+    "f32_special_values": {
+      "first": [
+        "0.0",
+        "-0.0",
+        "nan",
+        "nan",
+        "nan"
+      ],
+      "last": [
+        "nan",
+        "nan",
+        "nan",
+        "inf",
+        "-inf"
+      ],
+      "nulls": 0,
+      "sha256": "2c17a3e3ae9dbad815d45c65c11d97edb27db91c163f2be5c7a2e7a8237edb4b"
+    },
+    "f64_boundary_specials": {
+      "first": [
+        "nan",
+        "-0.0",
+        "12.500002",
+        "12.500003",
+        "12.500004"
+      ],
+      "last": [
+        "12.501019",
+        "12.50102",
+        "12.501021",
+        "12.501022",
+        "5e-324"
+      ],
+      "nulls": 0,
+      "sha256": "af923b8d5f7810b3399d321c8eb176a7a26f101a3790786469a4976c78baa484"
+    },
+    "f64_currency": {
+      "first": [
+        "0.0",
+        "0.01",
+        "0.02",
+        "0.03",
+        "0.04"
+      ],
+      "last": [
+        "10.19",
+        "10.2",
+        "10.21",
+        "10.22",
+        "10.23"
+      ],
+      "nulls": 0,
+      "sha256": "8875a61e2257d3f500557b08cf74c06202f9a5ac3223a4a95e35be806620e5fb"
+    },
+    "f64_extremes": {
+      "first": [
+        "1.7976931348623157e+308",
+        "-1.7976931348623157e+308",
+        "2.220446049250313e-16",
+        "-2.220446049250313e-16",
+        "2.2250738585072014e-308"
+      ],
+      "last": [
+        "-1e-323",
+        "1.7976931348623157e+308",
+        "-1.7976931348623157e+308",
+        "2.220446049250313e-16",
+        "-2.220446049250313e-16"
+      ],
+      "nulls": 0,
+      "sha256": "ce610ac5d982533d58f3bb856b2a7af1495de09eafa15929ac03e474e1ae55a7"
+    },
+    "f64_negative_near_int": {
+      "first": [
+        "-0.0",
+        "-1.0001",
+        "-2.0002",
+        "-3.0003",
+        "-4.0004"
+      ],
+      "last": [
+        "-1019.0004",
+        "-1020.0005",
+        "-1021.0006",
+        "-1022.0",
+        "-1023.0001"
+      ],
+      "nulls": 0,
+      "sha256": "9a9b476d259765a5cbc82275509eb22dbf39def84d94c659d0a3907b2648715b"
+    },
+    "f64_nullable": {
+      "first": [
+        "None",
+        "50.125",
+        "50.25",
+        "50.375",
+        "50.5"
+      ],
+      "last": [
+        "177.375",
+        "None",
+        "177.625",
+        "177.75",
+        "177.875"
+      ],
+      "nulls": 103,
+      "sha256": "8eea1721bafbafdd9daabde491a462df44eab1fbcc44aaf00082cd70bc25b9e2"
+    },
+    "f64_patch_heavy": {
+      "first": [
+        "10000.0",
+        "250.01",
+        "250.02",
+        "250.03",
+        "250.04"
+      ],
+      "last": [
+        "250.2",
+        "250.21",
+        "250.22",
+        "1054484.0",
+        "1056529.0"
+      ],
+      "nulls": 0,
+      "sha256": "e74a4eb01581b79619c3277e75495fc4c2270753b9464bd6f02f093d3abfa99f"
+    },
+    "f64_patched": {
+      "first": [
+        "3.141592653589793",
+        "0.01",
+        "0.02",
+        "0.03",
+        "0.04"
+      ],
+      "last": [
+        "10.19",
+        "10.200000000000001",
+        "10.21",
+        "10.22",
+        "10.23"
+      ],
+      "nulls": 0,
+      "sha256": "21ed85bc63f3f97a9751efc9436ad362a0bd0ce9e1da2c3b89286dc30a696196"
+    },
+    "f64_prices": {
+      "first": [
+        "100.0",
+        "100.25",
+        "100.5",
+        "100.75",
+        "101.0"
+      ],
+      "last": [
+        "354.75",
+        "355.0",
+        "355.25",
+        "355.5",
+        "355.75"
+      ],
+      "nulls": 0,
+      "sha256": "0eac50a57de1af70a5ed00919f247ee1125923bcb633c43be428d9127109725e"
+    },
+    "f64_special_values": {
+      "first": [
+        "0.0",
+        "-0.0",
+        "nan",
+        "nan",
+        "nan"
+      ],
+      "last": [
+        "nan",
+        "nan",
+        "nan",
+        "inf",
+        "-inf"
+      ],
+      "nulls": 0,
+      "sha256": "5b3d1f8d3b3e143d7c4da4a91dd966d24557a23059dc79b6b3d4461699008a7c"
+    }
+  },
+  "encodings": [
+    "vortex.alp",
+    "vortex.bool",
+    "vortex.primitive",
+    "vortex.struct"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "f64_prices"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f32"
+        },
+        "name": "f32_near_int"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "f64_negative_near_int"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "f64_currency"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "f64"
+        },
+        "name": "f64_nullable"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "f64_patched"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "f64_patch_heavy"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "f64_special_values"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f32"
+        },
+        "name": "f32_special_values"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "f64_extremes"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "f64_boundary_specials"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

@@ -1,0 +1,338 @@
+{
+  "columns": {
+    "ts_day_boundary": {
+      "first": [
+        "1704067200000",
+        "1704067200999",
+        "1704067201000",
+        "1704153599999",
+        "1704153600000"
+      ],
+      "last": [
+        "1726099199999",
+        "1726099200000",
+        "1726099200999",
+        "1726099201000",
+        "1726185599999"
+      ],
+      "nulls": 0,
+      "sha256": "f6a1b9f2c1db7bc69dc8cd30172409041794d358a762df09c0277cb20e1c6b2f"
+    },
+    "ts_head_tail_null": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 16,
+      "sha256": "ef03af89b04a8a4dc0a49bb0ca5a1e50a95932938c48a30ca103ed722135b55a"
+    },
+    "ts_ms": {
+      "first": [
+        "1704067200000",
+        "1704067201000",
+        "1704067202000",
+        "1704067203000",
+        "1704067204000"
+      ],
+      "last": [
+        "1704068219000",
+        "1704068220000",
+        "1704068221000",
+        "1704068222000",
+        "1704068223000"
+      ],
+      "nulls": 0,
+      "sha256": "cb956d9f5a6c988f2ecec6bffc8472d41ce5d577582f150db17ecb2aa4609bf5"
+    },
+    "ts_ms_tz": {
+      "first": [
+        "1704067200000",
+        "1704067260000",
+        "1704067320000",
+        "1704067380000",
+        "1704067440000"
+      ],
+      "last": [
+        "1704128340000",
+        "1704128400000",
+        "1704128460000",
+        "1704128520000",
+        "1704128580000"
+      ],
+      "nulls": 0,
+      "sha256": "dc7254dc453bc267012383d934d400f656bd76f1e114b22752b6954580d3eef8"
+    },
+    "ts_ns": {
+      "first": [
+        "1704067200000000000",
+        "1704067201000000000",
+        "1704067202000000000",
+        "1704067203000000000",
+        "1704067204000000000"
+      ],
+      "last": [
+        "1704068219000000000",
+        "1704068220000000000",
+        "1704068221000000000",
+        "1704068222000000000",
+        "1704068223000000000"
+      ],
+      "nulls": 0,
+      "sha256": "7ba33d39118fe16de9b7173c009eba3c8387e8f90d17fbab618ffea871c95b76"
+    },
+    "ts_ns_subsecond": {
+      "first": [
+        "1704067200000000000",
+        "1704067200000000001",
+        "1704067200000999999",
+        "1704067200999999999",
+        "1704067201000000000"
+      ],
+      "last": [
+        "1704067454999999999",
+        "1704067455000000000",
+        "1704067455000000001",
+        "1704067455000999999",
+        "1704067455999999999"
+      ],
+      "nulls": 0,
+      "sha256": "9d8db2c6ee44a4ffc6eedc88078b00f1c0ec0f9d83532c3589ffd7e55c1c382d"
+    },
+    "ts_pre_1970": {
+      "first": [
+        "-86400000",
+        "-86399000",
+        "-86398000",
+        "-86397000",
+        "-86396000"
+      ],
+      "last": [
+        "-85381000",
+        "-85380000",
+        "-85379000",
+        "-85378000",
+        "-85377000"
+      ],
+      "nulls": 0,
+      "sha256": "dee93972db09ebeb75fec542884d311a1d584808bc5e1f7f69bae85f09db145a"
+    },
+    "ts_s": {
+      "first": [
+        "1704067200",
+        "1704153600",
+        "1704240000",
+        "1704326400",
+        "1704412800"
+      ],
+      "last": [
+        "1792108800",
+        "1792195200",
+        "1792281600",
+        "1792368000",
+        "1792454400"
+      ],
+      "nulls": 0,
+      "sha256": "b8e052562b5cd35192ee22607738c9f06e23778992ae60cb470521bc156edcdc"
+    },
+    "ts_us": {
+      "first": [
+        "1704067200000000",
+        "1704070800000000",
+        "1704074400000000",
+        "1704078000000000",
+        "1704081600000000"
+      ],
+      "last": [
+        "1707735600000000",
+        "1707739200000000",
+        "1707742800000000",
+        "1707746400000000",
+        "1707750000000000"
+      ],
+      "nulls": 0,
+      "sha256": "3a7a8f9cd535e0c0efa9b721b470a83a23d413b8f2c65e08645b5bc72afcf2ee"
+    },
+    "ts_us_nullable": {
+      "first": [
+        "None",
+        "1704067260000000",
+        "1704067320000000",
+        "1704067380000000",
+        "1704067440000000"
+      ],
+      "last": [
+        "1704128340000000",
+        "None",
+        "1704128460000000",
+        "1704128520000000",
+        "1704128580000000"
+      ],
+      "nulls": 103,
+      "sha256": "5bbb9d2ae3e15a4bd8ba6b97ffe11d8df83908fb29786df4cc1fe0bd808fa9ee"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.constant",
+    "vortex.datetimeparts",
+    "vortex.primitive",
+    "vortex.struct"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "\u00b5s",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_us"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "ns",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_ns"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "ms",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_ms"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "\u00b5s",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": true,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_us_nullable"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "s",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_s"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "ms, tz=UTC",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_ms_tz"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "ms",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_pre_1970"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "ms",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_day_boundary"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "ns",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": false,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_ns_subsecond"
+      },
+      {
+        "dtype": {
+          "ext_id": "vortex.timestamp",
+          "ext_metadata": "ms",
+          "kind": "extension",
+          "nullable": false,
+          "storage": {
+            "kind": "primitive",
+            "nullable": true,
+            "ptype": "i64"
+          }
+        },
+        "name": "ts_head_tail_null"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "columns": {
+    "long_text": {
+      "first": [
+        "short",
+        "this string is definitely longer than twelve bytes",
+        "another-long-string-that-exceeds-inline-limit",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789"
+      ],
+      "last": [
+        "short",
+        "this string is definitely longer than twelve bytes",
+        "another-long-string-that-exceeds-inline-limit",
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ-0123456789"
+      ],
+      "nulls": 0,
+      "sha256": "6fa346ac334e89d0018a72b306a663fdb41149af2934ad4ca999bf91af656059"
+    },
+    "nullable_text": {
+      "first": [
+        "hello",
+        "None",
+        "world",
+        ""
+      ],
+      "last": [
+        "hello",
+        "None",
+        "world",
+        ""
+      ],
+      "nulls": 1,
+      "sha256": "ca0427d5d9c0acf3650ba43d8deb4c8dd8f391d1bec1ae02245cadaf25ed517b"
+    },
+    "text": {
+      "first": [
+        "0x",
+        "0x68656c6c6f",
+        "0xe38193e38293e381abe381a1e381af",
+        "0xf09fa680"
+      ],
+      "last": [
+        "0x",
+        "0x68656c6c6f",
+        "0xe38193e38293e381abe381a1e381af",
+        "0xf09fa680"
+      ],
+      "nulls": 0,
+      "sha256": "470e6bf822a191f4da02f9406c2816028ea3e5b29481f5d19403f94674e3ad90"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.struct",
+    "vortex.varbinview"
+  ],
+  "rows": 4,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "binary",
+          "nullable": false
+        },
+        "name": "text"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": true
+        },
+        "name": "nullable_text"
+      },
+      {
+        "dtype": {
+          "kind": "utf8",
+          "nullable": false
+        },
+        "name": "long_text"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

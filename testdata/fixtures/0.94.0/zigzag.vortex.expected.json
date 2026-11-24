@@ -1,0 +1,303 @@
+{
+  "columns": {
+    "alternating_i32": {
+      "first": [
+        "1",
+        "-1",
+        "2",
+        "-2",
+        "3"
+      ],
+      "last": [
+        "-510",
+        "511",
+        "-511",
+        "512",
+        "-512"
+      ],
+      "nulls": 0,
+      "sha256": "1fce82fda3528f9ed7ffc554fbb7ec1b005c9b93dbc1b5696d23dd6a4ea08e69"
+    },
+    "deltas_i32": {
+      "first": [
+        "0",
+        "-1",
+        "-2",
+        "-3",
+        "-4"
+      ],
+      "last": [
+        "-19",
+        "-20",
+        "-21",
+        "-22",
+        "-23"
+      ],
+      "nulls": 0,
+      "sha256": "6bfe931f8ecb5f945525e2a1f128376a181a7e2144fdd8ac71964f1b37c5b1b1"
+    },
+    "extremes_i32": {
+      "first": [
+        "-2147483648",
+        "2147483647",
+        "-1",
+        "1",
+        "-2147483648"
+      ],
+      "last": [
+        "1",
+        "-2147483648",
+        "2147483647",
+        "-1",
+        "1"
+      ],
+      "nulls": 0,
+      "sha256": "ed31c04e7004c26f1b6b4a3b3a1ce45c10c4fa8c61e0d190755fdb0721d17d66"
+    },
+    "head_tail_nulls": {
+      "first": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "last": [
+        "None",
+        "None",
+        "None",
+        "None",
+        "None"
+      ],
+      "nulls": 16,
+      "sha256": "3b16ebd0a78f75d0ad9c25b64157eafd4f0d488f418f49f76c4af5577a1b2082"
+    },
+    "nullable_zigzag": {
+      "first": [
+        "None",
+        "-6",
+        "-5",
+        "-4",
+        "-3"
+      ],
+      "last": [
+        "7",
+        "None",
+        "-6",
+        "-5",
+        "-4"
+      ],
+      "nulls": 171,
+      "sha256": "e7e0d8eabfe079b3731f84258b52146f507da7cf7c44bffa60cca76a9f6ba457"
+    },
+    "repeated_negative": {
+      "first": [
+        "-42",
+        "-42",
+        "-42",
+        "-42",
+        "-42"
+      ],
+      "last": [
+        "-42",
+        "-42",
+        "-42",
+        "-42",
+        "-42"
+      ],
+      "nulls": 0,
+      "sha256": "16e655cc8b43e95a9487b84f0d7cec4378d221c15b5ec061dbc05f665f50c4a9"
+    },
+    "small_i16": {
+      "first": [
+        "-5",
+        "-4",
+        "-3",
+        "-2",
+        "-1"
+      ],
+      "last": [
+        "2",
+        "3",
+        "4",
+        "5",
+        "-5"
+      ],
+      "nulls": 0,
+      "sha256": "4f9f1afcd25662e966703352e3c92a31a392419db5314474f2385832fa636f01"
+    },
+    "small_i64": {
+      "first": [
+        "-10",
+        "-9",
+        "-8",
+        "-7",
+        "-6"
+      ],
+      "last": [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "nulls": 0,
+      "sha256": "d649da80e8af0db2cb35b042a52181a25ce5d6f07c490371a6624ffe4f736ad1"
+    },
+    "small_i8": {
+      "first": [
+        "-4",
+        "-3",
+        "-2",
+        "-1",
+        "0"
+      ],
+      "last": [
+        "-2",
+        "-1",
+        "0",
+        "1",
+        "2"
+      ],
+      "nulls": 0,
+      "sha256": "debbd3125b489525c07ba857a7f64d268ba8bf609a12b117555d97cd3738f8c1"
+    },
+    "zero_crossing": {
+      "first": [
+        "-512",
+        "-511",
+        "-510",
+        "-509",
+        "-508"
+      ],
+      "last": [
+        "507",
+        "508",
+        "509",
+        "510",
+        "511"
+      ],
+      "nulls": 0,
+      "sha256": "92d91166c9c6311818d9dbbae49fa22e6e0e44596ad9b39b3dfc0d3e98e6ca4f"
+    },
+    "zero_heavy_outliers": {
+      "first": [
+        "9007199254740991",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "last": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ],
+      "nulls": 0,
+      "sha256": "0abbb420e1fa91a19ab72697671a4c076cbe2c7e5b6de2603ce1ae20e7dcdd74"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.primitive",
+    "vortex.struct",
+    "vortex.zigzag"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "alternating_i32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "small_i64"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "deltas_i32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i16"
+        },
+        "name": "small_i16"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i8"
+        },
+        "name": "small_i8"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "nullable_zigzag"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "extremes_i32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "zero_heavy_outliers"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "repeated_negative"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "zero_crossing"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "i32"
+        },
+        "name": "head_tail_nulls"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

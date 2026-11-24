@@ -1,0 +1,224 @@
+{
+  "columns": {
+    "constant_u16": {
+      "first": [
+        "17",
+        "17",
+        "17",
+        "17",
+        "17"
+      ],
+      "last": [
+        "17",
+        "17",
+        "17",
+        "17",
+        "17"
+      ],
+      "nulls": 0,
+      "sha256": "07d583a72c84fa018719ec017937ac9a921de30a66f18b917d392b76a8726532"
+    },
+    "irregular_i64": {
+      "first": [
+        "0",
+        "1001",
+        "2004",
+        "3009",
+        "4016"
+      ],
+      "last": [
+        "1054361",
+        "1040400",
+        "1043441",
+        "1046484",
+        "1049529"
+      ],
+      "nulls": 0,
+      "sha256": "52d648397c24e16e9ca1841b6e55037e55035f736be29e41dd0b4f05d93d97d5"
+    },
+    "narrow_i16": {
+      "first": [
+        "-8",
+        "-7",
+        "-6",
+        "-5",
+        "-4"
+      ],
+      "last": [
+        "8",
+        "-8",
+        "-7",
+        "-6",
+        "-5"
+      ],
+      "nulls": 0,
+      "sha256": "86b7ba126e5032b705ab0de6cf1dcc2a576f3c1bae3ef3e66f08d4775c60f51c"
+    },
+    "negative_i32": {
+      "first": [
+        "-10000",
+        "-9999",
+        "-9998",
+        "-9997",
+        "-9996"
+      ],
+      "last": [
+        "-9752",
+        "-9751",
+        "-9750",
+        "-9749",
+        "-9748"
+      ],
+      "nulls": 0,
+      "sha256": "cbb4caf6f779b6c5a97fd372d4761cf0af608cde0e14de9d254ba1af20405df0"
+    },
+    "nullable_f32": {
+      "first": [
+        "None",
+        "0.12999999523162842",
+        "0.25999999046325684",
+        "0.320000022649765",
+        "0.44999998807907104"
+      ],
+      "last": [
+        "101.95000457763672",
+        "102.01000213623047",
+        "102.13999938964844",
+        "102.20000457763672",
+        "102.33000183105469"
+      ],
+      "nulls": 114,
+      "sha256": "9afa64455b0174a9868e189adf987ae2409bb60de887dbfb49a73aab94a77b9a"
+    },
+    "pattern_u32": {
+      "first": [
+        "0",
+        "31153",
+        "62306",
+        "27923",
+        "59076"
+      ],
+      "last": [
+        "25483",
+        "56636",
+        "22253",
+        "53406",
+        "19023"
+      ],
+      "nulls": 0,
+      "sha256": "0bc690bfcb85cce76a914cc7f9908faa3162c156eccee1eec0d71e3d2e77c529"
+    },
+    "smooth_f64": {
+      "first": [
+        "0.0",
+        "0.0002859160304069519",
+        "0.0011429190635681152",
+        "0.0025698915123939514",
+        "0.004565715789794922"
+      ],
+      "last": [
+        "99.99287072569132",
+        "99.9954342842102",
+        "99.9974301084876",
+        "99.99885708093643",
+        "99.9997140839696"
+      ],
+      "nulls": 0,
+      "sha256": "7536c10b6c370acaa7c1fd75857b0ac641598e9da8cea9c4746397b5fdfe57cc"
+    },
+    "spike_outliers": {
+      "first": [
+        "1000000.0",
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793"
+      ],
+      "last": [
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793",
+        "3.141592653589793"
+      ],
+      "nulls": 0,
+      "sha256": "2c0c25fc63f60332915c76ea04061576f61ad179e192592cce07e9ab79c6b73f"
+    }
+  },
+  "encodings": [
+    "vortex.bool",
+    "vortex.pco",
+    "vortex.struct"
+  ],
+  "rows": 1024,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i64"
+        },
+        "name": "irregular_i64"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "smooth_f64"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u32"
+        },
+        "name": "pattern_u32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": true,
+          "ptype": "f32"
+        },
+        "name": "nullable_f32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i32"
+        },
+        "name": "negative_i32"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "u16"
+        },
+        "name": "constant_u16"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "f64"
+        },
+        "name": "spike_outliers"
+      },
+      {
+        "dtype": {
+          "kind": "primitive",
+          "nullable": false,
+          "ptype": "i16"
+        },
+        "name": "narrow_i16"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}
