@@ -12,7 +12,7 @@ default-run = "variantjson"
 # writes the user metadata of a file with the same crates, for the same reason: vortex-data has
 # no metadata in its API (`make interop`, `make metadata`).
 [dependencies]
-vortex = { version = "=0.93.0", default-features = false, features = ["files", "zstd", "tokio", "parquet-variant"] }
+vortex = { version = "=0.94.0", default-features = false, features = ["files", "zstd", "tokio", "parquet-variant"] }
 vortex-parquet-variant = "=0.93.0"
 parquet-variant-compute = "59"
 parquet-variant-json = "59"
