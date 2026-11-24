@@ -654,22 +654,29 @@ func TestRowsFillAllocations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var b *Batch
-	for b = range f.scan(context.Background(), &scanOptions{batchRows: maxBatchRows, columns: p.columns}) {
-	}
-	rows := reflect.ValueOf(make([]allocRow, b.Len()))
 	for _, c := range p.cells {
 		if c.fast == nil {
 			t.Fatalf("a field of %v is not filled by the fast path", c.path)
 		}
 	}
-	// The fill allocates for the batch (the closures that read it, the block of the strings),
-	// never for a row.
-	first := rows.Slice(0, 1)
-	one := testing.AllocsPerRun(50, func() { _ = p.fill(b, first) })
-	all := testing.AllocsPerRun(50, func() { _ = p.fill(b, rows) })
+	// The fill is measured in the iteration that reads the batch: a batch is valid for the
+	// loop iteration that reads it, and the scan gives its memory back when the loop ends.
+	var n int
+	var one, all float64
+	for b := range f.scan(context.Background(), &scanOptions{batchRows: maxBatchRows, columns: p.columns}) {
+		n = b.Len()
+		rows := reflect.ValueOf(make([]allocRow, n))
+		// The fill allocates for the batch (the closures that read it, the block of the
+		// strings), never for a row.
+		first := rows.Slice(0, 1)
+		one = testing.AllocsPerRun(50, func() { _ = p.fill(b, first) })
+		all = testing.AllocsPerRun(50, func() { _ = p.fill(b, rows) })
+	}
+	if n == 0 {
+		t.Fatal("the scan returned no batch")
+	}
 	if one != all || all > 9 {
-		t.Fatalf("a fill of 1 row allocates %v times, of %d rows %v", one, b.Len(), all)
+		t.Fatalf("a fill of 1 row allocates %v times, of %d rows %v", one, n, all)
 	}
 }
 

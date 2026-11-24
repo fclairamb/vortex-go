@@ -601,6 +601,11 @@ func TestPeakHeapWhileWriting(t *testing.T) {
 			t.Fatal(err)
 		}
 		if n%5 == 4 {
+			// Two collections: the first moves what the pools hold (the encoders of the
+			// writer, the memory of the scans of the tests before) to their victim set, the
+			// second drops it. The peak this test measures is then what a collection keeps,
+			// and does not move with the moment a pool victim happens to be measured.
+			runtime.GC()
 			runtime.GC()
 			runtime.ReadMemStats(&m)
 			peak = max(peak, m.HeapAlloc)

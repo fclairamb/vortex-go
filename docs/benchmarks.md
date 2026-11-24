@@ -225,7 +225,7 @@ What the reader does to stay close to the reference, so that a change does not u
 - the rows of a dictionary of strings of at most 256 values, no more than rows, read the start
   and the end of their value in one lookup, from a table of pairs made for the batch;
 - the buffers of a pool are in classes a quarter of a power of two apart, not powers of two: a
-  scan of a file of few rows, whose last batch is never given back, allocates at most a
+  scan of a file of few rows, whose memory the next scan of the file takes, holds at most a
   quarter more than it decodes, not up to twice;
 - an arena keeps its small buffers, under 512 elements, from one Release to the next, in
   place of sharing them through the pool: a filter that keeps few rows decodes into the same

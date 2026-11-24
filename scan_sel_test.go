@@ -192,30 +192,42 @@ func TestScanPartOfSegments(t *testing.T) {
 	}
 }
 
-// TestScansShareMemory checks that a scan that takes the memory of the scan before does not
-// write over what that scan returned last: the last batch of a scan is never given back.
+// TestScansShareMemory checks the memory rule of docs/interface.md: a batch is valid for the
+// loop iteration that reads it, so a scan that ends gives its memory back and the scans that
+// follow work in what the scans before left, instead of allocating a memory of their own.
 func TestScansShareMemory(t *testing.T) {
 	f := openBytes(t, selFile(t, Default))
-	var last *Batch
-	var want []int64
-	for b, err := range f.Scan(context.Background(), Query{}, "a", "p", "city") {
-		if err != nil {
-			t.Fatal(err)
-		}
-		last = b
-	}
-	v, err := Values[int64](last.Col(0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	want = slices.Clone(v)
-	city := string(last.Col(2).Bytes(last.Len() - 1))
-	for range 3 { // these scans take the memory the first one left
-		if _, err := digestOf(f, Query{Filter: Col("f").Lt(int32(500))}, nil, []string{"p", "a", "note"}); err != nil {
-			t.Fatal(err)
+	// One batch for the whole file: everything the scan reads is in its last batch, so the
+	// pools get nothing back unless the scan gives it back when the loop ends.
+	scan := func(f *File) {
+		for b, err := range f.scan(context.Background(), &scanOptions{batchRows: 60_000}) {
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = b.Len()
 		}
 	}
-	if got, _ := Values[int64](last.Col(0)); !slices.Equal(got, want) || string(last.Col(2).Bytes(last.Len()-1)) != city {
-		t.Fatal("a later scan wrote over the last batch of a scan")
+	// The scans that follow take the memory of the scans before: they allocate the memory of
+	// the first scan once, not one per scan. The counts are read under no race detector: it
+	// instruments every allocation, and the collections it triggers empty the pool of the file
+	// between two scans, which these numbers then cannot tell from a memory never given back.
+	var mem runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&mem)
+	before := mem.TotalAlloc
+	for range 10 {
+		scan(f)
+	}
+	runtime.ReadMemStats(&mem)
+	grow := mem.TotalAlloc - before
+	t.Logf("10 scans of one batch allocate %d KiB", grow>>10)
+	if raceEnabled {
+		return
+	}
+	// 16 MiB: the scans of this file take the memory of the scans before (about 10 MiB for the
+	// 10 scans), where a scan that gives nothing back allocates the memory of a whole scan,
+	// 60,000 rows of seven columns, every time.
+	if grow > 16<<20 {
+		t.Errorf("10 scans allocate %d KiB: the memory of the scans before is not reused", grow>>10)
 	}
 }

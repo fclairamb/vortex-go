@@ -35,15 +35,6 @@ func (p *Pool) Retire(a *Arena) {
 	p.mu.Unlock()
 }
 
-// Forget drops the retired arenas without releasing them: the scan ended, and what its last
-// batch reads stays as it is.
-func (p *Pool) Forget() {
-	p.mu.Lock()
-	clear(p.retired)
-	p.retired = p.retired[:0]
-	p.mu.Unlock()
-}
-
 // Recycle releases the retired arenas: the consumer has moved on to the next batch.
 func (p *Pool) Recycle() {
 	p.mu.Lock()
@@ -80,8 +71,8 @@ const classes = 4*bits.UintSize + 1
 // class is the smallest class of buffers that holds n elements, n being more than 8, and the
 // size of the buffers of that class: from 2^(k-1) to 2^k, the sizes are 2^(k-1) plus 1 to 4
 // quarters of it. A buffer is then at most a quarter larger than what it holds, so that the
-// memory of a scan of a file of few rows, which is never given back, is not up to twice what
-// it decodes, as with powers of two.
+// memory a scan of a file of few rows leaves in the pool, which the next scan of the file
+// takes, is not up to twice what it decodes, as with powers of two.
 func class(n int) (c, size int) {
 	k := bits.Len(uint(n - 1)) // 2^(k-1) < n <= 2^k
 	q := (n - 1) >> (k - 3)    // 4 to 7
