@@ -1,4 +1,4 @@
-.PHONY: site check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors api bench bench-compare bench-parquet bench-rust bench-json
+.PHONY: site check test race cover nocgo deps lint fixtures edition oracle upstream fuzz bigfile oracle-all compat interop vectors metadata api bench bench-compare bench-parquet bench-rust bench-json
 
 # Every blocking gate. CI runs this, run it before every push.
 check: nocgo deps cover race
@@ -83,17 +83,21 @@ compat:
 # The reference reader opens the files our writer makes, and gets the values we wrote. The
 # Go test writes the files and the canonical hashes of its source data into .cache/interop,
 # the Variant files go through tools/variantjson (cargo, the pinned release: vortex-data has no
-# Variant in Python), the oracle checks the others with the pinned vortex-data and with the latest release. The files of
+# Variant in Python), and so do the entries of the file with user metadata (its filemeta binary),
+# the oracle checks the others with the pinned vortex-data and with the latest release. The files of
 # core 2025.05.0 (WriteOptions.Edition) are read by vortex-data 0.64.0 and 0.83.0 too, the first
 # and the last release before vortex.zoned. Needs uv and network.
 INTEROP = .cache/interop
 interop:
 	rm -rf $(INTEROP)
 	mkdir -p $(INTEROP)
-	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropEditions|TestInteropRows|TestInteropVariants|TestInteropDBBat|TestSizeRatios)$$' -count=1 .
+	INTEROP_DIR=$(CURDIR)/$(INTEROP) go test -tags interop -run '^(TestInterop|TestInteropEditions|TestInteropRows|TestInteropVariants|TestInteropMetadata|TestInteropDBBat|TestSizeRatios)$$' -count=1 .
 	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)
 	for m in default compact none; do \
 		(cd tools/variantjson && cargo run --release -q -- ../../$(INTEROP)/variants_$$m.vortex) | diff - $(INTEROP)/variants_$$m.jsonl || exit 1; \
+	done
+	for d in . core_2025_05_0; do \
+		(cd tools/variantjson && cargo run --release -q --bin filemeta -- read ../../$(INTEROP)/$$d/metadata.vortex) | diff - $(INTEROP)/$$d/metadata.metadata || exit 1; \
 	done
 	uv run --with vortex-data --with pyarrow python tools/oracle/oracle.py check $(INTEROP)
 	$(ORACLE) tools/oracle/oracle.py check $(INTEROP)/core_2025_05_0
@@ -105,6 +109,11 @@ interop:
 # reference. Needs cargo and network; the tests never do. See tools/vectors/README.md.
 vectors:
 	cd tools/vectors && cargo run --release -- ../../testdata/vectors
+
+# The file with user metadata that the reference writer makes, and the entries the reference
+# reader reads back from it (testdata/metadata). Needs cargo and network; the tests never do.
+metadata:
+	cd tools/variantjson && cargo run --release -q --bin filemeta -- write ../../testdata/metadata/rust.vortex > ../../testdata/metadata/rust.vortex.metadata
 
 # Everything a .vortex-version bump needs.
 upstream: fixtures edition oracle

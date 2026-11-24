@@ -131,6 +131,15 @@ func (w *RowWriter[T]) fill(rows []T) {
 	}
 }
 
+// SetMetadata adds an entry to the metadata of the file, or replaces the value of its key,
+// as Writer.SetMetadata does. It returns the error of NewRowWriter, if any.
+func (w *RowWriter[T]) SetMetadata(key string, value []byte) error {
+	if w.w == nil {
+		return w.err
+	}
+	return w.w.SetMetadata(key, value)
+}
+
 // Close writes the footer. A second Close returns nil, and Close does not close the
 // io.Writer.
 func (w *RowWriter[T]) Close() error {

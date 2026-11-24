@@ -51,6 +51,7 @@ On the PR branch, from the old version to the new one:
 3. **Implement what is missing**: decoders first, then the writer if the default edition
    changed.
 4. **Add fixtures for what upstream does not cover**, generated with the reference writer.
+   `make vectors` and `make metadata` regenerate the ones of `tools/` with the new crates.
 5. **Run every gate**: `make check`, `make lint`, `make interop`, `make compat`.
 6. **Update the docs** when the target edition changes (`goals.md`, the README matrix).
 

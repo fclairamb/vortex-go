@@ -214,3 +214,40 @@ func ExampleNewWriter() {
 	fmt.Println(f.NumRows(), f.Schema())
 	// Output: 3 struct{id: i64, name: utf8}
 }
+
+// Store values that are not rows in the file: a version known up front, an index known once
+// the rows are written. The reader gets them back by their key.
+func ExampleFile_Metadata() {
+	type Row struct {
+		Query int64  `vortex:"query"`
+		Data  string `vortex:"data"`
+	}
+	var buf bytes.Buffer
+	w := vortex.NewRowWriter[Row](&buf, vortex.WriteOptions{
+		Metadata: map[string][]byte{"schema.version": []byte("3")},
+	})
+	if _, err := w.Write([]Row{{1, "a"}, {1, "b"}, {2, "c"}}); err != nil {
+		log.Fatal(err)
+	}
+	if err := w.SetMetadata("query_offsets", []byte(`{"1":0,"2":2}`)); err != nil {
+		log.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		log.Fatal(err)
+	}
+
+	f, err := vortex.Open(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, key := range f.MetadataKeys() {
+		v, _, err := f.Metadata(key)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("%s: %s\n", key, v)
+	}
+	// Output:
+	// query_offsets: {"1":0,"2":2}
+	// schema.version: 3
+}

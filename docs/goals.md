@@ -149,8 +149,8 @@ Coverage does not prove correctness. Goal 2 does. Coverage proves there is no co
 - **Big-endian platforms.**
 - **Object store clients.** Bring an `io.ReaderAt`.
 - **The `Union` type.** It exists upstream but is in no edition.
-- **For later, all additive:** row lookups by index, dictionary pass-through, user
-  metadata, reusing a cached footer, `Splits(n)` for one scan per goroutine, widening
+- **For later, all additive:** row lookups by index, dictionary pass-through, reusing a
+  cached footer, `Splits(n)` for one scan per goroutine, widening
   (an `int32` column into an `int64` field).
 
 ## Open decisions
