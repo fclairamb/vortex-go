@@ -6,15 +6,15 @@ publish = false
 
 [dependencies]
 vortex = { version = "=0.94.0", default-features = false }
-vortex-fastlanes = "=0.93.0"
-vortex-zigzag = "=0.93.0"
-vortex-sequence = "=0.93.0"
-vortex-sparse = "=0.93.0"
-vortex-alp = "=0.93.0"
-vortex-fsst = "=0.93.0"
-vortex-onpair = "=0.93.0"
-vortex-buffer = "=0.93.0"
-vortex-error = "=0.93.0"
+vortex-fastlanes = "=0.94.0"
+vortex-zigzag = "=0.94.0"
+vortex-sequence = "=0.94.0"
+vortex-sparse = "=0.94.0"
+vortex-alp = "=0.94.0"
+vortex-fsst = "=0.94.0"
+vortex-onpair = "=0.94.0"
+vortex-buffer = "=0.94.0"
+vortex-error = "=0.94.0"
 serde_json = "1"
 
 [workspace]

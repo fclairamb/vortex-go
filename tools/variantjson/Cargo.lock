@@ -148,7 +148,6 @@ dependencies = [
  "chrono",
  "half",
  "hashbrown 0.17.1",
- "libc",
  "num-complex",
  "num-integer",
  "num-traits",
@@ -335,7 +334,6 @@ version = "59.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f56aa009563c7100bafca7f0c4259b9ae83a439d676a6314b3a8c96f12a92f51"
 dependencies = [
- "bitflags",
  "serde_core",
  "serde_json",
 ]
@@ -1422,43 +1420,18 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
 name = "jiff"
-version = "0.2.46"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "175dc66334db3b9ab9985bf8b61cfed50dc16d20964bb47f9e479adcae984a7f"
-dependencies = [
- "jiff-core 0.1.8",
- "jiff-static 0.2.46",
- "jiff-tzdb-platform 0.1.3",
- "log",
- "portable-atomic",
- "portable-atomic-util",
- "serde_core",
- "windows-link",
-]
-
-[[package]]
-name = "jiff"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "107f2e89536b6818514025f6787b0d94d819e54fe3b40365275fc753de485b3f"
 dependencies = [
- "jiff-core 1.0.2",
- "jiff-static 1.0.3",
- "jiff-tzdb-platform 1.0.0",
+ "jiff-core",
+ "jiff-static",
+ "jiff-tzdb-platform",
  "log",
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
  "windows-link",
-]
-
-[[package]]
-name = "jiff-core"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e599b80292e597019b8b3e392de3f4bea2959ddfb8c7dff60e035e9e311a2c1b"
-dependencies = [
- "log",
 ]
 
 [[package]]
@@ -1472,33 +1445,15 @@ dependencies = [
 
 [[package]]
 name = "jiff-static"
-version = "0.2.46"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c7b1af7547d47354bc438d797e3854601bde8f8d185780c5ba4ab27afa54f1ba"
-dependencies = [
- "jiff-core 0.1.8",
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "jiff-static"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4996f71e569e3a3e32b925c28ef8f0027dc30bb1d594b33eeda409eea185f5c8"
 dependencies = [
- "jiff-core 1.0.2",
+ "jiff-core",
  "proc-macro2",
  "quote",
  "syn 3.0.10",
 ]
-
-[[package]]
-name = "jiff-tzdb"
-version = "0.1.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0980fca2cc272465bd60e82397607ba9f33add9e48defd77923301bbd03808f2"
 
 [[package]]
 name = "jiff-tzdb"
@@ -1508,20 +1463,11 @@ checksum = "12e71a1b68a875a44a33bb7a1dd84392cb77145a3367a552a3cfe6a4f5cf3afc"
 
 [[package]]
 name = "jiff-tzdb-platform"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "875a5a69ac2bab1a891711cf5eccbec1ce0341ea805560dcd90b7a2e925132e8"
-dependencies = [
- "jiff-tzdb 0.1.10",
-]
-
-[[package]]
-name = "jiff-tzdb-platform"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc65b284afcfa8f6cf189c7274c805505314a7ab975c60e1f548bff56525420e"
 dependencies = [
- "jiff-tzdb 1.0.0",
+ "jiff-tzdb",
 ]
 
 [[package]]
@@ -2546,7 +2492,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "vortex",
- "vortex-parquet-variant 0.93.0",
+ "vortex-parquet-variant",
 ]
 
 [[package]]
@@ -2562,16 +2508,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4c87541497253b0a0b8345f14b420ee4e8553f23dfa362de77585769b9732446"
 dependencies = [
  "vortex-alp",
- "vortex-array 0.94.0",
- "vortex-arrow 0.94.0",
+ "vortex-array",
+ "vortex-arrow",
  "vortex-btrblocks",
- "vortex-buffer 0.94.0",
+ "vortex-buffer",
  "vortex-bytebool",
  "vortex-datetime-parts",
  "vortex-decimal-byte-parts",
- "vortex-edition 0.94.0",
+ "vortex-edition",
  "vortex-elias-fano",
- "vortex-error 0.94.0",
+ "vortex-error",
  "vortex-expr",
  "vortex-fastlanes",
  "vortex-file",
@@ -2580,15 +2526,15 @@ dependencies = [
  "vortex-io",
  "vortex-ipc",
  "vortex-layout",
- "vortex-mask 0.94.0",
+ "vortex-mask",
  "vortex-metrics",
- "vortex-parquet-variant 0.94.0",
+ "vortex-parquet-variant",
  "vortex-pco",
  "vortex-scan",
  "vortex-sequence",
- "vortex-session 0.94.0",
+ "vortex-session",
  "vortex-sparse",
- "vortex-utils 0.94.0",
+ "vortex-utils",
  "vortex-uuid",
  "vortex-zigzag",
  "vortex-zstd",
@@ -2606,58 +2552,13 @@ dependencies = [
  "itertools 0.14.0",
  "num-traits",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
  "vortex-fastlanes",
  "vortex-functions",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
-]
-
-[[package]]
-name = "vortex-array"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23c3e4aa4f087f646ea72bd7b58a08c5a489569cf01f7e2e2400ff1c9bdb90b7"
-dependencies = [
- "arcref",
- "arrow-buffer 59.3.3",
- "bytes",
- "cfg-if",
- "enum-iterator",
- "fearless_simd",
- "fearless_simd_macros",
- "flatbuffers",
- "futures",
- "half",
- "humansize",
- "inventory",
- "itertools 0.14.0",
- "jiff 0.2.46",
- "memchr",
- "num-traits",
- "num_enum",
- "parking_lot",
- "paste",
- "pin-project-lite",
- "prost",
- "prost-types",
- "rand",
- "regex",
- "regex-syntax",
- "rustc-hash",
- "simdutf8",
- "smallvec",
- "static_assertions",
- "tracing",
- "vortex-array-macros 0.93.0",
- "vortex-buffer 0.93.0",
- "vortex-compute 0.93.0",
- "vortex-error 0.93.0",
- "vortex-mask 0.93.0",
- "vortex-session 0.93.0",
- "vortex-utils 0.93.0",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -2680,7 +2581,7 @@ dependencies = [
  "humansize",
  "inventory",
  "itertools 0.14.0",
- "jiff 1.0.3",
+ "jiff",
  "num-traits",
  "num_enum",
  "parking_lot",
@@ -2694,24 +2595,13 @@ dependencies = [
  "smallvec",
  "static_assertions",
  "tracing",
- "vortex-array-macros 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
- "vortex-utils 0.94.0",
-]
-
-[[package]]
-name = "vortex-array-macros"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e601beadda20e4c9e4ce9e13b4a1691407a1ea28e7f251b97b70877f9066609d"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.10",
+ "vortex-array-macros",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
+ "vortex-mask",
+ "vortex-session",
+ "vortex-utils",
 ]
 
 [[package]]
@@ -2723,29 +2613,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 3.0.10",
-]
-
-[[package]]
-name = "vortex-arrow"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08c7e0c13897d3630bdd5840018869a123ff363560a59562e914c7fe995ea1cd"
-dependencies = [
- "arrow-array 59.3.3",
- "arrow-buffer 59.3.3",
- "arrow-cast 59.3.3",
- "arrow-data 59.3.3",
- "arrow-schema 59.3.3",
- "base64",
- "itertools 0.14.0",
- "num-traits",
- "simdutf8",
- "tracing",
- "vortex-array 0.93.0",
- "vortex-buffer 0.93.0",
- "vortex-error 0.93.0",
- "vortex-mask 0.93.0",
- "vortex-session 0.93.0",
 ]
 
 [[package]]
@@ -2765,14 +2632,14 @@ dependencies = [
  "num-traits",
  "simdutf8",
  "tracing",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
  "vortex-expr",
  "vortex-functions",
- "vortex-mask 0.94.0",
+ "vortex-mask",
  "vortex-scan",
- "vortex-session 0.94.0",
+ "vortex-session",
 ]
 
 [[package]]
@@ -2785,43 +2652,25 @@ dependencies = [
  "pco",
  "rand",
  "vortex-alp",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
  "vortex-compressor",
  "vortex-datetime-parts",
  "vortex-decimal-byte-parts",
- "vortex-edition 0.94.0",
+ "vortex-edition",
  "vortex-elias-fano",
- "vortex-error 0.94.0",
+ "vortex-error",
  "vortex-fastlanes",
  "vortex-fsst",
- "vortex-mask 0.94.0",
+ "vortex-mask",
  "vortex-onpair",
  "vortex-pco",
  "vortex-sequence",
- "vortex-session 0.94.0",
+ "vortex-session",
  "vortex-sparse",
- "vortex-utils 0.94.0",
+ "vortex-utils",
  "vortex-zigzag",
  "vortex-zstd",
-]
-
-[[package]]
-name = "vortex-buffer"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26b3b956e4367e5db8c687d78b2e52e71fe62c4205138223528663e339521717"
-dependencies = [
- "allocator-api2",
- "arrow-buffer 59.3.3",
- "bitvec",
- "bytes",
- "fearless_simd",
- "fearless_simd_macros",
- "itertools 0.14.0",
- "num-traits",
- "simdutf8",
- "vortex-error 0.93.0",
 ]
 
 [[package]]
@@ -2839,7 +2688,7 @@ dependencies = [
  "itertools 0.14.0",
  "num-traits",
  "simdutf8",
- "vortex-error 0.94.0",
+ "vortex-error",
 ]
 
 [[package]]
@@ -2849,12 +2698,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4a84d4ba921ec4730f9e779c47a8c2b908af0db851872547e0ced5a67ff4c6d2"
 dependencies = [
  "num-traits",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -2868,21 +2717,12 @@ dependencies = [
  "rand",
  "rustc-hash",
  "tracing",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
- "vortex-mask 0.94.0",
- "vortex-utils 0.94.0",
-]
-
-[[package]]
-name = "vortex-compute"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "182974f9c04b7f62198e58e61b4af388a4aedd615a02df4e9fb9d74589f141f1"
-dependencies = [
- "vortex-buffer 0.93.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
+ "vortex-mask",
+ "vortex-utils",
 ]
 
 [[package]]
@@ -2891,7 +2731,7 @@ version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f5977d453c02565ccd9fb3113f88e6dd07395b9fb8fc53cc6b560c47c5274802"
 dependencies = [
- "vortex-buffer 0.94.0",
+ "vortex-buffer",
 ]
 
 [[package]]
@@ -2902,13 +2742,13 @@ checksum = "4fb34277255681944072185930340a9813c328a822f7b77245a02dba649d7667"
 dependencies = [
  "num-traits",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
  "vortex-functions",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -2920,24 +2760,13 @@ dependencies = [
  "num-traits",
  "prost",
  "smallvec",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
  "vortex-functions",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
-]
-
-[[package]]
-name = "vortex-edition"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bba3576a1d4e031ed3a04f94fccc36603bf1104795f2079c62094e45dab7b349"
-dependencies = [
- "parking_lot",
- "vortex-error 0.93.0",
- "vortex-session 0.93.0",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -2947,8 +2776,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4f0a974b772cc8c08e549c61bcb8dd6566a10c63f1bebfed8dd71370c3a6f189"
 dependencies = [
  "parking_lot",
- "vortex-error 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-error",
+ "vortex-session",
 ]
 
 [[package]]
@@ -2959,22 +2788,10 @@ checksum = "70be1d02f6542a00b223e95dc6ed3c82eaa618201ae980ddebe3979b28702ddd"
 dependencies = [
  "num-traits",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
- "vortex-session 0.94.0",
-]
-
-[[package]]
-name = "vortex-error"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "263adf1665ee7a17ccb9b4b2480f15317cca79d3033f1b7ca2c68da92a250a98"
-dependencies = [
- "arrow-schema 59.3.3",
- "flatbuffers",
- "jiff 0.2.46",
- "prost",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
+ "vortex-session",
 ]
 
 [[package]]
@@ -2985,7 +2802,7 @@ checksum = "6744920b18b9d9f452db3ce02510d2465162f9cb1e880f102567a3dc4bf6cca6"
 dependencies = [
  "arrow-schema 60.2.0",
  "flatbuffers",
- "jiff 1.0.3",
+ "jiff",
  "prost",
  "tokio",
 ]
@@ -3001,10 +2818,10 @@ dependencies = [
  "prost",
  "smallvec",
  "tracing",
- "vortex-array 0.94.0",
- "vortex-error 0.94.0",
- "vortex-session 0.94.0",
- "vortex-utils 0.94.0",
+ "vortex-array",
+ "vortex-error",
+ "vortex-session",
+ "vortex-utils",
 ]
 
 [[package]]
@@ -3018,13 +2835,13 @@ dependencies = [
  "itertools 0.14.0",
  "num-traits",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
  "vortex-functions",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3049,30 +2866,30 @@ dependencies = [
  "tracing",
  "url",
  "vortex-alp",
- "vortex-array 0.94.0",
- "vortex-arrow 0.94.0",
+ "vortex-array",
+ "vortex-arrow",
  "vortex-btrblocks",
- "vortex-buffer 0.94.0",
+ "vortex-buffer",
  "vortex-bytebool",
  "vortex-datetime-parts",
  "vortex-decimal-byte-parts",
- "vortex-edition 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-edition",
+ "vortex-error",
  "vortex-expr",
  "vortex-fastlanes",
  "vortex-fsst",
  "vortex-functions",
  "vortex-io",
  "vortex-layout",
- "vortex-mask 0.94.0",
+ "vortex-mask",
  "vortex-metrics",
  "vortex-onpair",
  "vortex-pco",
  "vortex-scan",
  "vortex-sequence",
- "vortex-session 0.94.0",
+ "vortex-session",
  "vortex-sparse",
- "vortex-utils 0.94.0",
+ "vortex-utils",
  "vortex-zigzag",
  "vortex-zstd",
 ]
@@ -3086,13 +2903,13 @@ dependencies = [
  "fsst-rs",
  "num-traits",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
  "vortex-expr",
  "vortex-functions",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3103,7 +2920,7 @@ checksum = "31977a4b0e898d0c1f1d0296db3ce2e9aed6167a6d3b3986bb681656a71fa307"
 dependencies = [
  "arrow-buffer 60.2.0",
  "itertools 0.14.0",
- "jiff 1.0.3",
+ "jiff",
  "memchr",
  "num-traits",
  "parking_lot",
@@ -3112,14 +2929,14 @@ dependencies = [
  "regex-syntax",
  "rustc-hash",
  "tracing",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
  "vortex-expr",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
- "vortex-utils 0.94.0",
+ "vortex-mask",
+ "vortex-session",
+ "vortex-utils",
 ]
 
 [[package]]
@@ -3143,12 +2960,12 @@ dependencies = [
  "smol",
  "tokio",
  "tracing",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
  "vortex-metrics",
- "vortex-session 0.94.0",
- "vortex-utils 0.94.0",
+ "vortex-session",
+ "vortex-utils",
 ]
 
 [[package]]
@@ -3162,26 +2979,10 @@ dependencies = [
  "futures",
  "itertools 0.14.0",
  "pin-project-lite",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
- "vortex-session 0.94.0",
-]
-
-[[package]]
-name = "vortex-json"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d250825e99850c410b116d9e3ac4feb1c69190c6cd0bc52ba9293bf4608430b"
-dependencies = [
- "arrow-array 59.3.3",
- "arrow-schema 59.3.3",
- "prost",
- "vortex-array 0.93.0",
- "vortex-arrow 0.93.0",
- "vortex-edition 0.93.0",
- "vortex-error 0.93.0",
- "vortex-session 0.93.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3194,13 +2995,13 @@ dependencies = [
  "arrow-schema 60.2.0",
  "prost",
  "serde_json",
- "vortex-array 0.94.0",
- "vortex-arrow 0.94.0",
- "vortex-edition 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-arrow",
+ "vortex-edition",
+ "vortex-error",
  "vortex-expr",
  "vortex-functions",
- "vortex-session 0.94.0",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3233,32 +3034,21 @@ dependencies = [
  "tokio",
  "tracing",
  "twox-hash",
- "vortex-array 0.94.0",
- "vortex-arrow 0.94.0",
+ "vortex-array",
+ "vortex-arrow",
  "vortex-btrblocks",
- "vortex-buffer 0.94.0",
+ "vortex-buffer",
  "vortex-decimal-byte-parts",
- "vortex-error 0.94.0",
+ "vortex-error",
  "vortex-expr",
  "vortex-functions",
  "vortex-io",
- "vortex-mask 0.94.0",
+ "vortex-mask",
  "vortex-metrics",
  "vortex-scan",
  "vortex-sequence",
- "vortex-session 0.94.0",
- "vortex-utils 0.94.0",
-]
-
-[[package]]
-name = "vortex-mask"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96aae8ee9773fd9d321f4aeceb6d23fcdb2b8b725df4beb041fa61f872d3e185"
-dependencies = [
- "itertools 0.14.0",
- "vortex-buffer 0.93.0",
- "vortex-error 0.93.0",
+ "vortex-session",
+ "vortex-utils",
 ]
 
 [[package]]
@@ -3268,8 +3058,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b0fffd163c767c6ca147dd028621f1f0e669265e62958ff9ab504a885d7a78fd"
 dependencies = [
  "itertools 0.14.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-buffer",
+ "vortex-error",
 ]
 
 [[package]]
@@ -3291,34 +3081,12 @@ dependencies = [
  "num-traits",
  "onpair",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
  "vortex-functions",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
-]
-
-[[package]]
-name = "vortex-parquet-variant"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6aac64cb0b59a696f8fd578675a9bd19a6866c4abe2744536856e516cb5f0677"
-dependencies = [
- "arrow-array 59.3.3",
- "arrow-buffer 59.3.3",
- "arrow-schema 59.3.3",
- "chrono",
- "parquet-variant 59.3.3",
- "parquet-variant-compute 59.3.3",
- "prost",
- "vortex-array 0.93.0",
- "vortex-arrow 0.93.0",
- "vortex-buffer 0.93.0",
- "vortex-error 0.93.0",
- "vortex-json 0.93.0",
- "vortex-mask 0.93.0",
- "vortex-session 0.93.0",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3334,14 +3102,14 @@ dependencies = [
  "parquet-variant 60.2.0",
  "parquet-variant-compute 60.2.0",
  "prost",
- "vortex-array 0.94.0",
- "vortex-arrow 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-arrow",
+ "vortex-buffer",
+ "vortex-error",
  "vortex-functions",
- "vortex-json 0.94.0",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-json",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3352,11 +3120,11 @@ checksum = "5d3d1488e77768477a0fc89c23eb56addb38edc6acc340149137724079b7f3eb"
 dependencies = [
  "pco",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3377,15 +3145,15 @@ dependencies = [
  "sketches-ddsketch",
  "smallvec",
  "tracing",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
  "vortex-expr",
  "vortex-functions",
  "vortex-io",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
- "vortex-utils 0.94.0",
+ "vortex-mask",
+ "vortex-session",
+ "vortex-utils",
 ]
 
 [[package]]
@@ -3397,27 +3165,14 @@ dependencies = [
  "num-traits",
  "prost",
  "smallvec",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
  "vortex-expr",
  "vortex-functions",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
-]
-
-[[package]]
-name = "vortex-session"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dcdaede339ef070ac533dcacadd28ecba49d8c7688b3bc43ef7151cdb92d8a1d"
-dependencies = [
- "arc-swap",
- "lasso",
- "parking_lot",
- "vortex-error 0.93.0",
- "vortex-utils 0.93.0",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3429,8 +3184,8 @@ dependencies = [
  "arc-swap",
  "lasso",
  "parking_lot",
- "vortex-error 0.94.0",
- "vortex-utils 0.94.0",
+ "vortex-error",
+ "vortex-utils",
 ]
 
 [[package]]
@@ -3442,21 +3197,12 @@ dependencies = [
  "itertools 0.14.0",
  "num-traits",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-error",
  "vortex-functions",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
-]
-
-[[package]]
-name = "vortex-utils"
-version = "0.93.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b60be5d78f5a2792b952ea1cf2ad3a2ac8245178944df1644d901323ccd99a31"
-dependencies = [
- "hashbrown 0.17.1",
+ "vortex-mask",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3478,11 +3224,11 @@ dependencies = [
  "arrow-array 60.2.0",
  "arrow-schema 60.2.0",
  "uuid",
- "vortex-array 0.94.0",
- "vortex-arrow 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-error 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-array",
+ "vortex-arrow",
+ "vortex-buffer",
+ "vortex-error",
+ "vortex-session",
 ]
 
 [[package]]
@@ -3491,12 +3237,12 @@ version = "0.94.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "554a86524f8c80e80ec442d32335e8eb4aa47694a1214effbbce67e92f3ee33c"
 dependencies = [
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-compute 0.94.0",
- "vortex-error 0.94.0",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-compute",
+ "vortex-error",
+ "vortex-mask",
+ "vortex-session",
  "zigzag",
 ]
 
@@ -3509,12 +3255,12 @@ dependencies = [
  "itertools 0.14.0",
  "num-traits",
  "prost",
- "vortex-array 0.94.0",
- "vortex-buffer 0.94.0",
- "vortex-edition 0.94.0",
- "vortex-error 0.94.0",
- "vortex-mask 0.94.0",
- "vortex-session 0.94.0",
+ "vortex-array",
+ "vortex-buffer",
+ "vortex-edition",
+ "vortex-error",
+ "vortex-mask",
+ "vortex-session",
  "zstd",
 ]
 

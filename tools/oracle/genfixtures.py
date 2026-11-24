@@ -83,9 +83,11 @@ def default_ints(r):
         "low_card": [r.choice([3, 5, 8, 13, 21, 34, 55, 89]) * 1000 for _ in range(n)],
         "random": [r.randrange(-512, 512) for _ in range(n)],
         "nullable": [r.randrange(300) if r.random() < 0.8 else None for _ in range(n)],
-        # Constant lists: 4.8 MB of values that compress to nothing. The writer chunks a
+        # Lists of sevens: 4.8 MB of values that compress to nothing. The writer chunks a
         # column by its uncompressed size, so this is what makes a vortex.chunked layout.
-        "bulk": pa.array([[7] * 40 for _ in range(n)], pa.list_(pa.int32())),
+        # The first row differs: since 0.94 a column with one value in all rows is written as
+        # one constant, with no chunks.
+        "bulk": pa.array([[7] * 39 + [8]] + [[7] * 40 for _ in range(n - 1)], pa.list_(pa.int32())),
     })
 
 

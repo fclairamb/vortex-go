@@ -205,8 +205,8 @@ func TestALPRD(t *testing.T) {
 	// the dictionary of the first two left parts: the others are patches
 	d := []uint16{uint16(math.Float64bits(math.Pi) >> 48)}
 	n, ok := ALPRDWith(e, v, nil, 48, d)
-	if !ok || len(n.Kids) != 4 {
-		t.Fatalf("ok=%v, %d children, want the parts and the patches", ok, len(n.Kids))
+	if !ok || len(n.Kids) != 5 {
+		t.Fatalf("ok=%v, %d children, want the parts, the patches and their chunk offsets", ok, len(n.Kids))
 	}
 	checkDecode(t, n, array.F64, unsafex.Bytes(v), nil)
 	// every left part is in the dictionary: no patch

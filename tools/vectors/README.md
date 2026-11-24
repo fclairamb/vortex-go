@@ -1,7 +1,7 @@
 # tools/vectors
 
 Writes `testdata/vectors/<encoding>/<type>.json`: what the encoders of the reference
-implementation (the `vortex` crates at the pinned tag, `=0.93.0`) make of an input, so that
+implementation (the `vortex` crates at the pinned tag, `=0.94.0`) make of an input, so that
 our encoders can be checked byte for byte. It is a Rust program outside the Go module: `cargo`
 is needed to regenerate the vectors, never to run the tests.
 

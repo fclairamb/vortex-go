@@ -260,7 +260,7 @@ func TestPendingNamesExist(t *testing.T) {
 }
 
 func TestHarnessCatchesWrongValues(t *testing.T) {
-	exp, err := testutil.LoadExpected("testdata/fixtures/0.93.0/primitives.vortex.expected.json")
+	exp, err := testutil.LoadExpected("testdata/fixtures/0.94.0/primitives.vortex.expected.json")
 	if err != nil {
 		t.Fatal(err)
 	}

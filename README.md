@@ -37,7 +37,7 @@ Read the rows of a file into structs. This block is copied from `ExampleRows` in
 
 <!-- example:begin -->
 ```go
-f, err := vortex.OpenFile("testdata/fixtures/0.93.0/extra/default_ints.vortex")
+f, err := vortex.OpenFile("testdata/fixtures/0.94.0/extra/default_ints.vortex")
 if err != nil {
     log.Fatal(err)
 }

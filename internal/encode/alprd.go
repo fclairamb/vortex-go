@@ -194,8 +194,9 @@ func alpRDParts[F Float, U uint32 | uint64](e *Encoder, v []F, nulls []bool, d r
 		packedPos, _ := BitPack(e, pos, nil, rdBitWidth(pos[misses-1]))
 		node.kid(packedPos)
 		node.kid(e.leaf(unsafex.Bytes(vals), 2, nil, misses))
+		node.kid(e.leaf(rdChunkOffsets(e, pos, len(v)), 8, nil, (len(v)+alpChunk-1)/alpChunk))
 	}
-	node.Meta = e.keep(e.rdMeta(d, misses))
+	node.Meta = e.keep(e.rdMeta(d, misses, len(v)))
 	return node
 }
 
@@ -217,14 +218,28 @@ func EstimateALPRD[F Float](e *Encoder, sample []F, nulls []bool, rows int) int 
 	size := blocks*128*(d.leftBits+d.rightBits) + validBytes(nulls, rows)
 	if misses = scale(misses, len(sample), rows); misses > 0 {
 		last = scale(last+1, len(sample), rows) - 1
-		size += (misses+blockSize-1)/blockSize*128*rdBitWidth(uint64(last)) + 2*misses
+		size += (misses+blockSize-1)/blockSize*128*rdBitWidth(uint64(last)) + 2*misses + 8*((rows+alpChunk-1)/alpChunk)
 	}
 	return size
 }
 
+// rdChunkOffsets is, for each chunk of alpChunk rows, the number of patches before it.
+func rdChunkOffsets(e *Encoder, pos []uint64, rows int) []byte {
+	chunks := (rows + alpChunk - 1) / alpChunk
+	offs := e.allocDirty(8 * chunks)
+	k := 0
+	for c := range chunks {
+		for k < len(pos) && pos[k] < uint64(c)*alpChunk {
+			k++
+		}
+		putWidth(offs[8*c:], 8, uint64(k))
+	}
+	return offs
+}
+
 // rdMeta is the metadata of an ALP-RD array: the cut, the dictionary, the type of the left
 // parts and the patches of the ones that are not in it.
-func (e *Encoder) rdMeta(d rdDict, misses int) []byte {
+func (e *Encoder) rdMeta(d rdDict, misses, rows int) []byte {
 	e.tmp2 = e.tmp2[:0]
 	for _, p := range d.patterns[:d.len] {
 		e.tmp2 = protowire.AppendVarint(e.tmp2, uint64(p))
@@ -235,6 +250,8 @@ func (e *Encoder) rdMeta(d rdDict, misses int) []byte {
 	m = protowire.AppendUint(m, 4, pU16)
 	if misses > 0 {
 		e.tmp2 = protowire.AppendUint(protowire.AppendUint(e.tmp2[:0], 1, uint64(misses)), 3, pU64)
+		e.tmp2 = protowire.AppendUint(e.tmp2, 4, uint64((rows+alpChunk-1)/alpChunk))
+		e.tmp2 = protowire.AppendUint(protowire.AppendUint(e.tmp2, 5, pU64), 6, 0)
 		m = protowire.AppendBytes(m, 5, e.tmp2)
 	}
 	e.tmp = m
