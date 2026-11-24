@@ -224,8 +224,10 @@ it is out of scope.
 ## Rules that go with it
 
 - **Memory.** A batch and its views are valid for one loop iteration. Use `slices.Clone`
-  to keep values. A view never points into the file, so a stale view gives wrong data,
-  never a crash.
+  to keep values. The memory goes back to the pool when the loop ends, the last batch
+  included, and the next scan of the file works in it: a value read after its iteration can
+  give the data of another scan. A view never points into the file, so a stale view gives
+  wrong data, never a crash.
 - **Row structs.**
   - `string` copies and is always safe. The strings of a field share one block per batch
     (one allocation, not one per row), a copy owned by the garbage collector, never the

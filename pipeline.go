@@ -174,10 +174,11 @@ func (f *File) takeMem() *scanMem {
 	return new(scanMem)
 }
 
-// putMem keeps the memory of a scan that ended for the next one. What the last batch of the
-// scan reads is not in it: it was never given back.
+// putMem keeps the memory of a scan that ended for the next one, the batch the scan ended on
+// included: a batch is valid for the loop iteration that reads it, so its memory is free once
+// the scanner has stopped.
 func (f *File) putMem(m *scanMem) {
-	m.arrays.Forget()
+	m.arrays.Recycle()
 	f.mem.Put(m)
 }
 
@@ -249,10 +250,12 @@ func (n *node) canMatch(lo, hi int64) bool {
 	return false
 }
 
-// close stops the reads ahead and waits for them.
+// close stops the reads ahead and waits for them, then gives back what the last batch read:
+// the batch was valid for its loop iteration, so its memory is free for the next scan.
 func (l *loader) close() {
 	close(l.stop)
 	l.wg.Wait()
+	l.recycle()
 }
 
 // reach records that the consumer got to unit i.
