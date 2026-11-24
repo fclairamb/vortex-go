@@ -2160,7 +2160,7 @@ dependencies = [
  "serde_json",
  "vortex",
  "vortex-alp 0.93.0",
- "vortex-buffer 0.93.0",
+ "vortex-buffer 0.94.0",
  "vortex-error 0.93.0",
  "vortex-fastlanes 0.93.0",
  "vortex-fsst 0.93.0",
