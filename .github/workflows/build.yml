@@ -157,8 +157,11 @@ jobs:
             gh pr comment "$PR" --body-file "$RUNNER_TEMP/comment.md"
           fi
 
+  # The required check of main. It must run even when build fails: a skipped
+  # required check counts as passed, and renovate automerged red PRs (#74, #76).
   build-status:
     needs: build
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: echo 'All good'
+      - run: test "${{ needs.build.result }}" = success
