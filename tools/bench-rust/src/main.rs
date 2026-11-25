@@ -14,7 +14,7 @@ use std::time::Instant;
 use futures::StreamExt;
 use serde_json::Value;
 use vortex::VortexSessionDefault;
-use vortex::array::expr::{col, lit, lt, root, select};
+use vortex::expr::{col, lit, lt, root, select};
 use vortex::array::stream::ArrayStreamAdapter;
 use vortex::array::{ArrayRef, IntoArray, RecursiveCanonical, VortexSessionExecute};
 use vortex::buffer::ByteBufferMut;
@@ -69,7 +69,7 @@ fn data_path(root: &Path, file: &str) -> PathBuf {
     )
 }
 
-fn literal(kind: &str, v: i64) -> vortex::array::expr::Expression {
+fn literal(kind: &str, v: i64) -> vortex::expr::Expression {
     match kind {
         "i32" => lit(v as i32),
         "i64" => lit(v),
