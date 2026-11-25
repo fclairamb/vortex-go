@@ -16,6 +16,16 @@ type cands struct {
 	n int
 }
 
+// has says whether s is in the list.
+func (l *cands) has(s scheme) bool {
+	for _, t := range l.s[:l.n] {
+		if t == s {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *cands) add(s scheme, ok bool) {
 	if ok {
 		l.s[l.n] = s
@@ -31,6 +41,9 @@ type rowsOf[T any] struct {
 	cost   func(v []T, nulls []bool) int // the cost of the plain array
 	sample func(c *Compressor, v []T) []T
 	digest func(v []T, nulls []bool) uint64 // a hash of the rows and of their nulls
+	// dict, when set, says whether the dictionary is built on all the rows to measure it, after
+	// the other candidates, rather than on their sample (see dictAdmit)
+	dict func(c *Compressor, v []T, nulls []bool, plain int, best ratio) admission
 }
 
 // numbersOf is rowsOf for numbers.
@@ -39,7 +52,7 @@ func numbersOf[T encode.Number]() rowsOf[T] {
 }
 
 // binsOf is rowsOf for strings.
-var binsOf = rowsOf[[]byte]{cost: binsCost, sample: sampleBins, digest: digestBins}
+var binsOf = rowsOf[[]byte]{cost: binsCost, sample: sampleBins, digest: digestBins, dict: dictAdmit}
 
 // pick is the array of the best candidate, nil when none beats the plain array, which costs
 // plain bytes for the rows v, and is measured on a sample.
@@ -55,8 +68,9 @@ func pick[T any](c *Compressor, x at, v []T, nulls []bool, l *cands, r rowsOf[T]
 		return best
 	}
 	best, known := take(&c.chosen, x, v, nulls, r.digest)
+	var trial *encode.Node // the dictionary built on all the rows, when there is one
 	if !known {
-		best = sampled(c, x, v, nulls, l, r, apply)
+		best, trial = choose(c, x, v, nulls, plain, l, r, apply)
 	}
 	if x.probe && best != sDict && len(v) > 0 {
 		// the writer compresses the same rows next, when they are not a dictionary
@@ -65,28 +79,111 @@ func pick[T any](c *Compressor, x at, v []T, nulls []bool, l *cands, r rowsOf[T]
 	if best == sPlain || x.probe && best != sDict {
 		return nil // a probe only asks whether it is a dictionary
 	}
-	if n := apply(x, best, v, nulls); n != nil && cost(n) < plain {
+	if n := applyBest(x, best, v, nulls, trial, apply); n != nil && cost(n) < plain {
 		return n
 	}
 	return nil
 }
 
-// sampled is the best scheme for the rows v, measured on their sample.
-func sampled[T any](c *Compressor, x at, v []T, nulls []bool, l *cands, r rowsOf[T], apply applyFn[T]) scheme {
+// applyBest is the array of scheme best for the rows v, or trial, the dictionary built on all
+// of them, when it is the best or smaller: the winner was chosen on a sample, the dictionary is
+// a measure, and the reference keeps it so too (TrialOutput).
+func applyBest[T any](x at, best scheme, v []T, nulls []bool, trial *encode.Node, apply applyFn[T]) *encode.Node {
+	if best == sDict && trial != nil {
+		return trial
+	}
+	n := apply(x, best, v, nulls)
+	if trial != nil && (n == nil || cost(trial) < cost(n)) {
+		return trial
+	}
+	return n
+}
+
+// ratio is a compression ratio, num/den, as the reference ranks its estimates.
+type ratio struct{ num, den int }
+
+// beats says whether r is a higher ratio than o.
+func (r ratio) beats(o ratio) bool { return r.num*o.den > o.num*r.den }
+
+// choose is the best scheme for the rows v, which cost plain bytes as a plain array, and the
+// dictionary built on all of them when it was measured so. The candidates are measured on the
+// sample of the rows, the dictionary last, when rowsOf has dict: like the dictionary of strings
+// of the reference, it is then built on all the rows when it may beat the best ratio of the
+// sample, and measured on the sample only when it would be too large for that.
+func choose[T any](
+	c *Compressor, x at, v []T, nulls []bool, plain int, l *cands, r rowsOf[T], apply applyFn[T],
+) (scheme, *encode.Node) {
+	deferred := r.dict != nil && l.has(sDict)
+	best, bestCost, samplePlain := sampled(c, x, v, nulls, l, r, apply, deferred)
+	if !deferred {
+		return best, nil
+	}
+	var n *encode.Node
+	a := r.dict(c, v, nulls, plain, ratio{samplePlain, max(bestCost, 1)})
+	if a == admitTrial {
+		// over the bounds of the trial, it is measured on the sample
+		if n = apply(at{e: x.e, depth: x.depth, parent: x.parent, excl: x.excl, full: true}, sDict, v, nulls); n == nil {
+			a = admitTooLarge
+		}
+	}
+	switch {
+	case a == admitTooLarge:
+		// on the same sample, after the others: the dictionary has to cost less than the best
+		one := cands{s: [10]scheme{sDict}, n: 1}
+		if s, k, _ := sampled(c, x, v, nulls, &one, r, apply, false); s == sDict && k < bestCost {
+			best = sDict
+		}
+	case n != nil && ratio{plain, max(cost(n), 1)}.beats(ratio{samplePlain, max(bestCost, 1)}):
+		best = sDict
+	}
+	return best, n
+}
+
+// sampled is the best scheme for the rows v, measured on their sample, its cost there and the
+// cost of the plain sample. A deferred dictionary is left out.
+func sampled[T any](
+	c *Compressor, x at, v []T, nulls []bool, l *cands, r rowsOf[T], apply applyFn[T], deferred bool,
+) (scheme, int, int) {
 	raw, bools, bins := c.raw.mark(), c.nulls.mark(), c.bins.mark()
 	sv, sn := r.sample(c, v), c.sampleNulls(nulls, sampleRuns(len(v), func(int, int) {}))
-	best, bestCost := sPlain, r.cost(sv, sn)
+	plain := r.cost(sv, sn)
+	best, bestCost := sPlain, plain
 	trial := at{e: c.trial, depth: x.depth, trial: true, parent: x.parent, excl: x.excl}
 	for _, s := range l.s[:l.n] {
-		if n := apply(trial, s, sv, sn); n != nil && cost(n) < bestCost {
-			best, bestCost = s, cost(n)
+		if deferred && s == sDict {
+			continue
+		}
+		if n := apply(trial, s, sv, sn); n != nil {
+			k := amortized(n, len(sv), len(v))
+			if k < bestCost {
+				best, bestCost = s, k
+			}
 		}
 		c.trial.Reset()
 	}
 	c.raw.restore(raw)
 	c.nulls.restore(bools)
 	c.bins.restore(bins)
-	return best
+	return best, bestCost, plain
+}
+
+// amortized is the cost of n, the array of a sample of rows of the rows rows, with its bytes
+// that do not grow with the rows (the symbol table of FSST, the dictionary of OnPair) charged at
+// the share of the rows the sample holds, as the reference does (Scheme::fixed_nbytes): the
+// whole array spreads them over all its rows.
+func amortized(n *encode.Node, rows, all int) int {
+	total := cost(n)
+	if rows >= all {
+		return total
+	}
+	var fixed int
+	switch n.ID {
+	case encode.IDFSST:
+		fixed = len(n.Bufs[0].Data) + len(n.Bufs[1].Data)
+	case encode.IDOnPair:
+		fixed = len(n.Bufs[0].Data) + n.Kids[0].Size()
+	}
+	return total - fixed + (fixed*rows+all-1)/all
 }
 
 // choice is the scheme that the sample of a probe chose for the array of a chunk: the writer

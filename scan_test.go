@@ -539,7 +539,7 @@ func TestArrayTypeOfDatesAndOthers(t *testing.T) {
 }
 
 func TestScanDatetimeFixture(t *testing.T) {
-	f, err := OpenFile("testdata/fixtures/0.93.0/datetime.vortex")
+	f, err := OpenFile("testdata/fixtures/0.94.0/datetime.vortex")
 	if err != nil {
 		t.Fatal(err)
 	}

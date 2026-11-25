@@ -94,7 +94,9 @@ func TestZonedMetadataOfFixtures(t *testing.T) {
 	}
 }
 
-// A zone map is not kept under a nullable struct: the column is the struct layout itself.
+// A zone map is not kept under a nullable struct: the column is the struct layout itself. Since
+// 0.94 the writer also gives a column with one value in all rows (tags, a list of 40 sevens in
+// every row) one flat layout of a constant, with no zone map (ConstantStrategy).
 func TestNoZoneMapUnderNullableStruct(t *testing.T) {
 	f, err := open(extraFixture(t, "default_mixed.vortex"))
 	if err != nil {
@@ -103,8 +105,11 @@ func TestNoZoneMapUnderNullableStruct(t *testing.T) {
 	for i, fld := range f.schema.root.fields {
 		got := f.layoutEncodings[f.layout.children[i].encoding]
 		want := "vortex.zoned"
-		if fld.Name == "rec" {
+		switch fld.Name {
+		case "rec":
 			want = "vortex.struct"
+		case "tags":
+			want = "vortex.flat"
 		}
 		if got != want {
 			t.Errorf("column %s is a %s layout, want %s", fld.Name, got, want)

@@ -295,6 +295,12 @@ func (e *Encoder) validity(nulls []bool, rows, padded int) *Node {
 		n.add(e.keep(e.tmp), 1)
 		return n
 	}
+	return e.validityBits(nulls, rows, padded)
+}
+
+// validityBits is the bool array of the validity of the rows, padded with invalid rows up to
+// padded, even when all the rows are null.
+func (e *Encoder) validityBits(nulls []bool, rows, padded int) *Node {
 	bits := e.alloc((padded + 7) / 8)
 	for i := range rows {
 		if !nulls[i] {

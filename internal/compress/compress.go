@@ -9,9 +9,12 @@
 // saves less than what it costs to describe is not taken. The plain array is always a
 // candidate, and the result is checked against it on the whole chunk: a chunk is never made
 // larger. The sample is runs of 64 consecutive rows, at least 16 of them and about 1% of the
-// chunk, at offsets drawn from a fixed seed: the same rows always give the same tree. As in
-// the reference, a dictionary of strings is not tried when more than half of the valid rows
-// have distinct heads (the length and the first 4 bytes of a string), counted on all the rows.
+// chunk, at offsets drawn from a fixed seed: the same rows always give the same tree. The bytes
+// of a candidate that do not grow with the rows (the symbol table of FSST, the dictionary of
+// OnPair) are charged at the share of the rows its sample holds, and OnPair trains on half of
+// the bytes of a sample rather than 15%, as the reference does since 0.94.0. As there too, a
+// dictionary of strings is measured last, on all the rows, when a probe of whole runs of rows
+// says it may beat the best ratio of the sample (dicttrial.go).
 //
 // The candidates of a trial (the sample, and the children of its candidates) are the ones the
 // reference does not rule out from the statistics of its rows: integers are not tried as a
@@ -135,13 +138,13 @@ const (
 
 // Compressor holds the memory of the compression of the chunks of a column.
 type Compressor struct {
-	e      *encode.Encoder // the arrays that are kept
-	trial  *encode.Encoder // the arrays of the candidates, dropped after each choice
-	heads  headSet         // the heads of the strings of a chunk
-	raw    arena[byte]     // the samples of numbers
-	nulls  arena[bool]     // the samples of nulls, and the nulls of children
-	bins   arena[[]byte]   // the samples of strings, and the values of dictionaries
-	chosen choice          // the choice of the last probe
+	e      *encode.Encoder   // the arrays that are kept
+	trial  *encode.Encoder   // the arrays of the candidates, dropped after each choice
+	counts map[uint64]uint32 // the values of the probe of a dictionary of strings
+	raw    arena[byte]       // the samples of numbers
+	nulls  arena[bool]       // the samples of nulls, and the nulls of children
+	bins   arena[[]byte]     // the samples of strings, and the values of dictionaries
+	chosen choice            // the choice of the last probe
 	mode   Mode
 	limit  Limits
 }
@@ -249,8 +252,14 @@ func isNull(nulls []bool, i int) bool { return nulls != nil && nulls[i] }
 // sampleRuns calls f with the start of each run of the sample of an array of n rows, and
 // returns the rows of the sample: all of them when the array is small.
 func sampleRuns(n int, f func(start, size int)) int {
-	count := max((n/100/sampleSize+15)/16*16, sampleCount)
-	total := count * sampleSize
+	return stratified(n, sampleSize, max((n/100/sampleSize+15)/16*16, sampleCount), f)
+}
+
+// stratified calls f with the start of each of count runs of size rows, one drawn in each of
+// count partitions of an array of n rows, and returns the rows of the runs: all of them when
+// the array is small (stratified_slices of the reference).
+func stratified(n, size, count int, f func(start, size int)) int {
+	total := count * size
 	if total >= n {
 		f(0, n)
 		return n
@@ -312,6 +321,7 @@ type at struct {
 	depth  int
 	trial  bool
 	probe  bool
+	full   bool // the dictionary of strings built on all the rows to measure it (dictTrial)
 	parent scheme
 	excl   uint32 // the schemes the chain of the parents leaves out
 }

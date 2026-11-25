@@ -15,7 +15,7 @@ import (
 // Read one column of the rows that meet a filter. The statistics of the file skip the zones
 // that cannot hold a row.
 func ExampleFile_Scan_filter() {
-	f, err := vortex.OpenFile("testdata/fixtures/0.93.0/extra/default_ints.vortex")
+	f, err := vortex.OpenFile("testdata/fixtures/0.94.0/extra/default_ints.vortex")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -36,7 +36,7 @@ func ExampleFile_Scan_filter() {
 
 // Read the rows of a file into structs. A nullable column goes into a sql.Null field.
 func ExampleRows() {
-	f, err := vortex.OpenFile("testdata/fixtures/0.93.0/extra/default_ints.vortex")
+	f, err := vortex.OpenFile("testdata/fixtures/0.94.0/extra/default_ints.vortex")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func ExampleRows() {
 // Read the rows that meet a filter. The statistics of the file skip the zones that cannot hold
 // a row, and no row is returned that does not match.
 func ExampleRows_filter() {
-	f, err := vortex.OpenFile("testdata/fixtures/0.93.0/extra/default_ints.vortex")
+	f, err := vortex.OpenFile("testdata/fixtures/0.94.0/extra/default_ints.vortex")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func ExampleNewRowWriter_readBack() {
 
 // Read columns, batch by batch, without structs. Values copies a numeric column into a slice.
 func ExampleFile_Scan() {
-	f, err := vortex.OpenFile("testdata/fixtures/0.93.0/extra/default_ints.vortex")
+	f, err := vortex.OpenFile("testdata/fixtures/0.94.0/extra/default_ints.vortex")
 	if err != nil {
 		log.Fatal(err)
 	}

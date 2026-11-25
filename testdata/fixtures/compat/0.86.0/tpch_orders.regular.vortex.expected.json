@@ -178,9 +178,9 @@
     "vortex.runend",
     "vortex.sequence",
     "vortex.shared",
-    "vortex.slice",
     "vortex.struct",
-    "vortex.varbinview"
+    "vortex.varbinview",
+    "vortex.widen"
   ],
   "rows": 15000,
   "schema": {
