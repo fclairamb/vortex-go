@@ -10,26 +10,26 @@ import (
 	"github.com/fclairamb/vortex-go/internal/encode"
 )
 
-// onPairColumns are a column that OnPair makes smaller than FSST (urls, whose values go to a
-// dictionary and the dictionary to OnPair) and one that it does not (log lines).
-func onPairColumns() (urls, logs [][]byte) {
+// onPairColumns are a column that OnPair makes smaller than FSST (urls) and one that it does not
+// (keys of 32 hex digits), as the reference writer 0.94.0 picks them.
+func onPairColumns() (urls, keys [][]byte) {
 	r := rand.New(rand.NewPCG(1, 2))
 	hosts := []string{"www.acme.com", "shop.acme.org", "api.example.net"}
 	for i := range 20000 {
 		urls = append(urls, fmt.Appendf(nil, "https://%s/p/%d?q=%d&ref=%s", hosts[r.IntN(3)], r.IntN(5000), i%7, strings.Repeat("x", r.IntN(10))))
-		logs = append(logs, fmt.Appendf(nil, "2026-11-%02d 12:%02d:%02d INFO request id=%d user=u%d took %dms", 1+r.IntN(28), r.IntN(60), r.IntN(60), r.IntN(100000), r.IntN(300), r.IntN(900)))
+		keys = append(keys, fmt.Appendf(nil, "%016x%016x", r.Uint64(), r.Uint64()))
 	}
-	return urls, logs
+	return urls, keys
 }
 
 // TestOnPairPicked: the compressor keeps the smaller of FSST and OnPair, and each is met.
 func TestOnPairPicked(t *testing.T) {
-	urls, logs := onPairColumns()
+	urls, keys := onPairColumns()
 	if got := ids(New(Default).Strings(urls, nil, true)); !slices.Contains(got, encode.IDOnPair) {
 		t.Fatalf("urls: %v, want OnPair", got)
 	}
-	if got := ids(New(Default).Strings(logs, nil, true)); !slices.Contains(got, encode.IDFSST) || slices.Contains(got, encode.IDOnPair) {
-		t.Fatalf("logs: %v, want FSST", got)
+	if got := ids(New(Default).Strings(keys, nil, true)); !slices.Contains(got, encode.IDFSST) || slices.Contains(got, encode.IDOnPair) {
+		t.Fatalf("keys: %v, want FSST", got)
 	}
 	// nulls: the validity is the one of the column
 	nulls := make([]bool, len(urls))
@@ -60,20 +60,20 @@ func TestOnPairLimit(t *testing.T) {
 }
 
 // BenchmarkOnPairCandidate is the cost of trying OnPair next to FSST on a column that ends as
-// FSST (the log lines): the same chunk with and without the candidate.
+// FSST (the keys): the same chunk with and without the candidate.
 func BenchmarkOnPairCandidate(b *testing.B) {
-	_, logs := onPairColumns()
+	_, keys := onPairColumns()
 	for _, tc := range []struct {
 		name  string
 		limit Limits
 	}{{"with", Limits{}}, {"without", Limits{NoOnPair: true}}} {
 		b.Run(tc.name, func(b *testing.B) {
 			c := NewLimited(Default, tc.limit)
-			c.Strings(logs, nil, true)
+			c.Strings(keys, nil, true)
 			b.ReportAllocs()
 			for b.Loop() {
 				c.Reset()
-				c.Strings(logs, nil, true)
+				c.Strings(keys, nil, true)
 			}
 		})
 	}
