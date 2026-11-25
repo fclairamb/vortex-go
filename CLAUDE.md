@@ -8,6 +8,8 @@ Read these before working here:
 - [docs/goals.md](docs/goals.md): the ranked goals, the non-goals, the open decisions.
 - [docs/interface.md](docs/interface.md): the public API we are building.
 - [docs/testing.md](docs/testing.md): how each goal is checked, and the list of gates.
+- [docs/perf-attempts.md](docs/perf-attempts.md): the optimisation attempts that did not pay,
+  how to measure without fooling oneself, and where the time goes.
 - [docs/upstream-update.md](docs/upstream-update.md): what to do on a Renovate PR that changes `.vortex-version`.
 
 ## Hard rules
