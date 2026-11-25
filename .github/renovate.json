@@ -109,6 +109,17 @@
         "major"
       ],
       "enabled": false
+    },
+    {
+      "description": "The vortex crates of tools/* follow .vortex-version: they move with a Vortex update (the vortex-data PR and docs/upstream-update.md), never alone. A lone cargo bump of vortex 0.94.0 was automerged on 2026-11-24 and broke Build (the pin tests want the same version as .vortex-version).",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "vortex",
+        "/^vortex-/"
+      ],
+      "enabled": false
     }
   ]
 }
