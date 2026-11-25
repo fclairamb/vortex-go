@@ -61,27 +61,10 @@ func TestProbe(t *testing.T) {
 	}
 }
 
-// TestDictHeads checks that a dictionary is not tried on strings with more distinct heads (the
-// length and the first 4 bytes) than half of the valid rows, as the reference does.
-func TestDictHeads(t *testing.T) {
-	var h headSet
-	v := [][]byte{[]byte("abcd1"), []byte("abcd2"), []byte("ab"), []byte(""), nil, []byte("abcd1")}
-	some := []bool{false, false, true, true, false, false}
-	for _, c := range []struct {
-		nulls []bool
-		limit int
-		over  bool
-	}{
-		{nil, 3, false}, // abcd* of 5 bytes, ab, and the empty ones
-		{nil, 2, true},
-		{some, 2, false}, // abcd* of 5 bytes, and the nulls and the empty one
-		{some, 1, true},
-	} {
-		if got := h.over(v, c.nulls, c.limit); got != c.over {
-			t.Errorf("%v %d: over is %v", c.nulls, c.limit, got)
-		}
-	}
-	// 2000 distinct values with as many heads, then 400 of them in 2000 rows
+// TestDictTrial checks the dictionary of strings built on all the rows: distinct strings are
+// not a dictionary, 400 values in 2000 rows are.
+func TestDictTrial(t *testing.T) {
+	// 2000 distinct values, then 400 of them in 2000 rows
 	c := New(Default)
 	many := make([][]byte, 2000)
 	for i := range many {

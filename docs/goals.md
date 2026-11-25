@@ -64,19 +64,29 @@ Writer, done when:
 - The compressor picks encodings per chunk, like the reference one, and our files are at
   most 10% larger than the reference writer's on TPC-H and ClickBench.
 
-Measured on 0.93.0 (`testdata/size-ratios.json`, our size over the reference's, see
+Measured on 0.94.0 (`testdata/size-ratios.json`, our size over the reference's, see
 docs/testing.md section 4):
 
 | Data | Default | Compact |
 |---|---|---|
-| TPC-H `lineitem` | 0.997 | 1.018 |
-| TPC-H `orders` | 1.000 | 1.047 |
-| ClickBench `hits_5k` | 0.984 | 0.987 |
+| TPC-H `lineitem` | 0.993 | 1.001 |
+| TPC-H `orders` | 0.991 | 0.989 |
+| ClickBench `hits_5k` | 0.976 | 0.881 |
 
 `vortex.onpair` is written next to FSST: the compressor keeps the smaller of the two on the
 sample of each chunk, as the reference does. The reference file of `hits_5k` holds OnPair
 arrays, which is why its `Default` ratio fell from 1.077 to 0.984. On the string columns of
 `default_mixed`, our OnPair output is within a few bytes of the reference's.
+
+The reference writer of 0.94.0 makes the TPC-H files 11 to 16% smaller than 0.93.0's, and our
+writer follows it: the comments (`l_comment`, `o_comment`) are OnPair in both modes, where they
+were FSST and zstd, because a sampled candidate is now charged only the share of its symbol
+table or token dictionary that its rows make up, and OnPair trains on half of the bytes of a
+sample; its children are narrowed to the smallest integers, as the reference does. A dictionary
+of strings is measured on all the rows of the chunk, after a probe and a cost model, not on a
+sample that misses the repeats of thousands of values (`o_clerk`). The reference also writes
+`l_quantity` as a dictionary of decimals now, as ours already did: that is why `lineitem` in
+`Default` went from 0.963 to 0.993 while our file shrank by 10%.
 
 `vortex.pco` is written in `Compact`, for the integers and floats of 16 bits and more, as the
 reference does (`vortex.integer.pco` and `vortex.float.pco`): it takes the deltas of keys and

@@ -3,6 +3,7 @@ package encode
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"math/rand/v2"
 	"testing"
 )
@@ -214,4 +215,29 @@ func TestOnPairMeta(t *testing.T) {
 	if !bytes.Equal(n.Meta[:2], []byte{0x08, 0x02}) {
 		t.Fatalf("metadata %x", n.Meta)
 	}
+}
+
+// TestNarrowOnPair: the children of a narrowed array are the narrowest unsigned integers that
+// hold their values, the metadata says so, and the strings read back the same.
+func TestNarrowOnPair(t *testing.T) {
+	e := New()
+	vals := make([][]byte, 300)
+	for i := range vals {
+		vals[i] = fmt.Appendf(nil, "row %d of the narrow test", i%40)
+	}
+	nulls := make([]bool, len(vals))
+	nulls[7] = true
+	n := OnPairBytes(e, vals, nulls)
+	NarrowOnPair(e, n)
+	checkStrings(t, n, vals, nulls)
+	for i, want := range []int{2, 1, 2, 1} { // dictionary offsets, codes, codes offsets, lengths
+		if got := n.Kids[i].Bufs[0].Align; got != want {
+			t.Errorf("child %d: %d bytes, want %d", i, got, want)
+		}
+	}
+	// every row null is a constant, which stays as it is
+	all := []bool{true, true}
+	n = OnPairBytes(e, make([][]byte, 2), all)
+	NarrowOnPair(e, n)
+	checkStrings(t, n, make([][]byte, 2), all)
 }

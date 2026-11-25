@@ -146,7 +146,7 @@ func TestCheckUpstreamFailures(t *testing.T) {
 		expectFailure(t, checkUpstream(version, version, dir))
 	})
 	t.Run("version differs", func(t *testing.T) {
-		expectFailure(t, checkUpstream("0.94.0", version, src))
+		expectFailure(t, checkUpstream("0.93.0", version, src))
 	})
 }
 

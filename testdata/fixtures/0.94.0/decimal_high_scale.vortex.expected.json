@@ -1,0 +1,123 @@
+{
+  "columns": {
+    "i16_p38_s20": {
+      "first": [
+        "-9.999E-17",
+        "-1E-20",
+        "0E-20",
+        "1E-20",
+        "9.999E-17"
+      ],
+      "last": [
+        "-9.999E-17",
+        "-1E-20",
+        "0E-20",
+        "1E-20",
+        "9.999E-17"
+      ],
+      "nulls": 0,
+      "sha256": "3c93b994d503c6226f3d7ed519405fa73679bd4ee58754248da003ec8c710a8e"
+    },
+    "i8_p18_s10": {
+      "first": [
+        "-9.9E-9",
+        "-1E-10",
+        "0E-10",
+        "1E-10",
+        "9.9E-9"
+      ],
+      "last": [
+        "-9.9E-9",
+        "-1E-10",
+        "0E-10",
+        "1E-10",
+        "9.9E-9"
+      ],
+      "nulls": 0,
+      "sha256": "2d44370f3662f59d7221deed90a16e983e2ac72675daa0a2254411710ab9ff86"
+    },
+    "i8_p18_s5": {
+      "first": [
+        "-0.00099",
+        "-0.00001",
+        "0.00000",
+        "0.00001",
+        "0.00099"
+      ],
+      "last": [
+        "-0.00099",
+        "-0.00001",
+        "0.00000",
+        "0.00001",
+        "0.00099"
+      ],
+      "nulls": 0,
+      "sha256": "2d44370f3662f59d7221deed90a16e983e2ac72675daa0a2254411710ab9ff86"
+    },
+    "i8_p4_s4": {
+      "first": [
+        "-0.0099",
+        "-0.0001",
+        "0.0000",
+        "0.0001",
+        "0.0099"
+      ],
+      "last": [
+        "-0.0099",
+        "-0.0001",
+        "0.0000",
+        "0.0001",
+        "0.0099"
+      ],
+      "nulls": 0,
+      "sha256": "2d44370f3662f59d7221deed90a16e983e2ac72675daa0a2254411710ab9ff86"
+    }
+  },
+  "encodings": [
+    "vortex.decimal",
+    "vortex.struct"
+  ],
+  "rows": 5,
+  "schema": {
+    "fields": [
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 18,
+          "scale": 10
+        },
+        "name": "i8_p18_s10"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 18,
+          "scale": 5
+        },
+        "name": "i8_p18_s5"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 38,
+          "scale": 20
+        },
+        "name": "i16_p38_s20"
+      },
+      {
+        "dtype": {
+          "kind": "decimal",
+          "nullable": false,
+          "precision": 4,
+          "scale": 4
+        },
+        "name": "i8_p4_s4"
+      }
+    ],
+    "kind": "struct",
+    "nullable": false
+  }
+}

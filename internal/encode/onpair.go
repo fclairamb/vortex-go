@@ -23,9 +23,13 @@ const (
 	onPairMaxTokens = 1 << onPairMaxBits
 	onPairMaxToken  = 16   // MAX_TOKEN_SIZE
 	onPairFraction  = 0.15 // DEFAULT_CONFIG.threshold: the share of the bytes the training reads
-	onPairSeed      = 42   // DEFAULT_CONFIG.seed
-	onPairSlots     = 4 * onPairMaxTokens
-	onPairPairsMin  = 1 << 12
+	// OnPairSampleFraction is the share of the bytes the training reads on the sample of a
+	// compressor (SAMPLE_TRAINING_FRACTION of vortex-btrblocks): 15% of a sample of about a
+	// thousand rows trains a dictionary too poor to rank OnPair against FSST.
+	OnPairSampleFraction = 0.5
+	onPairSeed           = 42 // DEFAULT_CONFIG.seed
+	onPairSlots          = 4 * onPairMaxTokens
+	onPairPairsMin       = 1 << 12
 )
 
 // onPairPair is a slot of the table of the pairs of tokens the training counts.
@@ -220,10 +224,10 @@ type onPairController struct {
 	nextCheck                      int
 }
 
-func newOnPairController(capacity, total int) onPairController {
+func newOnPairController(capacity, total int, fraction float64) onPairController {
 	interval := max(capacity/128, 64)
 	return onPairController{
-		capacity: capacity, budget: int(float64(total) * onPairFraction), interval: interval,
+		capacity: capacity, budget: int(float64(total) * fraction), interval: interval,
 		threshold: 2, nextCheck: interval,
 	}
 }
@@ -269,10 +273,10 @@ func (s *onPairState) next() uint64 { // splitmix64
 // sample picks the rows the training reads: a random part of the rows (twice the share of the
 // bytes it reads, and 1024 more), cut where their bytes pass the budget. A column whose rows
 // are skewed in length takes more rows until they hold the budget.
-func (s *onPairState) sample(vals [][]byte, nulls []bool, total int) {
+func (s *onPairState) sample(vals [][]byte, nulls []bool, total int, fraction float64) {
 	n := len(vals)
-	budget := int(float64(total) * onPairFraction)
-	k := min(int(min(2*onPairFraction, 1)*float64(n))+1024, n)
+	budget := int(float64(total) * fraction)
+	k := min(int(min(2*fraction, 1)*float64(n))+1024, n)
 	for {
 		s.order = slices.Grow(s.order[:0], n)[:n]
 		for i := range s.order {
@@ -310,11 +314,12 @@ func (s *onPairState) sample(vals [][]byte, nulls []bool, total int) {
 	}
 }
 
-// train makes the dictionary from the valid strings, which hold total bytes.
-func (s *onPairState) train(vals [][]byte, nulls []bool, total int) {
+// train makes the dictionary from the valid strings, which hold total bytes, reading the given
+// share of them.
+func (s *onPairState) train(vals [][]byte, nulls []bool, total int, fraction float64) {
 	s.reset()
-	s.sample(vals, nulls, total)
-	ctrl := newOnPairController(onPairMaxTokens-256, total)
+	s.sample(vals, nulls, total, fraction)
+	ctrl := newOnPairController(onPairMaxTokens-256, total, fraction)
 	threshold := ctrl.threshold
 	if cap(s.pairs) == 0 {
 		s.pairs = make([]onPairPair, onPairPairsMin)
@@ -428,13 +433,19 @@ func (s *onPairState) dictSize() int {
 // the codes of each string end and its length, then the validity. A column where every row is
 // null is a null constant.
 func OnPairBytes(e *Encoder, vals [][]byte, nulls []bool) *Node {
+	return OnPairBytesTrained(e, vals, nulls, onPairFraction)
+}
+
+// OnPairBytesTrained is OnPairBytes with a training that reads the given share of the bytes,
+// OnPairSampleFraction for the sample of a compressor.
+func OnPairBytesTrained(e *Encoder, vals [][]byte, nulls []bool, fraction float64) *Node {
 	if allNull(nulls) {
 		n, _ := ConstantBytes(e, vals, nulls, true)
 		return n
 	}
 	s := e.onPairState()
 	total := validBytesOf(vals, nulls)
-	s.train(vals, nulls, total)
+	s.train(vals, nulls, total, fraction)
 	return e.onPairColumn(vals, nulls)
 }
 
@@ -507,9 +518,43 @@ func EstimateOnPairBytes(e *Encoder, sample [][]byte, nulls []bool, rows int) in
 	defer e.done()
 	n := len(sample)
 	total := validBytesOf(sample, nulls)
-	s.train(sample, nulls, total)
+	s.train(sample, nulls, total, onPairFraction)
 	s.parse(sample, nulls)
 	_, ow := narrow(uint64(scale(len(s.codes), n, rows)))
 	ow = max(ow, 4)
 	return s.dictSize() + 4*(s.n+1) + 2*scale(len(s.codes), n, rows) + ow*(rows+1) + 4*rows + validBytes(nulls, rows)
+}
+
+// NarrowOnPair narrows the four integer children of n, an array of OnPairBytes, each to the
+// smallest unsigned integer that holds its values, and writes their types in the metadata, as
+// the OnPair scheme of the reference does before it compresses them.
+func NarrowOnPair(e *Encoder, n *Node) {
+	if n.ID != IDOnPair {
+		return // a null constant
+	}
+	var ptypes [4]int
+	for i, k := range n.Kids[:4] {
+		b := k.Bufs[0]
+		count := len(b.Data) / b.Align
+		var top uint64
+		for j := range count {
+			top = max(top, getWidth(b.Data[j*b.Align:], b.Align))
+		}
+		ptype, w := narrow(top)
+		ptypes[i] = ptype
+		if w < b.Align {
+			out := e.allocDirty(w * count)
+			for j := range count {
+				putWidth(out[j*w:], w, getWidth(b.Data[j*b.Align:], b.Align))
+			}
+			n.Kids[i] = e.leaf(out, w, nil, count)
+		}
+	}
+	e.tmp = putUint(e.tmp[:0], 1, uint64(ptypes[3]))
+	e.tmp = putUint(e.tmp, 3, uint64(len(n.Kids[0].Bufs[0].Data)/(1<<ptypes[0])-1))
+	e.tmp = putUint(e.tmp, 4, uint64(len(n.Kids[1].Bufs[0].Data)/(1<<ptypes[1])))
+	e.tmp = putUint(e.tmp, 5, uint64(ptypes[0]))
+	e.tmp = putUint(e.tmp, 6, uint64(ptypes[1]))
+	e.tmp = putUint(e.tmp, 7, uint64(ptypes[2]))
+	n.Meta = e.keep(e.tmp)
 }

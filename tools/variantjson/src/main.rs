@@ -5,7 +5,7 @@
 
 use std::env;
 
-use vortex::arrow::ArrowSessionExt;
+use vortex::arrow::ExecuteArrowExt;
 use futures::StreamExt;
 use parquet_variant_compute::VariantArray;
 use parquet_variant_json::VariantToJson;
@@ -29,7 +29,7 @@ async fn run(path: &str) -> VortexResult<()> {
             .expect("a struct")
             .unmasked_field_by_name("v")?
             .clone();
-        let arrow = session.arrow().execute_arrow(column, None, &mut ctx)?;
+        let arrow = column.execute_arrow(None, &mut ctx)?;
         let variants = VariantArray::try_new(arrow.as_ref()).expect("a variant array");
         for i in 0..variants.len() {
             if variants.is_null(i) {

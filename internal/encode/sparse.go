@@ -12,7 +12,7 @@ const nullDominated = 9
 // that differ from it. The fill is null when more than nine tenths of the rows are null, the
 // patches being the valid rows; else it is the most frequent value, the first of them when
 // several are, and the patches are the rows that are not equal to it, the null ones included.
-// The fill is in the one buffer, as a ScalarValue, and a null patch has the value zero. An array
+// The fill is in the one buffer, as a ScalarValue, and a null patch keeps its value. An array
 // that is all equal to its fill is the constant of Constant, as the reference does. It returns
 // false when the array is empty or all null.
 func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
@@ -27,13 +27,10 @@ func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 	}
 	fillNull := 10*nullCount > nullDominated*len(v)
 	fill := fillValue(e, v, nulls, fillNull)
-	count, validPatches := 0, 0
+	count := 0
 	for i := range v {
 		if isPatch(v, nulls, i, fill, fillNull) {
 			count++
-			if !isNull(nulls, i) {
-				validPatches++
-			}
 		}
 	}
 	if count == 0 {
@@ -52,13 +49,9 @@ func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 			continue
 		}
 		putWidth(idx[k*iw:], iw, uint64(i))
-		// the slots of null patches are kept, unless there is no valid patch
+		// the slots of null patches are kept
 		patchNulls[k] = isNull(nulls, i)
-		if validPatches > 0 || !patchNulls[k] {
-			copy(vals[k*w:], raw[i*w:(i+1)*w])
-		} else {
-			clear(vals[k*w : (k+1)*w])
-		}
+		copy(vals[k*w:], raw[i*w:(i+1)*w])
 		k++
 	}
 	if fillNull {
@@ -71,8 +64,19 @@ func Sparse[T Number](e *Encoder, v []T, nulls []bool) (*Node, bool) {
 	e.tmp2 = putUint(protowire.AppendUint(e.tmp2[:0], 1, uint64(count)), 3, uint64(ptype))
 	n.Meta = e.keep(protowire.AppendBytes(e.tmp[:0], 1, e.tmp2))
 	n.kid(e.leaf(idx, iw, nil, count))
-	n.kid(e.leaf(vals, w, patchNulls, count))
+	n.kid(e.patchValues(vals, w, patchNulls))
 	return n, true
+}
+
+// patchValues is the primitive array of the values of the patches. Its validity is a bool
+// array even when all of them are null.
+func (e *Encoder) patchValues(vals []byte, w int, nulls []bool) *Node {
+	n := e.node(IDPrimitive)
+	n.add(vals, w)
+	if hasNull(nulls) {
+		n.kid(e.validityBits(nulls, len(nulls), len(nulls)))
+	}
+	return n
 }
 
 // isPatch says whether row i is a patch: with a null fill, the valid rows; else the null rows

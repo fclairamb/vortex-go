@@ -204,11 +204,7 @@ func EstimateSparse[T Number](e *Encoder, sample []T, nulls []bool, rows int) in
 		fillSize = len(appendScalar(b[:0], fill))
 	}
 	valid := 0
-	switch nullPatches {
-	case 0:
-	case patches:
-		valid = 2
-	default:
+	if nullPatches > 0 {
 		valid = (patches + 7) / 8
 	}
 	return fillSize + patches*(iw+unsafex.Size[T]()) + valid
