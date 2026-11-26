@@ -25,7 +25,7 @@
 <h2 id="read-rows">Read rows</h2>
 <p>A file goes into structs. A nullable column goes into a <code>sql.Null</code> field or a pointer.</p>
 <!-- example:ExampleRows:begin -->
-<pre data-testid="code-ExampleRows"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.94.0/extra/default_ints.vortex&#34;)
+<pre data-testid="code-ExampleRows"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.95.0/extra/default_ints.vortex&#34;)
 if err != nil {
     log.Fatal(err)
 }
@@ -44,7 +44,7 @@ for r, err := range vortex.Rows[Row](context.Background(), f, vortex.Query{Rows:
 <h2 id="read-columns">Read columns</h2>
 <p>Columns, batch by batch, without structs. <code>Values</code> copies a numeric column into a slice.</p>
 <!-- example:ExampleFile_Scan:begin -->
-<pre data-testid="code-ExampleFile_Scan"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.94.0/extra/default_ints.vortex&#34;)
+<pre data-testid="code-ExampleFile_Scan"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.95.0/extra/default_ints.vortex&#34;)
 if err != nil {
     log.Fatal(err)
 }
@@ -68,7 +68,7 @@ With rows, the fields of the struct are the projection.</p>
 <h2 id="filter">Filter and take a row range</h2>
 <p>A <code>Query</code> has a filter and a row range. The statistics of the file skip the zones that cannot hold a row, and no row is returned that does not match.</p>
 <!-- example:ExampleRows_filter:begin -->
-<pre data-testid="code-ExampleRows_filter"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.94.0/extra/default_ints.vortex&#34;)
+<pre data-testid="code-ExampleRows_filter"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.95.0/extra/default_ints.vortex&#34;)
 if err != nil {
     log.Fatal(err)
 }
@@ -86,7 +86,7 @@ for r, err := range vortex.Rows[Row](context.Background(), f, q) {
 <!-- example:ExampleRows_filter:end -->
 <p>The same filter by columns:</p>
 <!-- example:ExampleFile_Scan_filter:begin -->
-<pre data-testid="code-ExampleFile_Scan_filter"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.94.0/extra/default_ints.vortex&#34;)
+<pre data-testid="code-ExampleFile_Scan_filter"><code>f, err := vortex.OpenFile(&#34;testdata/fixtures/0.95.0/extra/default_ints.vortex&#34;)
 if err != nil {
     log.Fatal(err)
 }

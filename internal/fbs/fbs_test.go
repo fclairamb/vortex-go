@@ -9,7 +9,7 @@ import (
 	"github.com/fclairamb/vortex-go/internal/flatbuf/fbtest"
 )
 
-const fixtureDir = "../../testdata/fixtures/0.94.0"
+const fixtureDir = "../../testdata/fixtures/0.95.0"
 
 // segmentOf returns the bytes of a segment of the file, which must be uncompressed.
 func segmentOf(t *testing.T, file []byte, s PostscriptSegment, ok bool, err error) []byte {
