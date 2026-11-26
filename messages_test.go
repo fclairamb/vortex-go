@@ -13,7 +13,7 @@ import (
 // The error messages of the common mistakes (docs/testing.md section 6), asserted as text: they
 // name the column, the types and the offset, so a user can fix the call from the message.
 
-const fixtureInts = "testdata/fixtures/0.94.0/extra/default_ints.vortex"
+const fixtureInts = "testdata/fixtures/0.95.0/extra/default_ints.vortex"
 
 func TestMessageUnknownColumn(t *testing.T) {
 	f, err := OpenFile(fixtureInts)
@@ -62,7 +62,7 @@ func TestMessageNotVortex(t *testing.T) {
 }
 
 func TestMessageUnsupportedEncoding(t *testing.T) {
-	f, err := OpenFile("testdata/fixtures/0.94.0/primitives.vortex")
+	f, err := OpenFile("testdata/fixtures/0.95.0/primitives.vortex")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -15,7 +15,7 @@ import (
 // (testdata/vectors/fsst/default_mixed.json), and our output may be at most 1.15 times it. The
 // strings reach tools/vectors in a file that this test writes when MIXED_STRINGS_OUT is set.
 
-const mixedFile = "testdata/fixtures/0.94.0/extra/default_mixed.vortex"
+const mixedFile = "testdata/fixtures/0.95.0/extra/default_mixed.vortex"
 
 type mixedColumn struct {
 	vals  [][]byte
