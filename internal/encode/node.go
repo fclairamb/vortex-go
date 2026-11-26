@@ -1,6 +1,7 @@
 package encode
 
 import (
+	"encoding/binary"
 	"hash/maphash"
 	"math"
 	"sync"
@@ -356,10 +357,17 @@ func widthMask[T Number]() uint64 { return ^uint64(0) >> (64 - 8*unsafex.Size[T]
 // ubits is the bits of v as an unsigned integer of the width of T.
 func ubits[T Int](v T) uint64 { return uint64(v) & widthMask[T]() }
 
-// putWidth writes v in the first w bytes of b, little-endian.
+// putWidth writes v in the first w bytes of b, little-endian: w is 1, 2, 4 or 8.
 func putWidth(b []byte, w int, v uint64) {
-	for i := range w {
-		b[i] = byte(v >> (8 * i))
+	switch w {
+	case 1:
+		b[0] = byte(v)
+	case 2:
+		binary.LittleEndian.PutUint16(b, uint16(v))
+	case 4:
+		binary.LittleEndian.PutUint32(b, uint32(v))
+	default:
+		binary.LittleEndian.PutUint64(b, v)
 	}
 }
 

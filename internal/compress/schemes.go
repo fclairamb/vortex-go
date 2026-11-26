@@ -406,20 +406,33 @@ func (st intStats) long(rows int) bool { return st.valid > 0 && rows >= runThres
 func statsOfInts[T encode.Int](v []T, nulls []bool) intStats {
 	var st intStats
 	var lo, hi T
-	for i, x := range v {
-		if i == 0 || isNull(nulls, i) != isNull(nulls, i-1) || !isNull(nulls, i) && x != v[i-1] {
-			st.runs++
+	if nulls == nil && len(v) > 0 {
+		// No null: a row is one comparison with the row before, a minimum and a maximum.
+		lo, hi = v[0], v[0]
+		prev, runs := v[0], 1
+		for _, x := range v[1:] {
+			if x != prev {
+				runs++
+			}
+			lo, hi, prev = min(lo, x), max(hi, x), x
 		}
-		if isNull(nulls, i) {
-			continue
+		st.runs, st.valid = runs, len(v)
+	} else {
+		for i, x := range v {
+			if i == 0 || isNull(nulls, i) != isNull(nulls, i-1) || !isNull(nulls, i) && x != v[i-1] {
+				st.runs++
+			}
+			if isNull(nulls, i) {
+				continue
+			}
+			if st.valid == 0 || x < lo {
+				lo = x
+			}
+			if st.valid == 0 || x > hi {
+				hi = x
+			}
+			st.valid++
 		}
-		if st.valid == 0 || x < lo {
-			lo = x
-		}
-		if st.valid == 0 || x > hi {
-			hi = x
-		}
-		st.valid++
 	}
 	mask := ^uint64(0) >> (64 - 8*unsafex.Size[T]())
 	var zero T
