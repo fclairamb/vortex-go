@@ -63,7 +63,7 @@ Columns, filters, and writing (`NewWriter` for columns, `NewRowWriter` for struc
 The files of every published release are read, and checked against the reference reader.
 
 <!-- compat:begin -->
-Reads the fixtures of every published release, 29 of them, from 0.64.0 to 0.94.0, checked every night against the reference reader.
+Reads the fixtures of every published release, 30 of them, from 0.64.0 to 0.95.0, checked every night against the reference reader.
 <!-- compat:end -->
 
 ## Support matrix
