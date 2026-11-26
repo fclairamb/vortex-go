@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.0](https://github.com/fclairamb/vortex-go/compare/v0.1.3...v0.2.0) (2026-11-26)
+
+
+### Features
+
+* files carry user-defined metadata ([#71](https://github.com/fclairamb/vortex-go/issues/71)) ([cbdc2ac](https://github.com/fclairamb/vortex-go/commit/cbdc2ac3bf622b901e603f99ee5f847c213e1f35))
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/fclairamb/vortex-go to v0.1.3 ([#69](https://github.com/fclairamb/vortex-go/issues/69)) ([fd2f884](https://github.com/fclairamb/vortex-go/commit/fd2f88435f4b255b4a75ac72f30ceb513c8dd290))
+* **deps:** update rust crate vortex to v0.94.0 ([#74](https://github.com/fclairamb/vortex-go/issues/74)) ([a34de2d](https://github.com/fclairamb/vortex-go/commit/a34de2d6707f276f45bf2cd4a7d1d352da6345bc))
+* **deps:** update rust crate vortex-alp to v0.94.0 ([#76](https://github.com/fclairamb/vortex-go/issues/76)) ([c4e3f5a](https://github.com/fclairamb/vortex-go/commit/c4e3f5ab5583e786c436b23f4c19cbe20c2f9cb7))
+* revert the lone vortex 0.94 cargo bumps ([#74](https://github.com/fclairamb/vortex-go/issues/74), [#76](https://github.com/fclairamb/vortex-go/issues/76)), stop renovate from redoing them ([#75](https://github.com/fclairamb/vortex-go/issues/75)) ([6b7fceb](https://github.com/fclairamb/vortex-go/commit/6b7fceb181c9ca0d765aeee7eaad7be1b9768894))
+
+
+### Performance Improvements
+
+* **scan:** a filter scan reuses its small buffers, its nodes and its arrays ([#66](https://github.com/fclairamb/vortex-go/issues/66)) ([6adca93](https://github.com/fclairamb/vortex-go/commit/6adca933a71395a30b4783040c72050e19d5af46))
+* **scan:** a scan gives the memory of its last batch back when the loop ends ([#72](https://github.com/fclairamb/vortex-go/issues/72)) ([edbf7b3](https://github.com/fclairamb/vortex-go/commit/edbf7b36dcf4d75cf252d0303983605a9c1e3098))
+* **scan:** OnPair strings are decoded in one pass, and a range of rows reads its codes only ([#81](https://github.com/fclairamb/vortex-go/issues/81)) ([e2a18df](https://github.com/fclairamb/vortex-go/commit/e2a18df9cc7dc266cc20579460c7f0b9f233333f))
+* **writer:** a dictionary of numbers compares words, and the statistics of integers without nulls take one comparison per row ([#82](https://github.com/fclairamb/vortex-go/issues/82)) ([0308f7e](https://github.com/fclairamb/vortex-go/commit/0308f7e66668685c307219c3763253fde08ac95d))
+* **writer:** a small file is no bigger than its Parquet twin ([#70](https://github.com/fclairamb/vortex-go/issues/70)) ([9a97476](https://github.com/fclairamb/vortex-go/commit/9a9747603f6611cecce6ef3d2119974a313b4c44))
+
 ## [0.1.3](https://github.com/fclairamb/vortex-go/compare/v0.1.2...v0.1.3) (2026-11-22)
 
 
