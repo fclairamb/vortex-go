@@ -1,6 +1,6 @@
 # Fixtures the reference writer could not produce
 
-Written by `tools/oracle/genfixtures.py` for vortex-data 0.94.0. Nothing is faked: each entry below has no file.
+Written by `tools/oracle/genfixtures.py` for vortex-data 0.95.0. Nothing is faked: each entry below has no file.
 
 ## parquet_variant.vortex
 

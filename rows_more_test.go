@@ -434,7 +434,7 @@ func TestRowsUUID(t *testing.T) {
 		ID   *[16]byte          `vortex:"id"`
 		Null sql.Null[[16]byte] `vortex:"nullable_id"`
 	}
-	f := openFixture(t, "testdata/fixtures/0.94.0/extra/uuid.vortex")
+	f := openFixture(t, "testdata/fixtures/0.95.0/extra/uuid.vortex")
 	b := allBatch(t, f)
 	for i, r := range readRows[row](t, f, Query{}, nil) {
 		id, n := colByName(f, b, "id"), colByName(f, b, "nullable_id")

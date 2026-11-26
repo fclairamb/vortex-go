@@ -13,8 +13,8 @@ import (
 )
 
 const (
-	matrixPath = "testdata/fixtures/0.94.0/extra/types_matrix.vortex"
-	fixtureDir = "testdata/fixtures/0.94.0/"
+	matrixPath = "testdata/fixtures/0.95.0/extra/types_matrix.vortex"
+	fixtureDir = "testdata/fixtures/0.95.0/"
 )
 
 func openFixture(t *testing.T, path string) *File {

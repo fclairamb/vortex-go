@@ -64,7 +64,7 @@ Writer, done when:
 - The compressor picks encodings per chunk, like the reference one, and our files are at
   most 10% larger than the reference writer's on TPC-H and ClickBench.
 
-Measured on 0.94.0 (`testdata/size-ratios.json`, our size over the reference's, see
+Measured on 0.95.0 (`testdata/size-ratios.json`, our size over the reference's, see
 docs/testing.md section 4):
 
 | Data | Default | Compact |
