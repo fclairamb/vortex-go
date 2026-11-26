@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.2.0](https://github.com/fclairamb/vortex-go/compare/v0.1.3...v0.2.0) (2026-11-26)
+
+
+### Features
+
+* files carry user-defined metadata ([#71](https://github.com/fclairamb/vortex-go/issues/71)) ([cbdc2ac](https://github.com/fclairamb/vortex-go/commit/cbdc2ac3bf622b901e603f99ee5f847c213e1f35))
+
+
+### Performance Improvements
+
+* **scan:** OnPair strings are decoded in one pass, and a range of rows reads only its codes ([#81](https://github.com/fclairamb/vortex-go/issues/81)) ([e2a18df](https://github.com/fclairamb/vortex-go/commit/e2a18df9cc7dc266cc20579460c7f0b9f233333f))
+* **scan:** a filter scan reuses its small buffers, nodes and arrays, and gives the memory of its last batch back when the loop ends ([#66](https://github.com/fclairamb/vortex-go/issues/66), [#72](https://github.com/fclairamb/vortex-go/issues/72)) ([6adca93](https://github.com/fclairamb/vortex-go/commit/6adca933a71395a30b4783040c72050e19d5af46), [edbf7b3](https://github.com/fclairamb/vortex-go/commit/edbf7b36dcf4d75cf252d0303983605a9c1e3098))
+* **writer:** a small file is no bigger than its Parquet twin ([#70](https://github.com/fclairamb/vortex-go/issues/70)) ([9a97476](https://github.com/fclairamb/vortex-go/commit/9a9747603f6611cecce6ef3d2119974a313b4c44))
+* **writer:** a dictionary of numbers compares words, and the statistics of integers without nulls take one comparison per row ([#82](https://github.com/fclairamb/vortex-go/issues/82)) ([0308f7e](https://github.com/fclairamb/vortex-go/commit/0308f7e66668685c307219c3763253fde08ac95d))
+
+
+### Bug Fixes
+
+* **deps:** the module's own reference moves to v0.1.3; the lone vortex 0.94 cargo bumps were reverted and Renovate no longer proposes them ([#69](https://github.com/fclairamb/vortex-go/issues/69), [#75](https://github.com/fclairamb/vortex-go/issues/75)) ([fd2f884](https://github.com/fclairamb/vortex-go/commit/fd2f88435f4b255b4a75ac72f30ceb513c8dd290), [6b7fceb](https://github.com/fclairamb/vortex-go/commit/6b7fceb181c9ca0d765aeee7eaad7be1b9768894))
+
 ## [0.1.3](https://github.com/fclairamb/vortex-go/compare/v0.1.2...v0.1.3) (2026-11-22)
 
 
