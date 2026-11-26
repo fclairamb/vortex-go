@@ -29,24 +29,20 @@ const (
 	keyStrings
 )
 
+// hash is the hash of value i of a set of strings or byte slices.
 func (k *keys) hash(seed maphash.Seed, i int) uint64 {
-	switch k.kind {
-	case keyBytes:
+	if k.kind == keyBytes {
 		return maphash.Bytes(seed, k.bins[i])
-	case keyStrings:
-		return maphash.String(seed, k.strs[i])
 	}
-	return maphash.Bytes(seed, k.raw[i*k.w:(i+1)*k.w])
+	return maphash.String(seed, k.strs[i])
 }
 
+// eq says whether the values i and j of a set of strings or byte slices are the same.
 func (k *keys) eq(i, j int) bool {
-	switch k.kind {
-	case keyBytes:
+	if k.kind == keyBytes {
 		return bytes.Equal(k.bins[i], k.bins[j])
-	case keyStrings:
-		return k.strs[i] == k.strs[j]
 	}
-	return bytes.Equal(k.raw[i*k.w:(i+1)*k.w], k.raw[j*k.w:(j+1)*k.w])
+	return k.strs[i] == k.strs[j]
 }
 
 // size is the bytes of value i of a set of strings or byte slices.
@@ -89,6 +85,17 @@ func (e *Encoder) classify(k *keys, rows int, nulls []bool) (distinct, nullCode 
 	e.dt.first = grow(e.dt.first, rows+1)
 	e.dt.count = grow(e.dt.count, rows+1)
 	tabSize := 1 << bits.Len(uint(2*rows+1))
+	switch {
+	case k.kind != keyNumbers:
+	case k.w == 1:
+		return classifyWords(e.dt, k.raw[:rows], nulls, tabSize)
+	case k.w == 2:
+		return classifyWords(e.dt, unsafex.Slice[uint16](k.raw)[:rows], nulls, tabSize)
+	case k.w == 4:
+		return classifyWords(e.dt, unsafex.Slice[uint32](k.raw)[:rows], nulls, tabSize)
+	default:
+		return classifyWords(e.dt, unsafex.Slice[uint64](k.raw)[:rows], nulls, tabSize)
+	}
 	e.dt.tab = grow(e.dt.tab, tabSize)
 	clear(e.dt.tab)
 	mask := uint64(tabSize - 1)
@@ -116,6 +123,47 @@ func (e *Encoder) classify(k *keys, rows int, nulls []bool) (distinct, nullCode 
 		}
 		e.dt.codes[i] = uint32(code)
 		e.dt.count[code]++
+	}
+	return distinct, nullCode
+}
+
+// classifyWords is classify for numbers, v being their bits: a number is compared as a word,
+// and its slot in a table of size slots, a power of two that is more than twice the rows, is
+// a product. Numbers of 8 or 16 bits that have fewer values than the table has slots have a
+// slot each: the table is then that small, and no slot is looked for.
+func classifyWords[T unsafex.Unsigned](dt *dictTables, v []T, nulls []bool, size int) (distinct, nullCode int) {
+	mul, shift := uint64(0x9e3779b97f4a7c15), 64-bits.TrailingZeros(uint(size))
+	if w := unsafex.Size[T](); w <= 2 && 1<<(8*w) <= size {
+		size, mul, shift = 1<<(8*w), 1, 0
+	}
+	dt.tab = grow(dt.tab, size)
+	clear(dt.tab)
+	tab, first, count, codes := dt.tab, dt.first, dt.count, dt.codes[:len(v)]
+	mask := uint64(size - 1)
+	nullCode = -1
+	for i, x := range v {
+		var code int
+		if isNull(nulls, i) {
+			if nullCode < 0 {
+				nullCode = distinct
+				first[distinct], count[distinct] = int32(i), 0
+				distinct++
+			}
+			code = nullCode
+		} else {
+			s := uint64(x) * mul >> shift
+			for tab[s] != 0 && v[first[tab[s]-1]] != x {
+				s = (s + 1) & mask
+			}
+			if tab[s] == 0 {
+				first[distinct], count[distinct] = int32(i), 0
+				distinct++
+				tab[s] = int32(distinct)
+			}
+			code = int(tab[s]) - 1
+		}
+		codes[i] = uint32(code)
+		count[code]++
 	}
 	return distinct, nullCode
 }
@@ -203,9 +251,7 @@ func (e *Encoder) dictVarBin(k *keys, rows int, nulls []bool) *Node {
 func (e *Encoder) dictNode(rows, distinct int, vals *Node) *Node {
 	ptype, w := narrow(uint64(max(distinct-1, 0)))
 	codes := e.allocDirty(rows * w)
-	for i := range rows {
-		putWidth(codes[i*w:], w, uint64(e.dt.codes[i]))
-	}
+	storeWords(codes, e.dt.codes[:rows], 8*w)
 	n := e.node(IDDict)
 	e.tmp = putUint(e.tmp[:0], 1, uint64(distinct))
 	e.tmp = putUint(e.tmp, 2, uint64(ptype))
