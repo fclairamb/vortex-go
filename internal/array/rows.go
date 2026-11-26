@@ -22,6 +22,7 @@ const (
 	idExt          = "vortex.ext"
 	idDecimalParts = "vortex.decimal_byte_parts"
 	idFSST         = "vortex.fsst"
+	idOnPair       = "vortex.onpair"
 	idConstant     = "vortex.constant"
 )
 
@@ -69,6 +70,8 @@ func (c *context) canRows(fb nodeRef) bool {
 	case idFSST:
 		bufs, _ := fb.Buffers()
 		return len(bufs) == 3 && child(0) && child(1)
+	case idOnPair:
+		return child(1) && child(2) && child(3)
 	}
 	return false
 }
@@ -121,6 +124,8 @@ func (n *Node) rowsOf(id string, t DType, rows int, idx []int) (*Array, error) {
 		return n.decimalPartsRows(t, rows, idx)
 	case idFSST:
 		return n.fsstRows(t, rows, idx)
+	case idOnPair:
+		return n.onPairRows(t, rows, idx)
 	case idConstant:
 		// Every row is the same: the rows asked for are as many rows of the array.
 		if err := checkRows(idx, rows); err != nil {
@@ -379,6 +384,15 @@ func (n *Node) decimalPartsRows(t DType, rows int, idx []int) (*Array, error) {
 
 // intRows decodes the rows idx of child i, non-null integers of type p, as ints.
 func (n *Node) intRows(i int, what string, p PType, rows int, idx []int) ([]int, error) {
+	a, err := n.denseRows(i, what, p, rows, idx)
+	if err != nil {
+		return nil, err
+	}
+	return toInts(n.ctx.opt.Arena, a, what, p, nil)
+}
+
+// denseRows decodes the rows idx of child i, non-null integers of type p.
+func (n *Node) denseRows(i int, what string, p PType, rows int, idx []int) (*Array, error) {
 	a, err := n.childRows(i, DType{Kind: Prim, PType: p}, rows, idx)
 	if err != nil {
 		return nil, err
@@ -386,7 +400,7 @@ func (n *Node) intRows(i int, what string, p PType, rows int, idx []int) ([]int,
 	if a.Validity != nil {
 		return nil, fmt.Errorf("%s: has nulls", what)
 	}
-	return toInts(n.ctx.opt.Arena, a, what, p, nil)
+	return a, nil
 }
 
 // fsstRows is decodeFSST for the rows idx, in the form with 3 buffers: the codes of the other
@@ -414,7 +428,7 @@ func (n *Node) fsstRows(t DType, rows int, idx []int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	starts, ends, err := n.codeRanges(cp, rows, idx, len(codes))
+	starts, ends, err := n.codeRanges(1, cp, rows, idx, len(codes))
 	if err != nil {
 		return nil, err
 	}
@@ -437,9 +451,9 @@ func (n *Node) fsstRows(t DType, rows int, idx []int) (*Array, error) {
 	return a, tbl.decode(a.Data, a.Starts, a.Ends, codes, starts, ends, ulen)
 }
 
-// codeRanges is, for each of the rows idx of an FSST array, the range of its codes: the
-// offsets i and i+1 of child 1, of type p, read once each. The codes are that many bytes.
-func (n *Node) codeRanges(p PType, rows int, idx []int, codes int) (starts, ends []int, err error) {
+// codeRanges is, for each of the rows idx of an FSST or OnPair array, the range of its codes:
+// the offsets i and i+1 of the child, of type p, read once each. There are that many codes.
+func (n *Node) codeRanges(child int, p PType, rows int, idx []int, codes int) (starts, ends []int, err error) {
 	ar := n.ctx.opt.Arena
 	at, first := ar.Ints(2*len(idx), false)[:0], ar.Ints(len(idx), false)
 	for k, i := range idx {
@@ -449,7 +463,7 @@ func (n *Node) codeRanges(p PType, rows int, idx []int, codes int) (starts, ends
 		first[k] = len(at) - 1
 		at = append(at, i+1)
 	}
-	offs, err := n.intRows(1, "codes offsets", p, rows+1, at)
+	offs, err := n.intRows(child, "codes offsets", p, rows+1, at)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -461,4 +475,76 @@ func (n *Node) codeRanges(p PType, rows int, idx []int, codes int) (starts, ends
 		starts[k], ends[k] = offs[f], offs[f+1]
 	}
 	return starts, ends, nil
+}
+
+// onPairRows is decodeOnPair for the rows idx: the codes of the other rows are not read.
+func (n *Node) onPairRows(t DType, rows int, idx []int) (*Array, error) {
+	d, ptypes, codesLen, err := n.onPairHead(t)
+	if err != nil {
+		return nil, err
+	}
+	ulen, err := n.intRows(3, "uncompressed lengths", ptypes[0], rows, idx)
+	if err != nil {
+		return nil, err
+	}
+	starts, ends, err := n.codeRanges(2, ptypes[3], rows, idx, codesLen)
+	if err != nil {
+		return nil, err
+	}
+	ar := n.ctx.opt.Arena
+	a := n.ctx.rowsArray()
+	*a = Array{Type: t, Len: len(idx)}
+	if n.NumChildren() == 5 {
+		valid, err := n.Validity(4, rows)
+		if err != nil {
+			return nil, err
+		}
+		a.Validity = n.validityRows(valid, idx, a)
+	}
+	total, err := outputSize(ulen, starts, ends, d.maxTok)
+	if err != nil {
+		return nil, err
+	}
+	at := codesAt(ar, starts, ends)
+	count := len(at)
+	codes, err := n.denseRows(1, "codes", ptypes[2], codesLen, at)
+	if err != nil {
+		return nil, err
+	}
+	a.Starts, a.Ends = ar.Ints(len(idx), false), ar.Ints(len(idx), false)
+	if d.fast {
+		if a.Data = d.bulkOf(ar, codes.Data, ptypes[2], 0, count, total); a.Data != nil {
+			o := 0
+			for k, l := range ulen {
+				a.Starts[k], a.Ends[k] = o, o+l
+				o += l
+			}
+			return a, nil
+		}
+	}
+	all, err := toInts(ar, codes, "codes", ptypes[2], nil)
+	if err != nil {
+		return nil, err
+	}
+	a.Data = ar.Bytes(total, false)
+	return a, d.decode(a.Data, a.Starts, a.Ends, all, starts, ends, ulen)
+}
+
+// codesAt is the places of the codes of the ranges starts to ends, one range after the other.
+// The codes read at these places follow each other: the ranges are moved to where they are
+// then.
+func codesAt(ar *Arena, starts, ends []int) []int {
+	count := 0
+	for k := range starts {
+		count += ends[k] - starts[k]
+	}
+	at := ar.Ints(count, false)[:0]
+	for k := range starts {
+		first := len(at)
+		for c := starts[k]; c < ends[k]; c++ {
+			at = append(at, c)
+		}
+		starts[k], ends[k] = first, len(at)
+	}
+	return at
 }
