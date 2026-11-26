@@ -1,6 +1,6 @@
 {
-  "version": "0.94.0",
-  "generated_at": "2026-11-24T18:58:44.724650+00:00",
+  "version": "0.95.0",
+  "generated_at": "2026-11-25T23:09:20.697584+00:00",
   "fixtures": [
     {
       "name": "primitives.vortex",
@@ -190,32 +190,32 @@
     {
       "name": "tpch_lineitem.regular.vortex",
       "description": "TPC-H lineitem table at scale factor 0.01 with decimals, dates, and strings",
-      "sha256": "c794f15f159453a0632508dc7d9872408ca7fbef6709756ac0eb4d539201b9ed"
+      "sha256": "d7e6d46670b5c022a0741c6540d292c6cefc1379c971e9d4ca14709f1576d3f2"
     },
     {
       "name": "tpch_lineitem.compact.vortex",
       "description": "TPC-H lineitem table at scale factor 0.01 with decimals, dates, and strings",
-      "sha256": "a3121a82af6e5042d67de694ebf8db30d68505be588a2fef95c779653076edc6"
+      "sha256": "5a6368ad1b5fc51cb9050c014651ff506eee60972e3aa921df095576396d37e6"
     },
     {
       "name": "tpch_orders.regular.vortex",
       "description": "TPC-H orders table at scale factor 0.01 with decimals, dates, and strings",
-      "sha256": "71c08f41305cf4267041dc7094280a47ccae946cc39d4aac9d4da7a0e3dd2b24"
+      "sha256": "0361ea4bbe7245c0350d0d18272104d064a8b90cad0c212c91d9972f5c5f341d"
     },
     {
       "name": "tpch_orders.compact.vortex",
       "description": "TPC-H orders table at scale factor 0.01 with decimals, dates, and strings",
-      "sha256": "24b1a6fdf98e69b30d414d109641d8911da938163964a374aebfe5d01a3c4e49"
+      "sha256": "aede716dcf556fa1c114f169cdf523fb6796230a6022446f7ef81a734e4b3f34"
     },
     {
       "name": "clickbench_hits_5k.regular.vortex",
       "description": "5000 rows (5x1000 from random offsets) of ClickBench hits dataset with wide schema of primitives and strings",
-      "sha256": "d259dc54f16ae69a23be31dc2f6af05b9974b2e91325529d6e4c9dacd3b1e7e6"
+      "sha256": "9cef191ea5a65890b8f83914dff353f399812b9c6feb8aa9a0163252c01e8438"
     },
     {
       "name": "clickbench_hits_5k.compact.vortex",
       "description": "5000 rows (5x1000 from random offsets) of ClickBench hits dataset with wide schema of primitives and strings",
-      "sha256": "1342291fac0e9d19085bc1086008af5958b29879ae7fd6240eef7b7930173597"
+      "sha256": "884abd856bccf46891ce9a4ab730161846a01a2b4af335477e96371959517395"
     }
   ]
 }

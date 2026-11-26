@@ -46,7 +46,7 @@ func TestMembersIsACopy(t *testing.T) {
 }
 
 func TestEdition(t *testing.T) {
-	if Version != "0.94.0" || ID != "core 2026.08.3" {
+	if Version != "0.95.0" || ID != "core 2026.08.3" {
 		t.Fatalf("Version %q, ID %q", Version, ID)
 	}
 }

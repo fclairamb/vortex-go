@@ -159,7 +159,7 @@ func TestSupportedMatchesRegistries(t *testing.T) {
 }
 
 func TestUnknownEncodingNamesItself(t *testing.T) {
-	path := "testdata/fixtures/0.94.0/primitives.vortex"
+	path := "testdata/fixtures/0.95.0/primitives.vortex"
 	f, err := OpenFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -179,7 +179,7 @@ func TestUnknownEncodingNamesItself(t *testing.T) {
 }
 
 func TestUnknownLayoutNamesItself(t *testing.T) {
-	f, err := OpenFile("testdata/fixtures/0.94.0/primitives.vortex")
+	f, err := OpenFile("testdata/fixtures/0.95.0/primitives.vortex")
 	if err != nil {
 		t.Fatal(err)
 	}
