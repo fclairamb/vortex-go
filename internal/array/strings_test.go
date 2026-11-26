@@ -303,13 +303,18 @@ type onPairIn struct {
 	valid                []byte
 	meta                 []byte
 	dictPT, codesPT, off uint64
+	codesW               int // the bytes of a code in its buffer
 }
 
-// onPairTokens is a dictionary with single bytes and longer tokens, one of them over 8 bytes.
+// onPairTokens is a dictionary with single bytes and longer tokens, one of them over the 16
+// bytes of the tokens the writers make: its codes are decoded row by row.
 var onPairTokens = []string{"a", "b", "c", "ab", "abc", "the quick brown fox", "cc"}
 
+// onPairShort is onPairTokens with no token over 16 bytes: its codes are decoded in one pass.
+var onPairShort = []string{"a", "b", "c", "ab", "abc", "the quick brown ", "cc"}
+
 func newOnPairIn(tokens []string, strs []string) onPairIn {
-	in := onPairIn{dictOffs: []int64{0}, codeOffs: []int64{0}}
+	in := onPairIn{dictOffs: []int64{0}, codeOffs: []int64{0}, codesW: 2}
 	for _, tk := range tokens {
 		in.dict = append(in.dict, tk...)
 		in.dictOffs = append(in.dictOffs, int64(len(in.dict)))
@@ -338,7 +343,7 @@ func (in onPairIn) seg() []byte {
 		kids = append(kids, bnode(5))
 	}
 	return segment(node(eOnPair, in.meta, []uint16{0}, kids...),
-		buf{data: in.dict}, buf{data: ints(4, in.dictOffs...)}, buf{data: ints(2, in.codes...)},
+		buf{data: in.dict}, buf{data: ints(4, in.dictOffs...)}, buf{data: ints(max(in.codesW, 1), in.codes...)},
 		buf{data: ints(4, in.codeOffs...)}, buf{data: ints(4, in.ulen...)}, buf{data: in.valid})
 }
 
@@ -358,7 +363,15 @@ func TestOnPair(t *testing.T) {
 }
 
 func TestOnPairHostile(t *testing.T) {
-	base := func() onPairIn { return newOnPairIn(onPairTokens, []string{"abc", "ccb"}) }
+	for _, tokens := range [][]string{onPairTokens, onPairShort} {
+		onPairHostile(t, tokens)
+	}
+}
+
+// onPairHostile checks what an OnPair array of these tokens refuses: the ones of
+// onPairTokens are decoded row by row, the ones of onPairShort in one pass.
+func onPairHostile(t *testing.T, tokens []string) {
+	base := func() onPairIn { return newOnPairIn(tokens, []string{"abc", "ccb"}) }
 	cases := []struct {
 		name string
 		in   func() onPairIn
@@ -385,6 +398,69 @@ func TestOnPairHostile(t *testing.T) {
 			in.codes[0] = -1
 			return in
 		}, "negative"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) { wantErr(t, c.in().seg(), utf8t, 2, c.want) })
+	}
+}
+
+// TestOnPairOnePass decodes the codes of a dictionary of short tokens, in one pass: codes of
+// 8 and 16 bits, a dictionary with and without the bytes read past its last token, nulls.
+// Codes of another width are decoded row by row.
+func TestOnPairOnePass(t *testing.T) {
+	strs := []string{"", "a", "abcabc", "the quick brown ", "ccc", "ab" + "the quick brown " + "c", "bbbb",
+		strings.Repeat("the quick brown ", 9), "cc"}
+	for _, c := range []struct {
+		name   string
+		ptype  PType
+		width  int
+		padded bool
+	}{
+		{"u16", U16, 2, false}, {"u16 padded", U16, 2, true}, {"u8", U8, 1, false}, {"u32", U32, 4, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			in := newOnPairIn(onPairShort, strs)
+			in.codesW = c.width
+			in.meta = pb(uint64(U32), 0, uint64(len(onPairShort)), uint64(len(in.codes)), uint64(U32), uint64(c.ptype), uint64(U32))
+			if c.padded {
+				in.dict = append(in.dict, make([]byte, onPairMaxToken)...)
+			}
+			checkStrings(t, mustDecode(t, in.seg(), utf8t, len(strs)), strs)
+			in.valid = []byte{0b11111101, 1}
+			a := mustDecode(t, in.seg(), utf8n, len(strs))
+			if a.Validity == nil || a.Validity.Get(1) || !a.Validity.Get(8) {
+				t.Errorf("validity = %+v", a.Validity)
+			}
+			checkStrings(t, a, strs)
+		})
+	}
+}
+
+// TestOnPairOnePassRefuses is what the one pass cannot decode, and leaves to the rows.
+func TestOnPairOnePassRefuses(t *testing.T) {
+	long := "the quick brown "
+	cases := []struct {
+		name string
+		in   func() onPairIn
+		want string
+	}{
+		{"more bytes than declared, past the output", func() onPairIn {
+			in := newOnPairIn(onPairShort, []string{long + long + long, "a"})
+			in.ulen[0] = 1
+			return in
+		}, "more than its 1 bytes"},
+		{"negative length", func() onPairIn {
+			in := newOnPairIn(onPairShort, []string{"abc", "ccb"})
+			in.meta = pb(uint64(I32), 0, 7, uint64(len(in.codes)), uint64(U32), uint64(U16), uint64(U32))
+			in.ulen[1] = -1
+			return in
+		}, "uncompressed lengths: negative"},
+		{"negative offset", func() onPairIn {
+			in := newOnPairIn(onPairShort, []string{"abc", "ccb"})
+			in.meta = pb(uint64(U32), 0, 7, uint64(len(in.codes)), uint64(U32), uint64(U16), uint64(I32))
+			in.codeOffs[0] = -1
+			return in
+		}, "codes offsets: negative"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) { wantErr(t, c.in().seg(), utf8t, 2, c.want) })
@@ -440,7 +516,7 @@ func TestOnPairDecodeNoAllocs(t *testing.T) {
 	ulen, offs, codes := toInts(in.ulen), toInts(in.codeOffs), toInts(in.codes)
 	dst, outS, outE := make([]byte, 3+19+3), make([]int, n), make([]int, n)
 	allocs := testing.AllocsPerRun(20, func() {
-		if err := d.decode(dst, outS, outE, codes, offs, ulen); err != nil {
+		if err := d.decode(dst, outS, outE, codes, offs[:n], offs[1:], ulen); err != nil {
 			t.Fatal(err)
 		}
 	})
