@@ -111,7 +111,7 @@ func (n *Node) fsstCurrent(t DType, m *message, lp PType, tbl *symbolTable, rows
 		_, err := toInts(nil, lens, "uncompressed lengths", lp, nil)
 		return nil, err
 	}
-	total, first, last, err := fsstRowsOf(a.Starts, a.Ends, offs.Data, cp, len(codes))
+	total, first, last, err := rowsOfCodes(a.Starts, a.Ends, offs.Data, cp, len(codes), fsstMaxSymbol)
 	if err != nil {
 		return nil, err
 	}
@@ -137,44 +137,45 @@ func (n *Node) fsstCurrent(t DType, m *message, lp PType, tbl *symbolTable, rows
 	return a, nil
 }
 
-// fsstRowsOf is fsstRows for offsets of type p, in data.
-func fsstRowsOf(starts, ends []int, data []byte, p PType, n int) (total, first, last int, err error) {
+// rowsOfCodes is fsstRows for offsets of type p, in data.
+func rowsOfCodes(starts, ends []int, data []byte, p PType, n, per int) (total, first, last int, err error) {
 	switch p {
 	case U8:
-		return fsstRows(starts, ends, data, n)
+		return fsstRows(starts, ends, data, n, per)
 	case I8:
-		return fsstRows(starts, ends, words[int8](data), n)
+		return fsstRows(starts, ends, words[int8](data), n, per)
 	case U16:
-		return fsstRows(starts, ends, words[uint16](data), n)
+		return fsstRows(starts, ends, words[uint16](data), n, per)
 	case I16:
-		return fsstRows(starts, ends, words[int16](data), n)
+		return fsstRows(starts, ends, words[int16](data), n, per)
 	case U32:
-		return fsstRows(starts, ends, words[uint32](data), n)
+		return fsstRows(starts, ends, words[uint32](data), n, per)
 	case I32:
-		return fsstRows(starts, ends, words[int32](data), n)
+		return fsstRows(starts, ends, words[int32](data), n, per)
 	case U64:
-		return fsstRows(starts, ends, words[uint64](data), n)
+		return fsstRows(starts, ends, words[uint64](data), n, per)
 	}
-	return fsstRows(starts, ends, words[int64](data), n)
+	return fsstRows(starts, ends, words[int64](data), n, per)
 }
 
 // fsstRows turns the lengths of the rows, in ends, into the ranges of the rows in the decoded
 // bytes, and checks the offsets of the codes of the rows, offs, against them: the offsets do
-// not decrease, stay within the n codes, and a row is not longer than its codes can make. It
-// returns the sum of the lengths, and the range of the codes of all the rows.
+// not decrease, stay within the n codes, and a row is not longer than its codes can make, a
+// code making at most per bytes. It returns the sum of the lengths, and the range of the codes
+// of all the rows. It is the same for the rows of an OnPair array.
 //
 // The checks of a row are folded into the sign of bad, with no branch: the codes of the row,
 // what is left of the n codes after them, and what its codes can make minus its length are
 // not negative. A row past the n codes may make a wrong product, but its other term is
 // negative. When one of them is, fsstRowError says which row is wrong.
-func fsstRows[O integer](starts, ends []int, offs []O, n int) (total, first, last int, err error) {
+func fsstRows[O integer](starts, ends []int, offs []O, n, per int) (total, first, last int, err error) {
 	offs, starts = offs[:len(ends)+1], starts[:len(ends)]
 	prev := int(offs[0])
 	first, bad := prev, prev|(n-prev)
 	for i, l := range ends {
 		next := int(offs[i+1])
 		d := next - prev
-		bad |= d | (n - next) | (d*fsstMaxSymbol - l)
+		bad |= d | (n - next) | (d*per - l)
 		starts[i], total = total, total+l
 		ends[i], prev = total, next
 	}
@@ -182,13 +183,13 @@ func fsstRows[O integer](starts, ends []int, offs []O, n int) (total, first, las
 		for i := range ends { // the lengths back
 			ends[i] -= starts[i]
 		}
-		return 0, 0, 0, fsstRowError(ends, offs, n)
+		return 0, 0, 0, fsstRowError(ends, offs, n, per)
 	}
 	return total, first, prev, nil
 }
 
 // fsstRowError is the error of the first wrong row of fsstRows, ends holding the lengths.
-func fsstRowError[O integer](ends []int, offs []O, n int) error {
+func fsstRowError[O integer](ends []int, offs []O, n, per int) error {
 	prev := int(offs[0])
 	if prev < 0 {
 		return fmt.Errorf("offset 0 is %d, after 0", prev)
@@ -199,7 +200,7 @@ func fsstRowError[O integer](ends []int, offs []O, n int) error {
 			return fmt.Errorf("offset %d is %d, after %d", i+1, next, prev)
 		}
 		// The codes past the n there are are checked at the end: they make no bytes here.
-		if limit := (min(next, n) - min(prev, n)) * fsstMaxSymbol; l > limit {
+		if limit := (min(next, n) - min(prev, n)) * per; l > limit {
 			return fmt.Errorf("row %d is declared %d bytes, its codes hold at most %d", i, l, limit)
 		}
 		prev = next
