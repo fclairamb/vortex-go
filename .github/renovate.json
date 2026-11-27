@@ -120,6 +120,13 @@
         "/^vortex-/"
       ],
       "enabled": false
+    },
+    {
+      "description": "bench/ requires this module through a replace to ../, so its version there means nothing. Bumping it after each release made a fix(deps) commit, which made release-please open the next release (PR #87, 2026-11-26), and so on forever.",
+      "matchPackageNames": [
+        "github.com/fclairamb/vortex-go"
+      ],
+      "enabled": false
     }
   ]
 }
