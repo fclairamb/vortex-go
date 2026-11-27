@@ -19,6 +19,8 @@
     { "type": "ci", "section": "Continuous Integration", "hidden": true }
   ],
   "packages": {
-    ".": {}
+    ".": {
+      "exclude-paths": ["bench"]
+    }
   }
 }
