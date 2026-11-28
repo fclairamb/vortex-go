@@ -221,12 +221,15 @@ func TestLayoutTree(t *testing.T) {
 	md, _ := l.Metadata()
 	segs, _ := l.Segments()
 	kids, err := l.Children()
-	if enc != 2 || rows != 1000 || len(md) != 1 || len(segs) != 1 || kids.Len() != 1 || err != nil {
-		t.Fatal(enc, rows, md, segs, kids.Len(), err)
+	if enc != 2 || rows != 1000 || len(md) != 1 || segs.Len() != 1 || kids.Len() != 1 || err != nil {
+		t.Fatal(enc, rows, md, segs.Len(), kids.Len(), err)
 	}
 	kid, _ := kids.At(0)
-	if s, _ := kid.Segments(); len(s) != 2 || s[1] != 6 {
-		t.Fatal(s)
+	s, _ := kid.Segments()
+	got := make([]uint32, s.Len())
+	s.Read(got)
+	if len(got) != 2 || got[1] != 6 {
+		t.Fatal(got)
 	}
 	// One level deeper than allowed.
 	l, _ = ReadLayout(buf, 1)
