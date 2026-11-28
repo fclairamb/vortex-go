@@ -11,6 +11,13 @@ import (
 // dictionary are decoded 16 bytes at a time (bulk).
 const onPairMaxToken = 16
 
+// onPairMaxTokens is the most tokens of a dictionary that bulk decodes, and onPairLenBits the
+// bits of the length of a token in its table: 0 to 16.
+const (
+	onPairMaxTokens = 1 << 16
+	onPairLenBits   = 5
+)
+
 // decodeOnPair decodes vortex.onpair. The metadata is {1: uncompressed_lengths_ptype,
 // 3: dict_size, 4: codes_len, 5: dict_offsets_ptype, 6: codes_ptype, 7: codes_offsets_ptype}.
 // Buffer 0 is the bytes of the dictionary; the children are the dictionary offsets
@@ -124,20 +131,40 @@ func (n *Node) onPairHead(t DType) (d *onPairDict, ptypes [4]PType, codesLen int
 	}
 	// The reference pads its dictionary with the bytes that the last token is read with. A
 	// dictionary without them is read 16 bytes at a time all the same, from a copy that has them.
-	if d.fast = d.maxTok <= onPairMaxToken; d.fast && dictOffs[dictSize]+onPairMaxToken > len(dict) {
-		d.bytes = n.ctx.opt.Arena.Bytes(len(dict)+onPairMaxToken, false)
+	d.index(n.ctx.opt.Arena, dict, dictSize)
+	return d, ptypes, codesLen, nil
+}
+
+// index sets fast, and what bulk reads when it is set: the table of the tokens, and the 16
+// bytes at the start of every token. The reference pads its dictionary, dict, with the bytes
+// that the last token is read with; a dictionary without them is read from a copy that has
+// them. The codes bulk decodes are 8 or 16 bits wide: a dictionary of more tokens has none.
+func (d *onPairDict) index(ar *Arena, dict []byte, dictSize int) {
+	d.fast = d.maxTok <= onPairMaxToken && dictSize <= onPairMaxTokens
+	if !d.fast {
+		return
+	}
+	if d.offs[dictSize]+onPairMaxToken > len(dict) {
+		d.bytes = ar.Bytes(len(dict)+onPairMaxToken, false)
 		clear(d.bytes[copy(d.bytes, dict):])
 	}
-	return d, ptypes, codesLen, nil
+	d.tab = unsafex.Slice[uint32](ar.Bytes(4*dictSize, false))
+	for i := range d.tab {
+		d.tab[i] = uint32(d.offs[i])<<onPairLenBits | uint32(d.offs[i+1]-d.offs[i])
+	}
 }
 
 // onPairDict is the dictionary of an OnPair array: token i is bytes[offs[i]:offs[i+1]].
 type onPairDict struct {
-	bytes  []byte
-	offs   []int
+	bytes []byte
+	offs  []int
+	// tab is, for each token, its offset in bytes above its length, on onPairLenBits bits:
+	// bulk reads one word for a token, where offs is two. A dictionary of 65,536 tokens of
+	// 16 bytes at most ends before 2^20.
+	tab    []uint32
 	maxTok int // the bytes of the longest token
-	// fast says that no token is longer than 16 bytes, and that 16 bytes can be read at the
-	// start of every token: bulk decodes the codes.
+	// fast says that no token is longer than 16 bytes, that 16 bytes can be read at the
+	// start of every token and that tab is set: bulk decodes the codes.
 	fast bool
 }
 
@@ -168,8 +195,7 @@ func (d *onPairDict) bulkOf(ar *Arena, data []byte, p PType, first, last, total 
 // what follows, and the dictionary has 16 bytes to read at the start of every token. As many
 // tokens as dst has room for at 16 bytes each are written with no test of dst in between.
 func onPairBulk[C uint8 | uint16](d *onPairDict, dst []byte, codes []C) int {
-	offs, src := d.offs, d.bytes
-	ntok := len(offs) - 1
+	tab, src := d.tab, d.bytes
 	o := 0
 	for len(codes) > 0 {
 		batch := min((len(dst)-o)/onPairMaxToken, len(codes))
@@ -178,13 +204,14 @@ func onPairBulk[C uint8 | uint16](d *onPairDict, dst []byte, codes []C) int {
 		}
 		for _, code := range codes[:batch] {
 			c := int(code)
-			if c >= ntok {
+			if c >= len(tab) {
 				return -1
 			}
-			p := offs[c]
-			unsafex.Store64(dst, o, binary.LittleEndian.Uint64(src[p:]))
-			unsafex.Store64(dst, o+8, binary.LittleEndian.Uint64(src[p+8:]))
-			o += offs[c+1] - p
+			e := tab[c]
+			s := src[e>>onPairLenBits:][:onPairMaxToken]
+			unsafex.Store64(dst, o, binary.LittleEndian.Uint64(s))
+			unsafex.Store64(dst, o+8, binary.LittleEndian.Uint64(s[8:]))
+			o += int(e & (1<<onPairLenBits - 1))
 		}
 		codes = codes[batch:]
 	}
