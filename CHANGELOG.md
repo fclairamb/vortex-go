@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.1](https://github.com/fclairamb/vortex-go/compare/v0.2.0...v0.2.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **ci:** stop the release loop on bench/go.mod ([#88](https://github.com/fclairamb/vortex-go/issues/88)) ([cfd1434](https://github.com/fclairamb/vortex-go/commit/cfd14346cbede81eaa6736d9aee6817e26db1d41))
+
+
+### Performance Improvements
+
+* **open:** the layout tree is read in blocks, 96 % fewer allocations ([#90](https://github.com/fclairamb/vortex-go/issues/90)) ([be3b09d](https://github.com/fclairamb/vortex-go/commit/be3b09d975ddbdc7cea8ef8f4051fda7f0b278ea))
+
 ## [0.2.0](https://github.com/fclairamb/vortex-go/compare/v0.1.3...v0.2.0) (2026-11-26)
 
 
