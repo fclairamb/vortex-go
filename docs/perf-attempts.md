@@ -320,6 +320,12 @@ The ranking sees slightly larger zstd samples, so zstd wins marginally less ofte
 file grew 0.25 %, the gate datasets did not move (tpch identical, clickbench −80 bytes).
 `TestDBBatSize` passes in all three variants (the whole-fast file was even 2.1 % smaller).
 
+Measured again on 2026-11-28, on `main` after #82 (interleaved, 6 runs each, 1 thread, a
+loaded machine): only `write_compact` changes, as expected; `gen16/write_compact` **−8.4 % of
+`B/op`** (862 → 790 MiB), the file +0.25 %, and **no direction on the time** (1.61 against
+1.76 s, ±8 to ±19 %, p=0.24); the dbbat files are byte-identical and their times noise. Not
+pushed: the gain of time is still to be shown on a quiet machine or on the CI runner.
+
 ### C. Batches of 32,768 rows instead of 8,192 (one line: `maxBatchRows`)
 
 The scanner decodes through the rows path a batch at a time, so the batch is the granularity
