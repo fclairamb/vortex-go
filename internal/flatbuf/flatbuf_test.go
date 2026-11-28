@@ -124,7 +124,7 @@ func TestVectors(t *testing.T) {
 	if v, _ := tab.Uint16s(2); len(v) != 3 || v[2] != 65535 {
 		t.Fatal(v)
 	}
-	if v, _ := tab.Uint32s(3); len(v) != 2 || v[1] != 4000000000 {
+	if v, _ := uint32s(tab, 3); len(v) != 2 || v[1] != 4000000000 {
 		t.Fatal(v)
 	}
 	strs, err := tab.Strings(4)
@@ -241,7 +241,7 @@ func TestBounds(t *testing.T) {
 		{"string offset leads out", raw([]uint16{4}, huge...), func(t Table) error { _, _, err := t.String(0); return err }, "do not fit"},
 		{"vector count past the end", raw([]uint16{4}, append(u32le(4), huge...)...), func(t Table) error { _, _, err := t.Bytes(0); return err }, "vector of 4294967295 elements of 1 bytes"},
 		{"vector of 2-byte elements, one short", raw([]uint16{4}, append(u32le(4), append(u32le(2), 1, 0, 2)...)...), func(t Table) error { _, err := t.Uint16s(0); return err }, "elements of 2 bytes"},
-		{"vector of u32, count past the end", raw([]uint16{4}, append(u32le(4), huge...)...), func(t Table) error { _, err := t.Uint32s(0); return err }, "elements of 4 bytes"},
+		{"vector of u32, count past the end", raw([]uint16{4}, append(u32le(4), huge...)...), func(t Table) error { _, err := uint32s(t, 0); return err }, "elements of 4 bytes"},
 		{"vector of struct of size 0", raw([]uint16{4}, append(u32le(4), u32le(1)...)...), func(t Table) error { _, err := t.Structs(0, 0); return err }, "element size 0"},
 		{"vector of tables, element leads out", raw([]uint16{4}, append(u32le(4), append(u32le(1), huge...)...)...), func(t Table) error {
 			v, err := t.Tables(0)
@@ -294,7 +294,7 @@ func walk(t Table, depth int) {
 		_, _, _ = t.Bytes(id)
 		_, _, _ = t.String(id)
 		_, _ = t.Uint16s(id)
-		_, _ = t.Uint32s(id)
+		_, _ = uint32s(t, id)
 		if v, err := t.Strings(id); err == nil {
 			for i := -1; i <= v.Len(); i++ {
 				_, _ = v.String(i)
@@ -335,4 +335,12 @@ func FuzzRead(f *testing.F) {
 			walk(root, 5)
 		}
 	})
+}
+
+// uint32s decodes a vector of uint32 to a new slice.
+func uint32s(t Table, id int) ([]uint32, error) {
+	v, err := t.Uint32Vec(id)
+	out := make([]uint32, v.Len())
+	v.Read(out)
+	return out, err
 }

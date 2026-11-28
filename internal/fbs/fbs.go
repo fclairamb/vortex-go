@@ -255,7 +255,7 @@ func (l Layout) Children() (List[Layout], error) {
 }
 
 // Segments is field 4, indices into the footer's segment specs.
-func (l Layout) Segments() ([]uint32, error) { return l.t.Uint32s(4) }
+func (l Layout) Segments() (flatbuf.Uint32Vec, error) { return l.t.Uint32Vec(4) }
 
 // ----- array.fbs -----
 

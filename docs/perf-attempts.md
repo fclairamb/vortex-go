@@ -274,7 +274,7 @@ saved as a patch in `.cache/perf/` (the tree was left clean), each kept the root
 before it is believed. The numbers below are interleaved pairs on the loaded M2 Pro, not
 the protocol's clean min-of-5.
 
-### A. An arena for the layout tree at open (`candidate-layout-arena.patch`)
+### A. An arena for the layout tree at open (`candidate-layout-arena.patch`): pushed
 
 The allocation profile of `gen16/open`: `layoutNode` was **85 % of the objects** (3,494
 allocs, 380 KiB per open) — one heap node, one `[]uint32` of segment indices and one
@@ -290,6 +290,13 @@ capped so no list can append into the next.
   (attempt 9);
 - what remains in the profile is the flatbuffer walk itself (`Children`, `List.At`, the
   field accessors): ~48 % of the open, the irreducible parse.
+
+**Pushed on 2026-11-28**, written again rather than from the patch: the blocks are of 64
+elements, and a list of 16 or more is allocated on its own, so that what is left of a block
+is not lost (the doubling blocks cost +6 % of bytes). Interleaved, 12 runs each, on the file
+of after #73: `gen16/open` 381 → 300 µs (**−21 %**, p=0.000), mapped 488 → 398 µs (−18 %),
+243 → 213 KiB (−12.5 %), 2,643 → 92 allocations. `TestOpenAllocatesByBlocks` pins it.
+
 
 ### B. zstd at level 1 for the trials only (`candidate-zstd-trial-fast.patch`)
 
@@ -312,6 +319,12 @@ is cheaper and every frame that is kept is still cut at level 3 as the reference
 The ranking sees slightly larger zstd samples, so zstd wins marginally less often: the gen16
 file grew 0.25 %, the gate datasets did not move (tpch identical, clickbench −80 bytes).
 `TestDBBatSize` passes in all three variants (the whole-fast file was even 2.1 % smaller).
+
+Measured again on 2026-11-28, on `main` after #82 (interleaved, 6 runs each, 1 thread, a
+loaded machine): only `write_compact` changes, as expected; `gen16/write_compact` **−8.4 % of
+`B/op`** (862 → 790 MiB), the file +0.25 %, and **no direction on the time** (1.61 against
+1.76 s, ±8 to ±19 %, p=0.24); the dbbat files are byte-identical and their times noise. Not
+pushed: the gain of time is still to be shown on a quiet machine or on the CI runner.
 
 ### C. Batches of 32,768 rows instead of 8,192 (one line: `maxBatchRows`)
 

@@ -75,7 +75,7 @@ func TestBuilderRoundTrip(t *testing.T) {
 	if v, _ := root.Uint16s(8); len(v) != 3 || v[0] != 7 || v[2] != 9 {
 		t.Fatal(v)
 	}
-	if v, _ := root.Uint32s(9); len(v) != 2 || v[0] != 70 || v[1] != 80 {
+	if v, _ := uint32s(root, 9); len(v) != 2 || v[0] != 70 || v[1] != 80 {
 		t.Fatal(v)
 	}
 	sv, err := root.Structs(10, 8)

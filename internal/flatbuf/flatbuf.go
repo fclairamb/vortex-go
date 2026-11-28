@@ -221,14 +221,25 @@ func (t Table) AppendUint16s(dst []uint16, id int) ([]uint16, error) {
 	return dst, err
 }
 
-// Uint32s returns a vector of uint32 as a new slice, its size bounded by the buffer.
-func (t Table) Uint32s(id int) ([]uint32, error) {
+// Uint32Vec is a vector of uint32 that is not decoded yet: its reader chooses where the
+// numbers go, so that the vectors of a whole tree can share one slice.
+type Uint32Vec struct{ raw []byte }
+
+// Uint32Vec returns a vector of uint32, its size bounded by the buffer. It is empty when
+// the field is absent.
+func (t Table) Uint32Vec(id int) (Uint32Vec, error) {
 	start, n, _, err := t.vector(id, 4)
-	out := make([]uint32, n)
-	for i := range out {
-		out[i] = binary.LittleEndian.Uint32(t.buf[start+4*i:])
+	return Uint32Vec{t.buf[start : start+4*n]}, err
+}
+
+// Len is the number of elements.
+func (v Uint32Vec) Len() int { return len(v.raw) / 4 }
+
+// Read decodes the vector to dst, which has Len elements.
+func (v Uint32Vec) Read(dst []uint32) {
+	for i := range dst {
+		dst[i] = binary.LittleEndian.Uint32(v.raw[4*i:])
 	}
-	return out, err
 }
 
 // Table returns a table field. The bool is false when the field is absent.

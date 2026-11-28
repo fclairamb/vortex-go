@@ -72,56 +72,91 @@ func (f *File) readFooter(foot fbs.Footer, off uint64) error {
 	return nil
 }
 
+// layoutSlab is the size of the blocks the nodes of a layout tree are cut from: a file of
+// many chunks has thousands of nodes, and one allocation each for the node, its children and
+// its segments was most of the time of Open.
+const layoutSlab = 64
+
+// layoutBuilder holds what is left of the blocks of a tree being read.
+type layoutBuilder struct {
+	nodes []layoutNode
+	kids  []*layoutNode
+	segs  []uint32
+}
+
+// carve takes n elements off the block free, or off a new block when it has fewer. A
+// quarter of a block or more is allocated on its own instead, so that what is left of the
+// block is not lost. The slice has no spare capacity: an append to it cannot reach the next.
+func carve[T any](free *[]T, n int) []T {
+	if n > len(*free) {
+		if n >= layoutSlab/4 {
+			return make([]T, n)
+		}
+		*free = make([]T, layoutSlab)
+	}
+	out := (*free)[:n:n]
+	*free = (*free)[n:]
+	return out
+}
+
 // readLayout parses the layout tree, and checks its indices against the footer.
 func (f *File) readLayout(buf []byte, off uint64) (*layoutNode, error) {
 	l, err := fbs.ReadLayout(buf, maxLayoutDepth)
 	if err != nil {
 		return nil, wrapCorrupt("layout", off, err)
 	}
-	n, err := f.layoutNode(l)
-	if err != nil {
+	var b layoutBuilder
+	n := &carve(&b.nodes, 1)[0]
+	if err := f.layoutNode(&b, n, l); err != nil {
 		return nil, wrapCorrupt("layout", off, err)
 	}
 	return n, nil
 }
 
-func (f *File) layoutNode(l fbs.Layout) (*layoutNode, error) {
-	var n layoutNode
+// layoutNode reads the node l, and the nodes below it, to n.
+func (f *File) layoutNode(b *layoutBuilder, n *layoutNode, l fbs.Layout) error {
 	var err error
 	if n.encoding, err = l.Encoding(); err != nil {
-		return nil, err
+		return err
 	}
 	if int(n.encoding) >= len(f.layoutEncodings) {
-		return nil, fmt.Errorf("layout encoding %d, the footer has %d", n.encoding, len(f.layoutEncodings))
+		return fmt.Errorf("layout encoding %d, the footer has %d", n.encoding, len(f.layoutEncodings))
 	}
 	if n.rowCount, err = l.RowCount(); err != nil {
-		return nil, err
+		return err
 	}
 	if n.metadata, err = l.Metadata(); err != nil {
-		return nil, err
+		return err
 	}
-	if n.segments, err = l.Segments(); err != nil {
-		return nil, err
+	segs, err := l.Segments()
+	if err != nil {
+		return err
 	}
+	n.segments = carve(&b.segs, segs.Len())
+	segs.Read(n.segments)
 	for _, s := range n.segments {
 		if int(s) >= len(f.segments) {
-			return nil, fmt.Errorf("segment %d, the footer has %d", s, len(f.segments))
+			return fmt.Errorf("segment %d, the footer has %d", s, len(f.segments))
 		}
 	}
 	kids, err := l.Children()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	for i := range kids.Len() {
+	if kids.Len() == 0 {
+		return nil
+	}
+	nodes := carve(&b.nodes, kids.Len())
+	n.children = carve(&b.kids, kids.Len())
+	for i := range nodes {
 		k, err := kids.At(i)
 		if err != nil {
-			return nil, err
+			return err
 		}
-		c, err := f.layoutNode(k)
-		if err != nil {
-			return nil, err
+		if err := f.layoutNode(b, &nodes[i], k); err != nil {
+			return err
 		}
-		n.children = append(n.children, c)
+		n.children[i] = &nodes[i]
 	}
-	return &n, nil
+	return nil
 }
