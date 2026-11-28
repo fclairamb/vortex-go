@@ -48,7 +48,8 @@ func decodeOnPair(n *Node, t DType, rows int) (*Array, error) {
 	if err != nil {
 		return nil, err
 	}
-	a := &Array{Type: t, Len: rows, Data: make([]byte, total), Starts: make([]int, rows), Ends: make([]int, rows)}
+	ar := n.ctx.opt.Arena
+	a := &Array{Type: t, Len: rows, Data: ar.Bytes(total, false), Starts: ar.Ints(rows, false), Ends: ar.Ints(rows, false)}
 	if n.NumChildren() == 5 {
 		if a.Validity, err = n.Validity(4, rows); err != nil {
 			return nil, err

@@ -3,6 +3,7 @@ package array
 import (
 	"bytes"
 	"math/rand/v2"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -355,6 +356,38 @@ func TestOnPair(t *testing.T) {
 		t.Errorf("validity = %+v", a.Validity)
 	}
 	checkStrings(t, a, strs)
+}
+
+// TestOnPairArena checks that the strings of an OnPair array are decoded to the arena of the
+// scan, their bytes and their ranges: once the arena is released, the next decoding takes them
+// back, and allocates a fraction of what it decodes.
+func TestOnPairArena(t *testing.T) {
+	strs := make([]string, 600)
+	for i := range strs {
+		strs[i] = "abc" + "the quick brown fox"
+	}
+	seg := newOnPairIn(onPairTokens, strs).seg()
+	ar := new(Pool).NewArena()
+	decode := func() {
+		a, err := Decode(seg, specs, utf8t, len(strs), Options{Arena: ar})
+		if err != nil || a.Len != len(strs) || string(a.Data[a.Starts[599]:a.Ends[599]]) != strs[599] {
+			t.Fatal(a, err)
+		}
+		ar.Release()
+	}
+	decode()
+	const runs = 50
+	var before, after runtime.MemStats
+	runtime.ReadMemStats(&before)
+	for range runs {
+		decode()
+	}
+	runtime.ReadMemStats(&after)
+	// The bytes are 13 KB and the two ranges 5 KB each; the nodes and the arrays, which are
+	// not in the arena, are 5 KB.
+	if got := (after.TotalAlloc - before.TotalAlloc) / runs; got > 8000 {
+		t.Errorf("a decoding to an arena allocates %d bytes", got)
+	}
 }
 
 func TestOnPairHostile(t *testing.T) {

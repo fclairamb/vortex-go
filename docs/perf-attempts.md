@@ -31,6 +31,12 @@ section; the ratios quoted against Rust come from the CI bench (`bench.json` on 
   allocation churn, not a bug (see [benchmarks.md](benchmarks.md), the traps section).
 - Small cases are noisy: `tpch_lineitem/write_compact` 4 threads swings 26.8-29.5 ms between
   runs (±10 %). Act on nothing under 5 %, and use `count ≥ 5` for anything below 10 %.
+- **Read the `B/op` column of every case before any profile.** After the update to vortex
+  0.94 (#73) the writer chose `vortex.onpair` for the strings of `gen16`, and its decoder was
+  the only one that did not take its memory from the arena of the scan: `gen16/scan_full`
+  allocated 757 MiB per scan instead of 10, and went from 1.10× to 2.38× of Rust on the CI
+  bench. Nobody looked, because the attempts of the day before had measured 11.9 MiB. A new
+  encoding in the writer's choice changes what the bench file is made of.
 - Gates before every push: `make check` (nocgo, deps, 100 % of the blocks, race detector,
   about 7 minutes) and `~/go/bin/golangci-lint run ./...`. One change per PR, merged only with
   a measured gain on the PR's own benchstat against `main`.
