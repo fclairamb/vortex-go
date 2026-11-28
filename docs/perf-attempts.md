@@ -446,13 +446,16 @@ whose `classify` hashed every one-byte value with `maphash.Bytes` and compared i
    `pread` (37 %) is a different kernel. `bench.yml` could run the five worst cases once
    more with `-cpuprofile` and upload the profiles as an artifact: until then the ranking of
    the scan leads below is a guess.
-3. **The OnPair decode, what is left.** After #81, `onPairBulk` is 14 % of `gen16/scan_full`
-   (two loads of the offsets table and two bounds-checked reads of the dictionary per
-   token: a table of `offset<<8 | length`, one load, and one slice of 16 bytes would halve
-   the loads); the rows path reads the dictionary offsets again at every batch (they could
-   stay on the node, like `rowKids`); and codes of a width other than 8 or 16 bits fall to
-   the row-by-row path. Measure each on a micro-benchmark of the kernel (ns per token): the
-   end-to-end noise of this machine hides anything under 5 %.
+3. **The OnPair decode, what is left.** The table of `offset<<5 | length` was **pushed on
+   2026-11-28**: one load for a token where the offsets table was two, and one slice of 16
+   bytes of the dictionary. `BenchmarkOnPairBulk` (the kernel, per token): 1.49 → 1.13 ns
+   (−24 %, p=0.000). End to end, interleaved with `main`, 12 runs each, 1 thread:
+   `gen16/scan_full` 367 → 336 ms (−8.4 %), mapped 285 → 260 ms (−8.8 %), `scan_range`
+   41.9 → 38.7 ms (−7.6 %), mapped 33.4 → 29.7 ms (−11.1 %); `scan_3col` does not move (its
+   string is a dictionary). Still to try: the rows path reads the dictionary offsets, and
+   now builds the table, again at every batch (they could stay on the node, like
+   `rowKids`); and codes of a width other than 8 or 16 bits fall to the row-by-row path.
+   The micro-benchmark of the kernel is what made a 24 % visible: measure there first.
 4. **Filters on strings in the compressed domain.** The reference compares and matches
    `LIKE` on OnPair without decoding (`encodings/onpair/src/compute/compare.rs`, `like.rs`):
    an equality is a search of the token sequence of the literal. We decode every row of the

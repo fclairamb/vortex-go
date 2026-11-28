@@ -44,6 +44,16 @@ are not. The first release is v0.1.0, and before v1 a breaking change is a minor
 Never tag by hand, and never edit `.release-please-manifest.json`: merging the release pull
 request does both.
 
+## Before any work
+
+```bash
+git checkout main && git pull --ff-only origin main
+```
+
+Always, before the first read of the code or of `docs/perf-attempts.md` (Florent, 2026-11-28).
+That day a local `main` 8 commits behind had a regression found and fixed a second time
+(#89, closed as a duplicate of #81).
+
 ## Before every push
 
 ```bash
